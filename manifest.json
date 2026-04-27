@@ -1,7 +1,7 @@
 {
-  "name": "PLP Laundromat - ร้านสะดวกซักผ้า",
-  "short_name": "PLP Laundry",
-  "description": "ระบบรับงานฝากซัก-อบ-พับ Otteri & Teddy",
+  "name": "PLP Laundromat",
+  "short_name": "PLP",
+  "description": "ร้านสะดวกซักผ้า PLP - ระบบรับงานฝากซัก-อบ-พับ",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
