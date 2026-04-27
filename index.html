@@ -217,25 +217,11 @@ function calculateBreakdown(order, config) {
 const calculateTotal = (order, config) => calculateBreakdown(order, config).total;
 
 
-// ============ DEMO DATA ============
+// ============ DEMO DATA - DISABLED ============
+// แอปเริ่มต้นว่างเปล่า ไม่มีตัวอย่าง
 function ensureDemoData(brand) {
-  const orders = loadOrders(brand);
-  if (orders.length > 0) return;
-  
-  if (brand === 'otteri') {
-    const sample = [
-      { id: generateId(), createdAt: Date.now() - 3600000, customerName: 'คุณสมหญิง', customerPhone: '081-234-5678', basketPhoto: '', moneyPhoto: '', clothCount: '15 ตัว', washItems: [{ size: 14, qty: 1, temp: 'cold' }], dryItems: [{ size: 15, qty: 1 }], detergentQty: 1, softenerQty: 1, foldBaskets: 1, useService: true, paymentMethod: 'cash', cashReceived: 200, note: 'แยกผ้าขาว', collected: false },
-      { id: generateId(), createdAt: Date.now() - 7200000, customerName: 'คุณวิชัย', customerPhone: '089-876-5432', basketPhoto: '', moneyPhoto: '', clothCount: '25 ตัว', washItems: [{ size: 18, qty: 1, temp: 'cold' }], dryItems: [{ size: 25, qty: 1 }], detergentQty: 0, softenerQty: 0, foldBaskets: 0, useService: true, paymentMethod: 'transfer', cashReceived: 170, note: '', collected: false },
-    ];
-    saveOrders(brand, sample);
-  } else if (brand === 'teddy') {
-    const sample = [
-      { id: generateId(), createdAt: Date.now() - 3600000, customerName: 'น้องเอ', customerPhone: '081-111-2222', basketPhoto: '', moneyPhoto: '', clothCount: '10 ตัว', washItems: [{ size: 10, qty: 1, temp: 'warm' }], dryItems: [{ size: 15, qty: 1 }], detergentQty: 1, softenerQty: 1, foldBaskets: 0, paymentMethod: 'cash', cashReceived: 110, note: '', deliveryZone: null, fromKev: false, useLinePromo: false, linePromoPhoto: '', collected: false },
-      { id: generateId(), createdAt: Date.now() - 7200000, customerName: 'น้องบี', customerPhone: '081-333-4444', basketPhoto: '', moneyPhoto: '', clothCount: '20 ตัว', washItems: [{ size: 17, qty: 1, temp: 'cold' }], dryItems: [{ size: 15, qty: 1 }], detergentQty: 0, softenerQty: 0, foldBaskets: 0, paymentMethod: 'transfer', cashReceived: 130, note: 'หอใน 405', deliveryZone: 'green', fromKev: true, useLinePromo: false, linePromoPhoto: '', collected: false },
-      { id: generateId(), createdAt: Date.now() - 10000000, customerName: 'น้องซี', customerPhone: '081-555-6666', basketPhoto: '', moneyPhoto: '', clothCount: '8 ตัว', washItems: [{ size: 10, qty: 1, temp: 'cold' }], dryItems: [{ size: 15, qty: 1 }], detergentQty: 0, softenerQty: 0, foldBaskets: 0, paymentMethod: 'cash', cashReceived: 50, note: 'ลูกค้าใหม่', deliveryZone: null, fromKev: false, useLinePromo: true, linePromoPhoto: '', collected: false },
-    ];
-    saveOrders(brand, sample);
-  }
+  // ไม่ทำอะไร - ให้ข้อมูลว่างเปล่าจริงๆ
+  return;
 }
 
 // ============ MAIN APP ============
