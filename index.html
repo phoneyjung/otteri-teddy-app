@@ -22,17 +22,169 @@
   
   
 </style>
-<link rel="manifest" href="/manifest.json">
-<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <meta name="theme-color" content="#3B82F6">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Laundry">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
 </head>
 <body>
 
 <div id="root" ></div>
+
+<!-- Warning สำหรับ Line in-app browser -->
+<div id="line-warning" style="display:none; position:fixed; inset:0; z-index:9999; background:linear-gradient(135deg,#3B82F6,#1E40AF); color:white; padding:20px; font-family:'Noto Sans Thai',sans-serif; overflow:auto;">
+  <div style="max-width:400px; margin:0 auto; padding-top:30px; text-align:center;">
+    <div style="font-size:60px; margin-bottom:10px;">⚠️</div>
+    <h1 style="font-size:24px; font-weight:800; margin:0 0 8px;">เปิดในเบราว์เซอร์ก่อนนะครับ</h1>
+    <p style="font-size:14px; opacity:0.9; margin:0 0 20px;">เพื่อให้ใช้งานกล้อง + ฟีเจอร์ครบ</p>
+
+    <div style="background:rgba(255,255,255,0.15); border-radius:16px; padding:16px; margin-bottom:16px; text-align:left;">
+      <p style="font-weight:bold; margin:0 0 10px; font-size:14px;">📱 วิธีเปิด:</p>
+      <p style="font-size:13px; margin:6px 0; line-height:1.6;">
+        <span style="background:white; color:#3B82F6; border-radius:12px; padding:2px 8px; font-weight:bold;">1</span>
+        แตะปุ่ม <b>⋮ จุดสามจุด</b> มุมขวาบน
+      </p>
+      <p style="font-size:13px; margin:6px 0; line-height:1.6;">
+        <span style="background:white; color:#3B82F6; border-radius:12px; padding:2px 8px; font-weight:bold;">2</span>
+        เลือก <b>"เปิดด้วยเบราว์เซอร์อื่น"</b> หรือ <b>"Open in Browser"</b>
+      </p>
+    </div>
+
+    <button onclick="copyLink()" style="background:white; color:#3B82F6; border:none; padding:14px 24px; border-radius:14px; font-weight:bold; font-size:15px; width:100%; margin-bottom:10px; font-family:inherit; cursor:pointer;">
+      📋 ก๊อปลิงก์ไปเปิดเอง
+    </button>
+
+    <button onclick="document.getElementById('line-warning').style.display='none'" style="background:transparent; color:white; border:1px solid rgba(255,255,255,0.4); padding:12px 24px; border-radius:14px; font-size:13px; width:100%; font-family:inherit; cursor:pointer;">
+      ใช้ใน Line ก็ได้ (บางอย่างอาจไม่ทำงาน)
+    </button>
+  </div>
+</div>
+
+<!-- Add to Home Screen prompt (Android Chrome) -->
+<div id="install-prompt" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:9998; background:white; box-shadow:0 -10px 30px rgba(0,0,0,0.15); padding:16px; font-family:'Noto Sans Thai',sans-serif;">
+  <div style="max-width:400px; margin:0 auto; display:flex; align-items:center; gap:12px;">
+    <div style="font-size:36px;">📲</div>
+    <div style="flex:1;">
+      <p style="font-weight:bold; margin:0 0 2px; font-size:14px;">ติดตั้งเป็นแอป</p>
+      <p style="font-size:12px; color:#666; margin:0;">ใช้งานเหมือนแอปจริง</p>
+    </div>
+    <button onclick="dismissInstall()" style="background:#f3f4f6; border:none; padding:6px 10px; border-radius:8px; font-size:14px; cursor:pointer; color:#666; font-family:inherit;">×</button>
+    <button id="install-btn" onclick="installApp()" style="background:#3B82F6; color:white; border:none; padding:10px 16px; border-radius:10px; font-weight:bold; font-size:13px; cursor:pointer; font-family:inherit;">
+      ติดตั้ง
+    </button>
+  </div>
+</div>
+
+<!-- iOS Safari Install hint -->
+<div id="ios-install" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:9998; background:white; box-shadow:0 -10px 30px rgba(0,0,0,0.15); padding:16px; font-family:'Noto Sans Thai',sans-serif;">
+  <div style="max-width:400px; margin:0 auto;">
+    <div style="display:flex; align-items:flex-start; gap:12px;">
+      <div style="font-size:36px;">📲</div>
+      <div style="flex:1;">
+        <p style="font-weight:bold; margin:0 0 4px; font-size:14px;">ติดตั้งเป็นแอป</p>
+        <p style="font-size:12px; color:#666; margin:0 0 8px; line-height:1.5;">
+          แตะปุ่ม <b>แชร์ ⬆️</b> ด้านล่าง<br/>
+          → เลื่อนหา <b>"Add to Home Screen"</b>
+        </p>
+      </div>
+      <button onclick="dismissInstall()" style="background:#f3f4f6; border:none; padding:6px 10px; border-radius:8px; font-size:14px; cursor:pointer; color:#666; font-family:inherit;">×</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ตรวจจับ Line browser
+  (function() {
+    const ua = navigator.userAgent.toLowerCase();
+    const isLine = ua.includes('line/');
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+    if (isLine && !isStandalone) {
+      document.getElementById('line-warning').style.display = 'block';
+    }
+
+    // iOS Safari (ไม่ใช่ Line, ยังไม่ได้ติดตั้ง)
+    const isIOS = /iphone|ipad|ipod/.test(ua);
+    const isSafari = /safari/.test(ua) && !/crios|fxios/.test(ua);
+    if (isIOS && isSafari && !isStandalone && !isLine) {
+      const dismissed = localStorage.getItem('ios-install-dismissed');
+      if (!dismissed) {
+        setTimeout(() => {
+          document.getElementById('ios-install').style.display = 'block';
+        }, 5000);
+      }
+    }
+  })();
+
+  // ก๊อปลิงก์
+  function copyLink() {
+    const url = window.location.href;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => {
+        alert('✓ ก๊อปลิงก์แล้ว!\n\nไปวางใน Chrome / Safari ได้เลย');
+      }).catch(() => fallbackCopy(url));
+    } else {
+      fallbackCopy(url);
+    }
+  }
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      alert('✓ ก๊อปลิงก์แล้ว!');
+    } catch {
+      prompt('ก๊อปลิงก์นี้:', text);
+    }
+    document.body.removeChild(ta);
+  }
+
+  // PWA Install prompt (Android Chrome)
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    const dismissed = localStorage.getItem('install-dismissed');
+    const installed = window.matchMedia('(display-mode: standalone)').matches;
+    if (!dismissed && !installed) {
+      setTimeout(() => {
+        document.getElementById('install-prompt').style.display = 'block';
+      }, 5000);
+    }
+  });
+
+  function installApp() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(() => {
+        deferredPrompt = null;
+        document.getElementById('install-prompt').style.display = 'none';
+      });
+    }
+  }
+
+  function dismissInstall() {
+    document.getElementById('install-prompt').style.display = 'none';
+    document.getElementById('ios-install').style.display = 'none';
+    localStorage.setItem('install-dismissed', '1');
+    localStorage.setItem('ios-install-dismissed', '1');
+  }
+
+  // Register Service Worker (ทำงานออฟไลน์ + ติดตั้งเป็นแอปได้)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+  }
+</script>
 
 <script type="text/babel" data-presets="env,react">
 const { useState, useEffect, useRef, useMemo } = React;
