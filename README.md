@@ -1,4 +1,4 @@
-# Otteri & Teddy Laundry App
+# PLP Laundromat - ร้านสะดวกซักผ้า
 
 ระบบรับงานฝากซัก-อบ-พับ สำหรับ Otteri และ Teddy
 
@@ -6,6 +6,9 @@
 1303
 
 ## ไฟล์
-- `index.html` - แอปหลัก (เปิดในเบราว์เซอร์ได้เลย)
+- `index.html` - แอปหลัก
 - `manifest.json` - PWA config
-- `icon.svg` - ไอคอน
+- `sw.js` - Service Worker (ทำงานออฟไลน์)
+- `icon-180.png` - iOS icon
+- `icon-192.png` - Android icon (medium)
+- `icon-512.png` - Android icon (large)

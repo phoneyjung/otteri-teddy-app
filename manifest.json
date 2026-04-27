@@ -1,12 +1,12 @@
 {
-  "name": "Otteri & Teddy Laundry",
-  "short_name": "Laundry",
-  "description": "ระบบรับงานฝากซัก-อบ-พับ",
+  "name": "PLP Laundromat - ร้านสะดวกซักผ้า",
+  "short_name": "PLP Laundry",
+  "description": "ระบบรับงานฝากซัก-อบ-พับ Otteri & Teddy",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#3B82F6",
-  "theme_color": "#3B82F6",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1E40AF",
   "orientation": "portrait",
   "icons": [
     {
