@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v12-2026-04-28';
+  window.APP_VERSION = 'v13-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -851,8 +851,11 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   const [useLinePromo, setUseLinePromo] = useState(editingOrder?.useLinePromo || false);
 
   const basketInputRef = useRef(null);
+  const basketCameraRef = useRef(null);
   const moneyInputRef = useRef(null);
+  const moneyCameraRef = useRef(null);
   const linePromoInputRef = useRef(null);
+  const linePromoCameraRef = useRef(null);
 
   const handlePhotoUpload = (e, setter) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1068,6 +1071,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
 
         <Section iconName="camera" title="รูปตะกร้าผ้า">
           <input ref={basketInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
+          <input ref={basketCameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
           {basketPhoto ? (
             <div className="relative">
               <img src={basketPhoto} className="w-full rounded-xl" />
@@ -1076,10 +1080,16 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
               </button>
             </div>
           ) : (
-            <button onClick={() => basketInputRef.current?.click()} className="w-full py-8 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition">
-              <Icon name="camera" className="w-8 h-8 text-slate-400" />
-              <span className="text-sm text-slate-600 font-medium">ถ่ายรูป / เลือกรูป</span>
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => basketCameraRef.current?.click()} className="py-6 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+                <Icon name="camera" className="w-7 h-7 text-sky-600" />
+                <span className="text-xs text-sky-700 font-bold">📷 ถ่ายรูป</span>
+              </button>
+              <button onClick={() => basketInputRef.current?.click()} className="py-6 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+                <Icon name="image" className="w-7 h-7 text-slate-500" />
+                <span className="text-xs text-slate-600 font-bold">🖼️ เลือกจากอัลบั้ม</span>
+              </button>
+            </div>
           )}
           <Field label="จำนวนผ้า (ตัว/ชุด)">
             <input type="text" value={clothCount} onChange={(e) => setClothCount(e.target.value)} placeholder="เช่น 25 ตัว" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
@@ -1186,6 +1196,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
               <div className="mt-3">
                 <p className="text-xs text-slate-600 mb-2 font-bold">📷 รูปหลักฐานคูปอง <span className="text-rose-500">*</span></p>
                 <input ref={linePromoInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setLinePromoPhoto)} className="hidden" />
+                <input ref={linePromoCameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setLinePromoPhoto)} className="hidden" />
                 {linePromoPhoto ? (
                   <div className="relative">
                     <img src={linePromoPhoto} className="w-full rounded-xl" />
@@ -1194,11 +1205,19 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
                     </button>
                   </div>
                 ) : (
-                  <button onClick={() => linePromoInputRef.current?.click()} className="w-full py-6 bg-amber-50 border-2 border-dashed border-amber-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
-                    <Icon name="camera" className="w-7 h-7 text-amber-600" />
-                    <span className="text-sm text-amber-700 font-bold">ถ่ายรูปหน้าจอลูกค้าที่กดคูปอง</span>
-                    <span className="text-xs text-amber-600">บังคับถ่ายเพื่อใช้สิทธิ์</span>
-                  </button>
+                  <div>
+                    <p className="text-[11px] text-amber-600 mb-1.5">บังคับถ่ายเพื่อใช้สิทธิ์</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => linePromoCameraRef.current?.click()} className="py-5 bg-amber-50 border-2 border-dashed border-amber-400 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+                        <Icon name="camera" className="w-6 h-6 text-amber-700" />
+                        <span className="text-xs text-amber-700 font-bold">📷 ถ่ายรูป</span>
+                      </button>
+                      <button onClick={() => linePromoInputRef.current?.click()} className="py-5 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+                        <Icon name="image" className="w-6 h-6 text-slate-500" />
+                        <span className="text-xs text-slate-600 font-bold">🖼️ เลือกอัลบั้ม</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -1253,6 +1272,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
           </div>
 
           <input ref={moneyInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setMoneyPhoto)} className="hidden" />
+          <input ref={moneyCameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setMoneyPhoto)} className="hidden" />
           <div className="mt-3">
             <p className="text-xs text-slate-600 mb-2">{paymentMethod === 'transfer' ? 'รูปสลิปโอน (ไม่บังคับ)' : 'รูปเงิน (ไม่บังคับ)'}</p>
             {moneyPhoto ? (
@@ -1263,10 +1283,16 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
                 </button>
               </div>
             ) : (
-              <button onClick={() => moneyInputRef.current?.click()} className="w-full py-5 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
-                <Icon name="camera" className="w-6 h-6 text-slate-400" />
-                <span className="text-xs text-slate-600">{paymentMethod === 'transfer' ? 'ถ่าย / เลือกสลิป' : 'ถ่าย / เลือกรูปเงิน'}</span>
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => moneyCameraRef.current?.click()} className="py-4 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+                  <Icon name="camera" className="w-5 h-5 text-sky-600" />
+                  <span className="text-xs text-sky-700 font-bold">📷 ถ่าย</span>
+                </button>
+                <button onClick={() => moneyInputRef.current?.click()} className="py-4 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+                  <Icon name="image" className="w-5 h-5 text-slate-500" />
+                  <span className="text-xs text-slate-600 font-bold">🖼️ เลือกอัลบั้ม</span>
+                </button>
+              </div>
             )}
           </div>
 
