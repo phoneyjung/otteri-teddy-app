@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v11-2026-04-28';
+  window.APP_VERSION = 'v12-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1067,7 +1067,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
         </Section>
 
         <Section iconName="camera" title="รูปตะกร้าผ้า">
-          <input ref={basketInputRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
+          <input ref={basketInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
           {basketPhoto ? (
             <div className="relative">
               <img src={basketPhoto} className="w-full rounded-xl" />
@@ -1185,7 +1185,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
             {useLinePromo && (
               <div className="mt-3">
                 <p className="text-xs text-slate-600 mb-2 font-bold">📷 รูปหลักฐานคูปอง <span className="text-rose-500">*</span></p>
-                <input ref={linePromoInputRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setLinePromoPhoto)} className="hidden" />
+                <input ref={linePromoInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setLinePromoPhoto)} className="hidden" />
                 {linePromoPhoto ? (
                   <div className="relative">
                     <img src={linePromoPhoto} className="w-full rounded-xl" />
@@ -1252,7 +1252,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
             </div>
           </div>
 
-          <input ref={moneyInputRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setMoneyPhoto)} className="hidden" />
+          <input ref={moneyInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setMoneyPhoto)} className="hidden" />
           <div className="mt-3">
             <p className="text-xs text-slate-600 mb-2">{paymentMethod === 'transfer' ? 'รูปสลิปโอน (ไม่บังคับ)' : 'รูปเงิน (ไม่บังคับ)'}</p>
             {moneyPhoto ? (
@@ -1265,7 +1265,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
             ) : (
               <button onClick={() => moneyInputRef.current?.click()} className="w-full py-5 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                 <Icon name="camera" className="w-6 h-6 text-slate-400" />
-                <span className="text-xs text-slate-600">{paymentMethod === 'transfer' ? 'ถ่ายสลิปโอน' : 'ถ่ายรูปเงิน'}</span>
+                <span className="text-xs text-slate-600">{paymentMethod === 'transfer' ? 'ถ่าย / เลือกสลิป' : 'ถ่าย / เลือกรูปเงิน'}</span>
               </button>
             )}
           </div>
