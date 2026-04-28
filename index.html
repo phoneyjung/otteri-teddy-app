@@ -302,21 +302,38 @@ async function loadOrdersFromCloud(brand) {
     return [];
   }
 }
+// Helper: ลบ undefined values ทุก nested level
+function cleanUndefined(obj) {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(cleanUndefined);
+  if (typeof obj === 'object') {
+    const cleaned = {};
+    for (const key in obj) {
+      if (obj[key] !== undefined) {
+        cleaned[key] = cleanUndefined(obj[key]);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 async function saveOrderToCloud(brand, order) {
   try {
-    const data = { ...order, brand };
+    let data = { ...order, brand };
     delete data.id;
-    // Clean undefined values (Firestore doesn't support undefined)
-    Object.keys(data).forEach(key => {
-      if (data[key] === undefined) data[key] = null;
-    });
-    if (order.id && !order.id.startsWith('local-')) {
+    // Clean ALL undefined values (including nested)
+    data = cleanUndefined(data);
+    
+    // ถ้ามี id อยู่แล้วและเป็น Firestore id (มี 20 ตัวอักษรขึ้นไป) → update
+    // ถ้าไม่มี หรือเป็น local id → สร้างใหม่
+    if (order.id && order.id.length >= 20 && !order.id.includes('-')) {
       await window.db.collection('orders').doc(order.id).set(data);
+      return order.id;
     } else {
       const docRef = await window.db.collection('orders').add(data);
       return docRef.id;
     }
-    return order.id;
   } catch (e) {
     console.error('saveOrder error:', e);
     throw e;
@@ -554,8 +571,11 @@ function BrandApp({ config, onChangeBrand }) {
 
   const handleNewOrder = async (order) => {
     try {
-      const newId = await saveOrderToCloud(config.brand, order);
-      const savedOrder = { ...order, id: newId || order.id };
+      // ลบ id ออก เพื่อให้ Firestore สร้าง id ใหม่
+      const orderWithoutId = { ...order };
+      delete orderWithoutId.id;
+      const newId = await saveOrderToCloud(config.brand, orderWithoutId);
+      const savedOrder = { ...order, id: newId };
       setSelectedOrder(savedOrder);
       setView('receipt');
     } catch (e) {

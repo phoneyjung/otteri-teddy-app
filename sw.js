@@ -1,5 +1,5 @@
 // Service Worker - ทำให้ทำงานออฟไลน์ได้ + cache assets
-const CACHE_NAME = 'plp-laundry-v2';
+const CACHE_NAME = 'plp-laundry-v3';
 const urlsToCache = [
   './',
   './index.html',
