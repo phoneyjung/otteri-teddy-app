@@ -10,6 +10,25 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<!-- Firebase SDK (compat mode for non-module use) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script>
+  // Firebase Configuration for PLP Laundromat
+  const firebaseConfig = {
+    apiKey: "AIzaSyDGTH_hCsA7SyrmCCOcnCBPm_wcKvplSW8",
+    authDomain: "plp-laundromat.firebaseapp.com",
+    projectId: "plp-laundromat",
+    storageBucket: "plp-laundromat.firebasestorage.app",
+    messagingSenderId: "1012941920819",
+    appId: "1:1012941920819:web:bb0c7c300d0111b83a6146"
+  };
+  firebase.initializeApp(firebaseConfig);
+  window.db = firebase.firestore();
+  // Enable offline persistence
+  window.db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   * { -webkit-tap-highlight-color: transparent; }
@@ -272,6 +291,84 @@ const OWNER_PASSWORD = '1303';
 const getOrdersKey = (brand) => `${brand}:orders:v6`;
 const getCollectionsKey = (brand) => `${brand}:collections:v6`;
 
+// ============ FIRESTORE HELPERS ============
+// เก็บข้อมูลใน cloud (Firebase Firestore) — ทุกมือถือเห็นข้อมูลเดียวกัน
+async function loadOrdersFromCloud(brand) {
+  try {
+    const snapshot = await window.db.collection('orders').where('brand', '==', brand).get();
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.error('loadOrders error:', e);
+    return [];
+  }
+}
+async function saveOrderToCloud(brand, order) {
+  try {
+    const data = { ...order, brand };
+    delete data.id;
+    if (order.id && !order.id.startsWith('local-')) {
+      await window.db.collection('orders').doc(order.id).set(data);
+    } else {
+      const docRef = await window.db.collection('orders').add(data);
+      return docRef.id;
+    }
+    return order.id;
+  } catch (e) {
+    console.error('saveOrder error:', e);
+    throw e;
+  }
+}
+async function deleteOrderFromCloud(orderId) {
+  try { await window.db.collection('orders').doc(orderId).delete(); }
+  catch (e) { console.error('deleteOrder error:', e); throw e; }
+}
+async function loadCollectionsFromCloud(brand) {
+  try {
+    const snapshot = await window.db.collection('collections').where('brand', '==', brand).get();
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.error('loadCollections error:', e);
+    return [];
+  }
+}
+async function saveCollectionToCloud(brand, item) {
+  try {
+    const data = { ...item, brand };
+    delete data.id;
+    await window.db.collection('collections').add(data);
+  } catch (e) { console.error('saveCollection error:', e); throw e; }
+}
+async function batchUpdateOrders(orderIds, updates) {
+  try {
+    const batch = window.db.batch();
+    orderIds.forEach(id => {
+      const ref = window.db.collection('orders').doc(id);
+      batch.update(ref, updates);
+    });
+    await batch.commit();
+  } catch (e) { console.error('batchUpdate error:', e); throw e; }
+}
+// Subscribe — real-time updates
+function subscribeToOrders(brand, callback) {
+  return window.db.collection('orders').where('brand', '==', brand).onSnapshot(
+    snapshot => {
+      const orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      callback(orders);
+    },
+    error => console.error('subscribe orders error:', error)
+  );
+}
+function subscribeToCollections(brand, callback) {
+  return window.db.collection('collections').where('brand', '==', brand).onSnapshot(
+    snapshot => {
+      const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      callback(items);
+    },
+    error => console.error('subscribe collections error:', error)
+  );
+}
+
+// Legacy localStorage helpers (ไว้สำหรับ migrate ข้อมูลเก่า)
 function loadOrders(brand) { try { return JSON.parse(localStorage.getItem(getOrdersKey(brand)) || '[]'); } catch { return []; } }
 function saveOrders(brand, orders) { try { localStorage.setItem(getOrdersKey(brand), JSON.stringify(orders)); } catch {} }
 function loadCollections(brand) { try { return JSON.parse(localStorage.getItem(getCollectionsKey(brand)) || '[]'); } catch { return []; } }
@@ -433,42 +530,56 @@ function BrandApp({ config, onChangeBrand }) {
   const [collections, setCollections] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('connecting'); // connecting/synced/offline
 
-  useEffect(() => { ensureDemoData(config.brand); refresh(); }, [config.brand]);
+  // Real-time subscription to Firestore
+  useEffect(() => {
+    setSyncStatus('connecting');
+    const unsubOrders = subscribeToOrders(config.brand, (newOrders) => {
+      setOrders(newOrders.sort((a, b) => b.createdAt - a.createdAt));
+      setSyncStatus('synced');
+    });
+    const unsubCollections = subscribeToCollections(config.brand, (newCollections) => {
+      setCollections(newCollections.sort((a, b) => b.collectedAt - a.collectedAt));
+    });
+    return () => {
+      unsubOrders && unsubOrders();
+      unsubCollections && unsubCollections();
+    };
+  }, [config.brand]);
 
-  const refresh = () => {
-    setOrders(loadOrders(config.brand).sort((a, b) => b.createdAt - a.createdAt));
-    setCollections(loadCollections(config.brand).sort((a, b) => b.collectedAt - a.collectedAt));
+  const handleNewOrder = async (order) => {
+    try {
+      const newId = await saveOrderToCloud(config.brand, order);
+      const savedOrder = { ...order, id: newId || order.id };
+      setSelectedOrder(savedOrder);
+      setView('receipt');
+    } catch (e) {
+      alert('บันทึกล้มเหลว: ' + e.message + '\n\nกรุณาเช็คอินเทอร์เน็ตแล้วลองใหม่');
+    }
   };
 
-  const handleNewOrder = (order) => {
-    const list = loadOrders(config.brand);
-    const idx = list.findIndex(o => o.id === order.id);
-    if (idx >= 0) list[idx] = order; else list.push(order);
-    saveOrders(config.brand, list);
-    refresh();
-    setSelectedOrder(order);
-    setView('receipt');
+  const handleUpdateOrder = async (order) => {
+    try {
+      await saveOrderToCloud(config.brand, order);
+      setSelectedOrder(order);
+      setView('orderDetail');
+    } catch (e) {
+      alert('แก้ไขล้มเหลว: ' + e.message);
+    }
   };
 
-  const handleUpdateOrder = (order) => {
-    const list = loadOrders(config.brand);
-    const idx = list.findIndex(o => o.id === order.id);
-    if (idx >= 0) list[idx] = order;
-    saveOrders(config.brand, list);
-    refresh();
-    setSelectedOrder(order);
-    setView('orderDetail');
-  };
-
-  const handleDeleteOrder = (id) => {
+  const handleDeleteOrder = async (id) => {
     if (!confirm('ลบรายการนี้?')) return;
-    saveOrders(config.brand, loadOrders(config.brand).filter(o => o.id !== id));
-    refresh();
-    setView(isOwner ? 'ownerDashboard' : 'home');
+    try {
+      await deleteOrderFromCloud(id);
+      setView(isOwner ? 'ownerDashboard' : 'home');
+    } catch (e) {
+      alert('ลบล้มเหลว: ' + e.message);
+    }
   };
 
-  const handleCollectMoney = (method) => {
+  const handleCollectMoney = async (method) => {
     const uncollected = orders.filter(o => !o.collected && o.paymentMethod === method);
     if (uncollected.length === 0) {
       alert(`ไม่มีรายการ${method === 'cash' ? 'เงินสด' : 'เงินโอน'}ที่ต้องเคลียร์`);
@@ -480,18 +591,28 @@ function BrandApp({ config, onChangeBrand }) {
     
     if (!confirm(`${methodLabel}?\n\nจำนวน ${uncollected.length} รายการ\nเงินที่รับมา: ${formatMoney(totalReceived)} บาท\nยอดที่ควรได้: ${formatMoney(totalShould)} บาท`)) return;
 
-    const round = { id: generateId(), collectedAt: Date.now(), method, orderIds: uncollected.map(o => o.id), orderCount: uncollected.length, totalReceived, totalShould };
-    const list = loadCollections(config.brand); list.push(round); saveCollections(config.brand, list);
-
-    const allOrders = loadOrders(config.brand);
-    const updated = allOrders.map(o => uncollected.find(u => u.id === o.id) ? { ...o, collected: true, collectedAt: Date.now() } : o);
-    saveOrders(config.brand, updated);
-    refresh();
-    alert(`✓ ${methodLabel} เรียบร้อย`);
+    try {
+      // Save collection record
+      const round = { collectedAt: Date.now(), method, orderIds: uncollected.map(o => o.id), orderCount: uncollected.length, totalReceived, totalShould };
+      await saveCollectionToCloud(config.brand, round);
+      
+      // Update orders to collected
+      await batchUpdateOrders(uncollected.map(o => o.id), { collected: true, collectedAt: Date.now() });
+      
+      alert(`✓ ${methodLabel} เรียบร้อย`);
+    } catch (e) {
+      alert('เคลียร์ยอดล้มเหลว: ' + e.message);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Sync status indicator */}
+      {syncStatus === 'connecting' && (
+        <div style={{position:'fixed', top:0, left:0, right:0, zIndex:50, background:'#FEF3C7', color:'#92400E', textAlign:'center', padding:'4px', fontSize:'11px', fontWeight:600}}>
+          🔄 กำลังเชื่อมต่อ cloud...
+        </div>
+      )}
       {view === 'home' && <HomeView config={config} orders={orders} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} />}
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
@@ -599,6 +720,7 @@ function HomeView({ config, orders, onNewOrder, onOwnerLogin, onSelectOrder, onC
                     <p className="font-semibold text-slate-900 truncate">{o.customerName}</p>
                     {o.deliveryZone && <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🚚</span>}
                     {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">เคฟ</span>}
+                    {o.fromLine && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💬</span>}
                   </div>
                   <p className="text-xs text-slate-500">{formatDate(o.createdAt)}</p>
                 </div>
@@ -636,6 +758,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   const [note, setNote] = useState(editingOrder?.note || '');
   const [deliveryZone, setDeliveryZone] = useState(editingOrder?.deliveryZone || null);
   const [fromKev, setFromKev] = useState(editingOrder?.fromKev || false);
+  const [fromLine, setFromLine] = useState(editingOrder?.fromLine || false);
   const [useLinePromo, setUseLinePromo] = useState(editingOrder?.useLinePromo || false);
 
   const basketInputRef = useRef(null);
@@ -649,10 +772,24 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const ratio = Math.min(1, 1024 / img.width);
+        // ย่อรูปเป็น 600px กว้าง — เก็บใน Firestore ได้ (~50KB)
+        const ratio = Math.min(1, 600 / img.width);
         canvas.width = img.width * ratio; canvas.height = img.height * ratio;
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        setter(canvas.toDataURL('image/jpeg', 0.7));
+        // คุณภาพ 0.6 = ~50KB
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        // เช็คขนาด (Firestore document max 1MB)
+        const sizeKB = Math.round(dataUrl.length / 1024);
+        if (sizeKB > 700) {
+          // ถ้ายังใหญ่ ย่อลงอีก
+          const ratio2 = Math.min(1, 400 / canvas.width);
+          canvas.width = canvas.width * ratio2;
+          canvas.height = canvas.height * ratio2;
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          setter(canvas.toDataURL('image/jpeg', 0.5));
+        } else {
+          setter(dataUrl);
+        }
       };
       img.src = ev.target.result;
     };
@@ -684,7 +821,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   const total = breakdown.total;
   const cashNum = parseFloat(cashReceived) || 0;
   const diff = cashNum - total;
-  const canSubmit = name && phone && (washItems.length > 0 || dryItems.length > 0) && (!useLinePromo || linePromoPhoto);
+  const canSubmit = (washItems.length > 0 || dryItems.length > 0) && (!useLinePromo || linePromoPhoto);
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
 
@@ -697,10 +834,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   }, [deliveryZone]);
 
   const handleSubmit = () => {
-    if (!name || !phone) {
-      alert('กรอกชื่อและเบอร์โทรให้ครบ');
-      return;
-    }
     if (washItems.length === 0 && dryItems.length === 0) {
       alert('เลือกบริการอย่างน้อย 1 รายการ');
       return;
@@ -713,14 +846,14 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
       id: editingOrder?.id || generateId(),
       createdAt: editingOrder?.createdAt || Date.now(),
       updatedAt: Date.now(),
-      customerName: name.trim(), customerPhone: phone.trim(),
+      customerName: name.trim() || '(ไม่ระบุชื่อ)', customerPhone: phone.trim(),
       basketPhoto, moneyPhoto, linePromoPhoto,
       clothCount: clothCount.trim(),
       washItems, dryItems,
       detergentQty, softenerQty, foldBaskets, useService,
       paymentMethod, cashReceived: cashNum,
       note: note.trim(),
-      deliveryZone, fromKev, useLinePromo,
+      deliveryZone, fromKev, fromLine, useLinePromo,
       collected: editingOrder?.collected || false,
       collectedAt: editingOrder?.collectedAt,
     };
@@ -730,8 +863,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   return (
     <div className="min-h-screen pb-32">
       <div className="sticky z-20 bg-white border-b border-slate-100 px-5 py-3 flex items-center gap-3" style={{top: '0px'}}>
-        <button onClick={onCancel} className="p-1 -ml-1 active:scale-90 transition">
+        <button onClick={onCancel} className="flex items-center gap-1 px-3 py-2 -ml-2 rounded-xl active:scale-95 active:bg-slate-100 transition">
           <Icon name="chevron-left" className="w-6 h-6 text-slate-700" />
+          <span className="text-sm font-bold text-slate-700">กลับ</span>
         </button>
         <div className="flex-1">
           <h1 className="font-bold text-slate-900 text-lg">{isEdit ? 'แก้ไขรายการ' : 'รับงานใหม่'}</h1>
@@ -777,11 +911,36 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
           </button>
         )}
 
+        {/* ปุ่มงานจาก Line - ใช้ได้ทั้ง Otteri และ Teddy */}
+        <button 
+          onClick={() => setFromLine(!fromLine)} 
+          className={`w-full rounded-2xl p-4 shadow-lg transition active:scale-[0.98] ${fromLine ? 'shadow-green-300' : ''}`}
+          style={fromLine ? {background: 'linear-gradient(135deg, #06C755, #00B900)'} : {background: 'white', border: '2px dashed #86EFAC'}}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 ${fromLine ? 'bg-white bg-opacity-25' : 'bg-green-50'}`}>
+              {fromLine ? '✓' : '💬'}
+            </div>
+            <div className="flex-1 text-left">
+              <p className={`font-extrabold text-base ${fromLine ? 'text-white' : 'text-green-700'}`}>
+                {fromLine ? '✓ งานนี้รับทาง Line' : '💬 งานนี้รับทาง Line?'}
+              </p>
+              <p className={`text-xs ${fromLine ? 'text-green-100' : 'text-slate-500'}`}>
+                {fromLine ? 'แตะอีกครั้งเพื่อยกเลิก' : 'ติ๊กถ้าลูกค้าติดต่อมาทาง Line'}
+              </p>
+            </div>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${fromLine ? 'bg-white' : 'bg-white border-2 border-green-300'}`}>
+              {fromLine && <Icon name="check" className="w-4 h-4 text-green-600" strokeWidth={4} />}
+            </div>
+          </div>
+        </button>
+
+
         <Section iconName="user" title="ข้อมูลลูกค้า">
-          <Field label="ชื่อลูกค้า" required>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล หรือ ชื่อเล่น" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
+          <Field label="ชื่อลูกค้า">
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
           </Field>
-          <Field label="เบอร์โทร" required>
+          <Field label="เบอร์โทร">
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
           </Field>
         </Section>
@@ -986,18 +1145,26 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
         </Section>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-2xl">
-        <div className="max-w-md mx-auto flex items-center gap-3">
-          <div className="flex-1">
-            <p className="text-xs text-slate-500">
-              ยอดรวม • {paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'}
-              {breakdown.totalDiscount > 0 && <span className="ml-1 text-rose-600 font-bold">• ลด ฿{breakdown.totalDiscount}</span>}
-            </p>
-            <p className="text-xl font-extrabold text-slate-900">฿{formatMoney(total)}</p>
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 shadow-2xl">
+        <div className="max-w-md mx-auto">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex-1">
+              <p className="text-xs text-slate-500">
+                ยอดรวม • {paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'}
+                {breakdown.totalDiscount > 0 && <span className="ml-1 text-rose-600 font-bold">• ลด ฿{breakdown.totalDiscount}</span>}
+              </p>
+              <p className="text-xl font-extrabold text-slate-900">฿{formatMoney(total)}</p>
+            </div>
           </div>
-          <button onClick={handleSubmit} disabled={!canSubmit} className={`flex-1 py-3.5 rounded-xl font-bold transition ${canSubmit ? 'text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400'}`} style={canSubmit ? {background: config.gradient} : {}}>
-            {isEdit ? 'บันทึกการแก้ไข' : 'บันทึกใบรับงาน'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onCancel} className="px-4 py-3 rounded-xl font-bold bg-slate-100 text-slate-700 active:scale-95 transition flex items-center gap-1">
+              <Icon name="x" className="w-4 h-4" />
+              <span className="text-sm">ยกเลิก</span>
+            </button>
+            <button onClick={handleSubmit} disabled={!canSubmit} className={`flex-1 py-3 rounded-xl font-bold transition ${canSubmit ? 'text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400'}`} style={canSubmit ? {background: config.gradient} : {}}>
+              {isEdit ? '💾 บันทึกการแก้ไข' : '✓ บันทึกใบรับงาน'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1072,8 +1239,9 @@ function ReceiptView({ config, order, onBack }) {
   return (
     <div className="min-h-screen bg-slate-100 pb-28">
       <div className="sticky z-20 bg-white border-b border-slate-100 px-5 py-3 flex items-center gap-3" style={{top: '0px'}}>
-        <button onClick={onBack} className="p-1 -ml-1 active:scale-90 transition">
+        <button onClick={onBack} className="flex items-center gap-1 px-3 py-2 -ml-2 rounded-xl active:scale-95 active:bg-slate-100 transition">
           <Icon name="chevron-left" className="w-6 h-6 text-slate-700" />
+          <span className="text-sm font-bold text-slate-700">กลับ</span>
         </button>
         <h1 className="font-bold text-slate-900 text-lg flex-1">ใบรับงาน</h1>
       </div>
@@ -1339,8 +1507,9 @@ function OwnerLoginView({ config, onBack, onSuccess }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #0c4a6e 0%, #075985 50%, #0369a1 100%)' }}>
       <div className="px-5 py-3 flex items-center">
-        <button onClick={onBack} className="p-1 -ml-1 active:scale-90 transition">
+        <button onClick={onBack} className="flex items-center gap-1 px-3 py-2 -ml-2 rounded-xl active:scale-95 active:bg-white active:bg-opacity-20 transition">
           <Icon name="chevron-left" className="w-6 h-6 text-white" />
+          <span className="text-sm font-bold text-white">กลับ</span>
         </button>
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-8 -mt-12">
@@ -1381,8 +1550,9 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
   return (
     <div className="min-h-screen bg-slate-100 pb-28">
       <div className="sticky z-20 bg-white border-b border-slate-100 px-5 py-3 flex items-center gap-3" style={{top: '0px'}}>
-        <button onClick={onBack} className="p-1 -ml-1">
+        <button onClick={onBack} className="flex items-center gap-1 px-3 py-2 -ml-2 rounded-xl active:scale-95 active:bg-slate-100 transition">
           <Icon name="chevron-left" className="w-6 h-6 text-slate-700" />
+          <span className="text-sm font-bold text-slate-700">กลับ</span>
         </button>
         <h1 className="font-bold text-slate-900 text-lg flex-1">รายละเอียด</h1>
         <span className={`text-xs px-2 py-1 rounded-full font-bold ${order.paymentMethod === 'transfer' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -1676,6 +1846,7 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
                     </span>
                     {o.deliveryZone && <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🚚</span>}
                     {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">เคฟ</span>}
+                    {o.fromLine && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💬 Line</span>}
                     {o.useLinePromo && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💚</span>}
                     {o.collected && (<span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">✓</span>)}
                   </div>

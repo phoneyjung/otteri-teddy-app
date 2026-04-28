@@ -1,5 +1,5 @@
-// Service Worker - ทำให้ทำงานออฟไลน์ได้
-const CACHE_NAME = 'laundry-v1';
+// Service Worker - ทำให้ทำงานออฟไลน์ได้ + cache assets
+const CACHE_NAME = 'plp-laundry-v2';
 const urlsToCache = [
   './',
   './index.html',
@@ -29,6 +29,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Don't cache Firebase/firestore requests (must be live)
+  if (event.request.url.includes('firestore.googleapis.com') ||
+      event.request.url.includes('firebase')) {
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then((response) => {
       if (response) return response;
