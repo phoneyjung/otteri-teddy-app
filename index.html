@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v10-2026-04-28';
+  window.APP_VERSION = 'v11-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -506,9 +506,12 @@ function calculateBreakdown(order, config) {
   });
   
   let drySubtotal = 0;
+  let dryTopUpTotal = 0;
   (order.dryItems || []).forEach(item => {
     const m = config.dryMachines.find(d => d.size === item.size);
     if (m) drySubtotal += m.price * item.qty;
+    // หยอดเพิ่ม (top-up) — เพิ่มเวลาอบ ทีละ 10 บาท
+    dryTopUpTotal += (item.topUp || 0);
   });
   
   const detergentTotal = (order.detergentQty || 0) * config.detergentPrice;
@@ -534,13 +537,13 @@ function calculateBreakdown(order, config) {
     lineDiscount = Math.min(config.linePromoDiscount, Math.max(0, remainingWash));
   }
   
-  const subtotal = washSubtotal + drySubtotal + detergentTotal + softenerTotal + foldTotal + serviceTotal + deliveryTotal;
+  const subtotal = washSubtotal + drySubtotal + dryTopUpTotal + detergentTotal + softenerTotal + foldTotal + serviceTotal + deliveryTotal;
   const totalDiscount = promoDiscount + lineDiscount;
   const total = Math.max(0, subtotal - totalDiscount);
   
   return {
     promo,
-    washSubtotal, washCount, drySubtotal,
+    washSubtotal, washCount, drySubtotal, dryTopUpTotal,
     detergentTotal, softenerTotal, foldTotal, serviceTotal, deliveryTotal,
     promoDiscount, lineDiscount, totalDiscount,
     subtotal, total,
@@ -807,6 +810,7 @@ function HomeView({ config, orders, onNewOrder, onOwnerLogin, onSelectOrder, onC
                     {o.deliveryZone && <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🚚</span>}
                     {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">เคฟ</span>}
                     {o.fromLine && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💬</span>}
+                    {(o.dryItems || []).some(d => d.topUp > 0) && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⏱️</span>}
                   </div>
                   <p className="text-xs text-slate-500">{formatDate(o.createdAt)}</p>
                 </div>
@@ -895,6 +899,21 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   };
 
   const getQty = (list, size, temp) => list.find(i => i.size === size && (i.temp || 'cold') === (temp || 'cold'))?.qty || 0;
+
+  // หยอดเพิ่ม (top-up) สำหรับเครื่องอบ — ทีละ 10 บาท
+  const getTopUp = (size) => {
+    const item = dryItems.find(i => i.size === size);
+    return item?.topUp || 0;
+  };
+
+  const updateTopUp = (size, delta) => {
+    setDryItems(prev => {
+      const existing = prev.find(i => i.size === size);
+      if (!existing) return prev; // ต้องเลือกเครื่องอบก่อน
+      const newTopUp = Math.max(0, (existing.topUp || 0) + delta);
+      return prev.map(i => i.size === size ? { ...i, topUp: newTopUp } : i);
+    });
+  };
 
   const orderTime = editingOrder?.createdAt || Date.now();
   const tempOrder = { 
@@ -1077,9 +1096,31 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
 
         <Section iconName="wind" title="เครื่องอบ">
           <div className="space-y-2">
-            {config.dryMachines.map(m => (
-              <MachineRow key={m.size} size={m.size} count={m.count} price={m.price} qty={getQty(dryItems, m.size, 'cold')} onAdd={() => updateItem(dryItems, setDryItems, m.size, 1, 'cold')} onRemove={() => updateItem(dryItems, setDryItems, m.size, -1, 'cold')} color="orange" />
-            ))}
+            {config.dryMachines.map(m => {
+              const qty = getQty(dryItems, m.size, 'cold');
+              const topUp = getTopUp(m.size);
+              return (
+                <div key={m.size}>
+                  <MachineRow size={m.size} count={m.count} price={m.price} qty={qty} onAdd={() => updateItem(dryItems, setDryItems, m.size, 1, 'cold')} onRemove={() => updateItem(dryItems, setDryItems, m.size, -1, 'cold')} color="orange" />
+                  {qty > 0 && (
+                    <div className="flex items-center justify-between bg-amber-50 border-l-4 border-amber-400 rounded-r-lg pl-3 pr-2 py-2 ml-3 mt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-700 text-sm">⏱️</span>
+                        <div>
+                          <p className="text-xs font-bold text-amber-800">หยอดเพิ่ม (เพิ่มเวลา)</p>
+                          <p className="text-[10px] text-amber-600">ทีละ 10 บาท</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => updateTopUp(m.size, -10)} disabled={topUp === 0} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-base transition active:scale-90 ${topUp === 0 ? 'bg-slate-200 text-slate-400' : 'bg-white text-amber-700 border border-amber-300'}`}>−</button>
+                        <span className={`min-w-[44px] text-center font-extrabold ${topUp > 0 ? 'text-amber-700' : 'text-slate-400'}`}>{topUp > 0 ? `฿${topUp}` : '฿0'}</span>
+                        <button onClick={() => updateTopUp(m.size, 10)} className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-base bg-amber-500 text-white active:scale-90 transition">+</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </Section>
 
@@ -1435,14 +1476,25 @@ function ReceiptView({ config, order, onBack }) {
                   const m = config.dryMachines.find(d => d.size === item.size);
                   if (!m) return null;
                   return (
-                    <div key={`d-${item.size}`} className="grid grid-cols-12 gap-2 px-3 py-2 text-sm">
-                      <div className="col-span-7 flex items-center gap-1.5">
-                        <span className="text-orange-500">🌬️</span>
-                        <span className="text-slate-700">อบ {item.size} kg</span>
+                    <React.Fragment key={`d-${item.size}`}>
+                      <div className="grid grid-cols-12 gap-2 px-3 py-2 text-sm">
+                        <div className="col-span-7 flex items-center gap-1.5">
+                          <span className="text-orange-500">🌬️</span>
+                          <span className="text-slate-700">อบ {item.size} kg</span>
+                        </div>
+                        <div className="col-span-2 text-center text-slate-700">{item.qty}</div>
+                        <div className="col-span-3 text-right font-semibold text-slate-900">฿{formatMoney(m.price * item.qty)}</div>
                       </div>
-                      <div className="col-span-2 text-center text-slate-700">{item.qty}</div>
-                      <div className="col-span-3 text-right font-semibold text-slate-900">฿{formatMoney(m.price * item.qty)}</div>
-                    </div>
+                      {item.topUp > 0 && (
+                        <div className="grid grid-cols-12 gap-2 px-3 py-1.5 text-xs bg-amber-50">
+                          <div className="col-span-9 flex items-center gap-1.5 pl-4">
+                            <span>⏱️</span>
+                            <span className="text-amber-700">↳ หยอดเพิ่ม (อบ {item.size} kg)</span>
+                          </div>
+                          <div className="col-span-3 text-right font-bold text-amber-700">฿{formatMoney(item.topUp)}</div>
+                        </div>
+                      )}
+                    </React.Fragment>
                   );
                 })}
                 {order.detergentQty > 0 && (
@@ -1680,7 +1732,14 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
           {order.dryItems?.map(item => {
             const m = config.dryMachines.find(d => d.size === item.size);
             if (!m) return null;
-            return (<div key={`d-${item.size}`} className="flex items-center justify-between text-sm py-1"><span>🌬️ อบ {item.size} kg × {item.qty}</span><span className="font-semibold">฿{formatMoney(m.price * item.qty)}</span></div>);
+            return (
+              <React.Fragment key={`d-${item.size}`}>
+                <div className="flex items-center justify-between text-sm py-1"><span>🌬️ อบ {item.size} kg × {item.qty}</span><span className="font-semibold">฿{formatMoney(m.price * item.qty)}</span></div>
+                {item.topUp > 0 && (
+                  <div className="flex items-center justify-between text-xs py-0.5 pl-4 text-amber-700"><span>⏱️ ↳ หยอดเพิ่ม</span><span className="font-bold">+฿{formatMoney(item.topUp)}</span></div>
+                )}
+              </React.Fragment>
+            );
           })}
           {order.detergentQty > 0 && (<div className="flex items-center justify-between text-sm py-1"><span>🧴 น้ำยาซัก × {order.detergentQty}</span><span className="font-semibold">฿{formatMoney(order.detergentQty * config.detergentPrice)}</span></div>)}
           {order.softenerQty > 0 && (<div className="flex items-center justify-between text-sm py-1"><span>🌸 น้ำยาปรับผ้านุ่ม × {order.softenerQty}</span><span className="font-semibold">฿{formatMoney(order.softenerQty * config.softenerPrice)}</span></div>)}
@@ -1873,6 +1932,7 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({uncollectedTransfer.length})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
+          <TabBtn active={tab === 'topup'} onClick={() => setTab('topup')}>⏱️ หยอดเพิ่ม</TabBtn>
           {config.hasKev && <TabBtn active={tab === 'kev'} onClick={() => setTab('kev')}>👨‍💼 เคฟ</TabBtn>}
           <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>ประวัติ</TabBtn>
         </div>
@@ -1881,6 +1941,8 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
       <div className="px-5 py-4 pb-8">
         {tab === 'stats' ? (
           <StatsView stats={stats} />
+        ) : tab === 'topup' ? (
+          <TopUpReportView orders={orders} config={config} />
         ) : tab === 'kev' && config.hasKev ? (
           <KevReportView orders={orders} config={config} />
         ) : tab === 'history' ? (
@@ -1913,6 +1975,7 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
                     {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">เคฟ</span>}
                     {o.fromLine && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💬 Line</span>}
                     {o.useLinePromo && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💚</span>}
+                    {(o.dryItems || []).some(d => d.topUp > 0) && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⏱️ +฿{(o.dryItems || []).reduce((s,d) => s + (d.topUp||0), 0)}</span>}
                     {o.collected && (<span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">✓</span>)}
                   </div>
                   <p className="text-xs text-slate-500">{o.customerPhone}</p>
@@ -1999,6 +2062,154 @@ function StatsView({ stats }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TopUpReportView({ orders, config }) {
+  const [period, setPeriod] = useState('today');
+
+  // กรองเฉพาะ order ที่มี top-up
+  const allTopUpOrders = orders.filter(o => 
+    (o.dryItems || []).some(d => (d.topUp || 0) > 0)
+  );
+
+  // กรองตามช่วงเวลา
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const startOfWeek = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0,0,0,0);
+    return d.getTime();
+  })();
+
+  const filtered = allTopUpOrders.filter(o => {
+    if (period === 'today') return o.createdAt >= startOfToday;
+    if (period === 'week') return o.createdAt >= startOfWeek;
+    if (period === 'month') return o.createdAt >= startOfMonth;
+    return true; // all
+  });
+
+  // คำนวณยอดรวม
+  const totalTopUp = filtered.reduce((sum, o) => 
+    sum + (o.dryItems || []).reduce((s, d) => s + (d.topUp || 0), 0), 0
+  );
+
+  // แยกตามขนาดเครื่อง
+  const bySize = useMemo(() => {
+    const map = new Map();
+    filtered.forEach(o => {
+      (o.dryItems || []).forEach(d => {
+        if (!d.topUp) return;
+        if (!map.has(d.size)) map.set(d.size, { size: d.size, total: 0, count: 0 });
+        const e = map.get(d.size);
+        e.total += d.topUp;
+        e.count += 1;
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filtered]);
+
+  // แยกตามวัน
+  const byDay = useMemo(() => {
+    const map = new Map();
+    filtered.forEach(o => {
+      const d = new Date(o.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (!map.has(key)) map.set(key, { date: key, total: 0, count: 0, orders: [] });
+      const e = map.get(key);
+      const orderTopUp = (o.dryItems || []).reduce((s, di) => s + (di.topUp || 0), 0);
+      e.total += orderTopUp;
+      e.count += 1;
+      e.orders.push({ ...o, _topUpAmount: orderTopUp });
+    });
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [filtered]);
+
+  const periodLabels = { today: 'วันนี้', week: '7 วันล่าสุด', month: 'เดือนนี้', all: 'ทั้งหมด' };
+
+  return (
+    <div className="space-y-3">
+      {/* Period Selector */}
+      <div className="bg-white rounded-2xl p-1 flex gap-1 shadow-sm">
+        <TabBtn active={period === 'today'} onClick={() => setPeriod('today')}>วันนี้</TabBtn>
+        <TabBtn active={period === 'week'} onClick={() => setPeriod('week')}>7 วัน</TabBtn>
+        <TabBtn active={period === 'month'} onClick={() => setPeriod('month')}>เดือนนี้</TabBtn>
+        <TabBtn active={period === 'all'} onClick={() => setPeriod('all')}>ทั้งหมด</TabBtn>
+      </div>
+
+      {/* Summary Card */}
+      <div className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-5 text-white shadow-lg">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-2xl">⏱️</span>
+          <p className="text-amber-50 text-sm font-bold">ยอดหยอดเพิ่ม • {periodLabels[period]}</p>
+        </div>
+        <p className="text-4xl font-extrabold">฿{formatMoney(totalTopUp)}</p>
+        <div className="flex items-center gap-3 mt-2 text-amber-50 text-xs">
+          <span>📋 {filtered.length} ใบ</span>
+          <span>•</span>
+          <span>🌬️ {bySize.reduce((s, x) => s + x.count, 0)} ครั้ง</span>
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {filtered.length === 0 && (
+        <div className="bg-white rounded-2xl p-8 text-center">
+          <div className="w-14 h-14 mx-auto rounded-full bg-slate-100 flex items-center justify-center mb-2">
+            <span className="text-2xl">⏱️</span>
+          </div>
+          <p className="text-slate-600 text-sm">ยังไม่มีรายการหยอดเพิ่มในช่วงนี้</p>
+        </div>
+      )}
+
+      {/* By Machine Size */}
+      {bySize.length > 0 && (
+        <div className="bg-white rounded-2xl p-4">
+          <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-3">🌬️ แยกตามขนาดเครื่องอบ</p>
+          <div className="space-y-2">
+            {bySize.map(item => (
+              <div key={item.size} className="flex items-center justify-between bg-amber-50 rounded-xl p-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                    <span className="text-orange-600 font-bold text-sm">{item.size}kg</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">เครื่องอบ {item.size} kg</p>
+                    <p className="text-xs text-slate-500">{item.count} ครั้ง</p>
+                  </div>
+                </div>
+                <p className="font-extrabold text-amber-700">฿{formatMoney(item.total)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* By Day */}
+      {byDay.length > 0 && (
+        <div className="bg-white rounded-2xl p-4">
+          <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-3">📅 แยกตามวัน</p>
+          <div className="space-y-3">
+            {byDay.map(day => (
+              <div key={day.date} className="border-l-4 border-amber-400 pl-3">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-bold text-slate-900">{day.date}</p>
+                  <p className="text-base font-extrabold text-amber-700">฿{formatMoney(day.total)}</p>
+                </div>
+                <p className="text-xs text-slate-500 mb-1.5">{day.count} ใบ</p>
+                <div className="space-y-1">
+                  {day.orders.map(o => (
+                    <div key={o.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-lg px-2 py-1.5">
+                      <span className="text-slate-600 truncate">{o.customerName || '(ไม่ระบุ)'}</span>
+                      <span className="font-bold text-amber-700 ml-2">+฿{formatMoney(o._topUpAmount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
