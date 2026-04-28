@@ -335,8 +335,11 @@ async function saveOrderToCloud(brand, order) {
   try {
     let data = { ...order, brand };
     delete data.id;
-    // Clean ALL undefined values (including nested) — Firestore ไม่รับ undefined
+    // Layer 1: Clean undefined recursively
     data = cleanUndefined(data);
+    // Layer 2: JSON round-trip — JSON.stringify skips undefined ตาม spec
+    // ทำให้รับประกันว่าไม่มี undefined แม้จะมี edge case
+    data = JSON.parse(JSON.stringify(data));
     
     if (isFirestoreId(order.id)) {
       // มี Firestore id → update doc เดิม (merge เพื่อกัน race condition)
@@ -369,13 +372,15 @@ async function saveCollectionToCloud(brand, item) {
     let data = { ...item, brand };
     delete data.id;
     data = cleanUndefined(data);
+    data = JSON.parse(JSON.stringify(data));
     await window.db.collection('collections').add(data);
   } catch (e) { console.error('saveCollection error:', e); throw e; }
 }
 async function batchUpdateOrders(orderIds, updates) {
   try {
     // Clean undefined values to avoid Firestore errors
-    const cleanedUpdates = cleanUndefined(updates);
+    let cleanedUpdates = cleanUndefined(updates);
+    cleanedUpdates = JSON.parse(JSON.stringify(cleanedUpdates));
     const batch = window.db.batch();
     orderIds.forEach(id => {
       const ref = window.db.collection('orders').doc(id);
@@ -885,14 +890,25 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
       id: editingOrder?.id || generateId(),
       createdAt: editingOrder?.createdAt || Date.now(),
       updatedAt: Date.now(),
-      customerName: name.trim() || '(ไม่ระบุชื่อ)', customerPhone: phone.trim(),
-      basketPhoto, moneyPhoto, linePromoPhoto,
-      clothCount: clothCount.trim(),
-      washItems, dryItems,
-      detergentQty, softenerQty, foldBaskets, useService,
-      paymentMethod, cashReceived: cashNum,
-      note: note.trim(),
-      deliveryZone, fromKev, fromLine, useLinePromo,
+      customerName: name.trim() || '(ไม่ระบุชื่อ)',
+      customerPhone: phone.trim() || '',
+      basketPhoto: basketPhoto || '',
+      moneyPhoto: moneyPhoto || '',
+      linePromoPhoto: linePromoPhoto || '',
+      clothCount: clothCount.trim() || '',
+      washItems: washItems || [],
+      dryItems: dryItems || [],
+      detergentQty: detergentQty || 0,
+      softenerQty: softenerQty || 0,
+      foldBaskets: foldBaskets || 0,
+      useService: useService === undefined ? true : useService,
+      paymentMethod: paymentMethod || 'cash',
+      cashReceived: cashNum || 0,
+      note: note.trim() || '',
+      deliveryZone: deliveryZone || null,
+      fromKev: fromKev || false,
+      fromLine: fromLine || false,
+      useLinePromo: useLinePromo || false,
       collected: editingOrder?.collected || false,
       collectedAt: editingOrder?.collectedAt || null,
     };
