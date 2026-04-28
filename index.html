@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v7-2026-04-28';
+  window.APP_VERSION = 'v9-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -920,6 +920,13 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
     }
   }, [deliveryZone]);
 
+  // เคฟ ↔ Line ใช้ร่วมกันไม่ได้: ถ้าติ๊กเคฟ → ปิด Line อัตโนมัติ
+  useEffect(() => {
+    if (fromKev && fromLine) {
+      setFromLine(false);
+    }
+  }, [fromKev]);
+
   const handleSubmit = () => {
     if (washItems.length === 0 && dryItems.length === 0) {
       alert('เลือกบริการอย่างน้อย 1 รายการ');
@@ -1009,10 +1016,11 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
           </button>
         )}
 
-        {/* ปุ่มงานจาก Line - ใช้ได้ทั้ง Otteri และ Teddy */}
+        {/* ปุ่มงานจาก Line - ใช้ได้ทั้ง Otteri และ Teddy (ใช้ร่วมกับเคฟไม่ได้) */}
         <button 
-          onClick={() => setFromLine(!fromLine)} 
-          className={`w-full rounded-2xl p-4 shadow-lg transition active:scale-[0.98] ${fromLine ? 'shadow-green-300' : ''}`}
+          onClick={() => !fromKev && setFromLine(!fromLine)}
+          disabled={fromKev}
+          className={`w-full rounded-2xl p-4 shadow-lg transition ${fromKev ? 'opacity-40 cursor-not-allowed' : 'active:scale-[0.98]'} ${fromLine ? 'shadow-green-300' : ''}`}
           style={fromLine ? {background: 'linear-gradient(135deg, #06C755, #00B900)'} : {background: 'white', border: '2px dashed #86EFAC'}}
         >
           <div className="flex items-center gap-3">
@@ -1024,7 +1032,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
                 {fromLine ? '✓ งานนี้รับทาง Line' : '💬 งานนี้รับทาง Line?'}
               </p>
               <p className={`text-xs ${fromLine ? 'text-green-100' : 'text-slate-500'}`}>
-                {fromLine ? 'แตะอีกครั้งเพื่อยกเลิก' : 'ติ๊กถ้าลูกค้าติดต่อมาทาง Line'}
+                {fromKev ? 'ใช้ร่วมกับเคฟไม่ได้' : (fromLine ? 'แตะอีกครั้งเพื่อยกเลิก' : 'ติ๊กถ้าลูกค้าติดต่อมาทาง Line')}
               </p>
             </div>
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${fromLine ? 'bg-white' : 'bg-white border-2 border-green-300'}`}>
@@ -1232,7 +1240,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
             ) : (
               <button onClick={() => moneyInputRef.current?.click()} className="w-full py-5 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                 <Icon name="camera" className="w-6 h-6 text-slate-400" />
-                <span className="text-xs text-slate-600">{paymentMethod === 'transfer' ? 'ถ่ายสลิป' : 'ถ่ายรูปเงิน'}</span>
+                <span className="text-xs text-slate-600">{paymentMethod === 'transfer' ? 'ถ่ายสลิปโอน' : 'ถ่ายรูปเงิน'}</span>
               </button>
             )}
           </div>
@@ -1615,8 +1623,7 @@ function OwnerLoginView({ config, onBack, onSuccess }) {
           <img src={config.logo} className="w-20 h-20 rounded-2xl" alt={config.name} />
         </div>
         <h1 className="text-white text-2xl font-extrabold mb-1">เจ้าของร้าน {config.name}</h1>
-        <p className="text-sky-200 text-sm mb-2">ป้อนรหัส 4 หลัก</p>
-        <p className="text-amber-300 text-xs mb-8">💡 รหัสเดโม: 1303</p>
+        <p className="text-sky-200 text-sm mb-10">ป้อนรหัส 4 หลัก</p>
 
         <div className={`flex gap-3 mb-12 ${error ? 'animate-pulse' : ''}`}>
           {[0, 1, 2, 3].map(i => (
