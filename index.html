@@ -306,6 +306,10 @@ async function saveOrderToCloud(brand, order) {
   try {
     const data = { ...order, brand };
     delete data.id;
+    // Clean undefined values (Firestore doesn't support undefined)
+    Object.keys(data).forEach(key => {
+      if (data[key] === undefined) data[key] = null;
+    });
     if (order.id && !order.id.startsWith('local-')) {
       await window.db.collection('orders').doc(order.id).set(data);
     } else {
@@ -855,7 +859,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
       note: note.trim(),
       deliveryZone, fromKev, fromLine, useLinePromo,
       collected: editingOrder?.collected || false,
-      collectedAt: editingOrder?.collectedAt,
+      collectedAt: editingOrder?.collectedAt || null,
     };
     onSubmit(order);
   };
