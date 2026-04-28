@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v9-2026-04-28';
+  window.APP_VERSION = 'v10-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -672,15 +672,14 @@ function BrandApp({ config, onChangeBrand }) {
       alert(`ไม่มีรายการ${method === 'cash' ? 'เงินสด' : 'เงินโอน'}ที่ต้องเคลียร์`);
       return;
     }
-    const totalReceived = uncollected.reduce((s, o) => s + (o.cashReceived || 0), 0);
     const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config), 0);
     const methodLabel = method === 'cash' ? 'เก็บเงินสดจากแม่บ้าน' : 'เคลียร์ยอดโอน';
     
-    if (!confirm(`${methodLabel}?\n\nจำนวน ${uncollected.length} รายการ\nเงินที่รับมา: ${formatMoney(totalReceived)} บาท\nยอดที่ควรได้: ${formatMoney(totalShould)} บาท`)) return;
+    if (!confirm(`${methodLabel}?\n\nจำนวน ${uncollected.length} รายการ\nยอดรวม: ${formatMoney(totalShould)} บาท`)) return;
 
     try {
       // Save collection record
-      const round = { collectedAt: Date.now(), method, orderIds: uncollected.map(o => o.id), orderCount: uncollected.length, totalReceived, totalShould };
+      const round = { collectedAt: Date.now(), method, orderIds: uncollected.map(o => o.id), orderCount: uncollected.length, totalReceived: totalShould, totalShould };
       await saveCollectionToCloud(config.brand, round);
       
       // Update orders to collected
@@ -841,7 +840,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   const [foldBaskets, setFoldBaskets] = useState(editingOrder?.foldBaskets ?? (config.freeService ? 0 : 1));
   const [useService, setUseService] = useState(editingOrder?.useService ?? true);
   const [paymentMethod, setPaymentMethod] = useState(editingOrder?.paymentMethod || 'cash');
-  const [cashReceived, setCashReceived] = useState(editingOrder?.cashReceived?.toString() || '');
   const [note, setNote] = useState(editingOrder?.note || '');
   const [deliveryZone, setDeliveryZone] = useState(editingOrder?.deliveryZone || null);
   const [fromKev, setFromKev] = useState(editingOrder?.fromKev || false);
@@ -906,8 +904,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   };
   const breakdown = calculateBreakdown(tempOrder, config);
   const total = breakdown.total;
-  const cashNum = parseFloat(cashReceived) || 0;
-  const diff = cashNum - total;
   const canSubmit = (washItems.length > 0 || dryItems.length > 0) && (!useLinePromo || linePromoPhoto);
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
@@ -953,7 +949,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
       foldBaskets: foldBaskets || 0,
       useService: useService === undefined ? true : useService,
       paymentMethod: paymentMethod || 'cash',
-      cashReceived: cashNum || 0,
+      cashReceived: total,
       note: note.trim() || '',
       deliveryZone: deliveryZone || null,
       fromKev: fromKev || false,
@@ -1215,18 +1211,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
             </div>
           </div>
 
-          <Field label={paymentMethod === 'transfer' ? 'จำนวนเงินที่โอนมา' : 'จำนวนเงินที่รับมา'}>
-            <input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} placeholder="0" inputMode="numeric" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition text-lg font-semibold" />
-          </Field>
-
-          {cashNum > 0 && (
-            <div className={`rounded-xl p-3 ${diff === 0 ? 'bg-emerald-50 border border-emerald-200' : diff > 0 ? 'bg-amber-50 border border-amber-200' : 'bg-rose-50 border border-rose-200'}`}>
-              <span className={`font-medium text-sm ${diff === 0 ? 'text-emerald-700' : diff > 0 ? 'text-amber-700' : 'text-rose-700'}`}>
-                {diff === 0 ? '✓ ตรงพอดี' : diff > 0 ? `เกิน ${formatMoney(diff)} บาท` : `ขาด ${formatMoney(-diff)} บาท`}
-              </span>
-            </div>
-          )}
-
           <input ref={moneyInputRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setMoneyPhoto)} className="hidden" />
           <div className="mt-3">
             <p className="text-xs text-slate-600 mb-2">{paymentMethod === 'transfer' ? 'รูปสลิปโอน (ไม่บังคับ)' : 'รูปเงิน (ไม่บังคับ)'}</p>
@@ -1283,7 +1267,6 @@ function ReceiptView({ config, order, onBack }) {
   const [saving, setSaving] = useState(false);
   const breakdown = calculateBreakdown(order, config);
   const total = breakdown.total;
-  const diff = (order.cashReceived || 0) - total;
 
   const dataURLtoFile = async (dataUrl, filename) => {
     const res = await fetch(dataUrl);
@@ -1541,21 +1524,6 @@ function ReceiptView({ config, order, onBack }) {
                 )}
               </div>
             </div>
-            
-            {order.cashReceived > 0 && (
-              <div className="mt-3 pt-3 border-t space-y-1" style={{borderColor: headerColor + '40'}}>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-600">{order.paymentMethod === 'transfer' ? 'รับโอน' : 'รับเงิน'}</span>
-                  <span className="font-bold text-slate-900">฿{formatMoney(order.cashReceived)}</span>
-                </div>
-                {diff !== 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className={diff > 0 ? 'text-amber-700' : 'text-rose-700'}>{diff > 0 ? 'ทอน / เกิน' : 'ขาด'}</span>
-                    <span className={`font-bold ${diff > 0 ? 'text-amber-700' : 'text-rose-700'}`}>฿{formatMoney(Math.abs(diff))}</span>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {order.note && (
@@ -1649,7 +1617,6 @@ function OwnerLoginView({ config, onBack, onSuccess }) {
 function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceipt }) {
   const breakdown = calculateBreakdown(order, config);
   const total = breakdown.total;
-  const diff = (order.cashReceived || 0) - total;
   const tempLabels = { cold: 'น้ำเย็น', warm: 'น้ำอุ่น', hot: 'น้ำร้อน' };
 
   return (
@@ -1758,14 +1725,9 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
         <div className="bg-white rounded-2xl p-4">
           <p className="text-xs text-slate-500 uppercase tracking-wide font-bold mb-2">การชำระเงิน</p>
           <div className="flex items-center justify-between text-sm">
-            <span>{order.paymentMethod === 'transfer' ? 'รับโอน' : 'รับเงินสด'}</span>
-            <span className="font-bold">฿{formatMoney(order.cashReceived || 0)}</span>
+            <span>{order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด'}</span>
+            <span className="font-bold text-slate-900">฿{formatMoney(total)}</span>
           </div>
-          {diff !== 0 && order.cashReceived > 0 && (
-            <div className={`mt-2 rounded-xl p-2 text-sm font-semibold text-center ${diff > 0 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>
-              {diff > 0 ? `เกิน ${formatMoney(diff)} บาท` : `ขาด ${formatMoney(-diff)} บาท`}
-            </div>
-          )}
           {order.moneyPhoto && (<img src={order.moneyPhoto} className="w-full rounded-xl mt-3" />)}
         </div>
 
@@ -1799,10 +1761,8 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
   });
   const todayRevenue = todayOrders.reduce((s, o) => s + calculateTotal(o, config), 0);
   
-  const cashPending = uncollectedCash.reduce((s, o) => s + (o.cashReceived || 0), 0);
-  const cashShould = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config), 0);
-  const transferPending = uncollectedTransfer.reduce((s, o) => s + (o.cashReceived || 0), 0);
-  const transferShould = uncollectedTransfer.reduce((s, o) => s + calculateTotal(o, config), 0);
+  const cashPending = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config), 0);
+  const transferPending = uncollectedTransfer.reduce((s, o) => s + calculateTotal(o, config), 0);
 
   const stats = useMemo(() => {
     const phoneMap = new Map();
@@ -1960,11 +1920,6 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="font-extrabold text-slate-900">฿{formatMoney(calculateTotal(o, config))}</p>
-                  {o.cashReceived !== calculateTotal(o, config) && o.cashReceived > 0 && (
-                    <p className={`text-xs font-bold ${o.cashReceived > calculateTotal(o, config) ? 'text-amber-600' : 'text-rose-600'}`}>
-                      {o.cashReceived > calculateTotal(o, config) ? '+' : ''}{formatMoney(o.cashReceived - calculateTotal(o, config))}
-                    </p>
-                  )}
                 </div>
               </button>
             ))}
