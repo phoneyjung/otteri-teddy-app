@@ -304,35 +304,48 @@ async function loadOrdersFromCloud(brand) {
 // Helper: ลบ undefined values ทุก nested level
 function cleanUndefined(obj) {
   if (obj === null || obj === undefined) return null;
-  if (Array.isArray(obj)) return obj.map(cleanUndefined);
+  if (Array.isArray(obj)) {
+    return obj.map(cleanUndefined).filter(v => v !== undefined);
+  }
   if (typeof obj === 'object') {
+    // Handle Firestore Timestamp / Date objects
+    if (obj instanceof Date) return obj.getTime();
     const cleaned = {};
-    for (const key in obj) {
-      if (obj[key] !== undefined) {
-        cleaned[key] = cleanUndefined(obj[key]);
+    for (const key of Object.keys(obj)) {
+      const val = obj[key];
+      if (val === undefined) continue;
+      const cleanedVal = cleanUndefined(val);
+      if (cleanedVal !== undefined) {
+        cleaned[key] = cleanedVal;
       }
     }
     return cleaned;
   }
+  // Skip functions and symbols (Firestore doesn't support them)
+  if (typeof obj === 'function' || typeof obj === 'symbol') return null;
   return obj;
+}
+
+// ตรวจว่าเป็น Firestore auto-id (20 ตัว alphanumeric, ไม่มี dash)
+function isFirestoreId(id) {
+  return typeof id === 'string' && id.length === 20 && !id.includes('-');
 }
 
 async function saveOrderToCloud(brand, order) {
   try {
     let data = { ...order, brand };
     delete data.id;
-    // Clean ALL undefined values (including nested)
+    // Clean ALL undefined values (including nested) — Firestore ไม่รับ undefined
     data = cleanUndefined(data);
     
-    // ถ้ามี id อยู่แล้วและเป็น Firestore id (มี 20 ตัวอักษรขึ้นไป) → update
-    // ถ้าไม่มี หรือเป็น local id → สร้างใหม่
-    if (order.id && order.id.length >= 20 && !order.id.includes('-')) {
-      await window.db.collection('orders').doc(order.id).set(data);
+    if (isFirestoreId(order.id)) {
+      // มี Firestore id → update doc เดิม (merge เพื่อกัน race condition)
+      await window.db.collection('orders').doc(order.id).set(data, { merge: true });
       return order.id;
-    } else {
-      const docRef = await window.db.collection('orders').add(data);
-      return docRef.id;
     }
+    // ไม่มี id หรือเป็น local id → สร้าง doc ใหม่ใน Firestore
+    const docRef = await window.db.collection('orders').add(data);
+    return docRef.id;
   } catch (e) {
     console.error('saveOrder error:', e);
     throw e;
@@ -353,17 +366,20 @@ async function loadCollectionsFromCloud(brand) {
 }
 async function saveCollectionToCloud(brand, item) {
   try {
-    const data = { ...item, brand };
+    let data = { ...item, brand };
     delete data.id;
+    data = cleanUndefined(data);
     await window.db.collection('collections').add(data);
   } catch (e) { console.error('saveCollection error:', e); throw e; }
 }
 async function batchUpdateOrders(orderIds, updates) {
   try {
+    // Clean undefined values to avoid Firestore errors
+    const cleanedUpdates = cleanUndefined(updates);
     const batch = window.db.batch();
     orderIds.forEach(id => {
       const ref = window.db.collection('orders').doc(id);
-      batch.update(ref, updates);
+      batch.update(ref, cleanedUpdates);
     });
     await batch.commit();
   } catch (e) { console.error('batchUpdate error:', e); throw e; }
