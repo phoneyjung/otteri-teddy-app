@@ -26,8 +26,37 @@
   };
   firebase.initializeApp(firebaseConfig);
   window.db = firebase.firestore();
-  // Enable offline persistence
-  window.db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+  
+  // App version marker - bump เพื่อ force ล้าง bad pending writes
+  window.APP_VERSION = 'v7-2026-04-28';
+  
+  // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
+  (async function clearStaleQueue() {
+    try {
+      const lastVersion = localStorage.getItem('app-version');
+      if (lastVersion !== window.APP_VERSION) {
+        // ปิด persistence เพื่อล้าง pending writes
+        try {
+          await window.db.terminate();
+        } catch (e) {}
+        try {
+          await window.db.clearPersistence();
+          console.log('✓ Cleared stale Firestore cache');
+        } catch (e) {
+          console.log('clearPersistence skipped:', e.message);
+        }
+        // Re-initialize Firestore
+        window.db = firebase.firestore();
+        localStorage.setItem('app-version', window.APP_VERSION);
+      }
+      // Enable persistence ใหม่
+      window.db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    } catch (e) {
+      console.error('queue cleanup error:', e);
+      // Fallback: ใช้แบบเดิม
+      window.db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    }
+  })();
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -199,7 +228,21 @@
   // Register Service Worker (ทำงานออฟไลน์ + ติดตั้งเป็นแอปได้)
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      navigator.serviceWorker.register('./sw.js').then((reg) => {
+        // เช็คอัพเดตทุก 30 วินาที
+        setInterval(() => reg.update().catch(() => {}), 30000);
+        // ถ้ามี SW ใหม่ติดตั้งแล้ว → บอกให้ activate ทันที + reload
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // มี version ใหม่พร้อมใช้ — reload ทันทีให้ user เห็นโค้ดใหม่
+              window.location.reload();
+            }
+          });
+        });
+      }).catch(() => {});
     });
   }
 </script>
