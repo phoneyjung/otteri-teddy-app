@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v13-2026-04-28';
+  window.APP_VERSION = 'v16-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -288,8 +288,8 @@ const OTTERI_CONFIG = {
     { size: 15, count: 4, price: 50 },
     { size: 25, count: 1, price: 70 },
   ],
-  detergentPrice: 10,
-  softenerPrice: 10,
+  detergentPrice: 5,
+  softenerPrice: 5,
   foldPricePerBasket: 20,
   hasLinePromo: false,
   hasKev: false,
@@ -313,8 +313,8 @@ const TEDDY_CONFIG = {
   dryMachines: [
     { size: 15, count: 4, price: 50 },
   ],
-  detergentPrice: 10,
-  softenerPrice: 10,
+  detergentPrice: 5,
+  softenerPrice: 5,
   foldPricePerBasket: 0,
   hasLinePromo: true,
   linePromoDiscount: 40,
@@ -325,6 +325,17 @@ const TEDDY_CONFIG = {
     { id: 'blue', label: 'ฟ้า', price: 40, color: '#3B82F6' },
     { id: 'red', label: 'แดง (ไกลสุด)', price: 50, color: '#EF4444' },
   ],
+};
+
+// แบรนด์สำหรับฝึก/ทดลอง — config เหมือน Teddy ทุกอย่าง
+// แต่ข้อมูลแยกกัน (brand: 'trainee') ไม่ปนกับงานจริง
+const TRAINEE_CONFIG = {
+  ...TEDDY_CONFIG,
+  brand: 'trainee',
+  name: 'มือใหม่หัดใช้',
+  subtitle: 'โหมดฝึก • ใช้สูตรเดียวกับ Teddy',
+  primaryColor: '#10B981',
+  gradient: 'linear-gradient(135deg, #6EE7B7 0%, #10B981 100%)',
 };
 
 const OWNER_PASSWORD = '1303';
@@ -400,6 +411,45 @@ async function saveOrderToCloud(brand, order) {
 async function deleteOrderFromCloud(orderId) {
   try { await window.db.collection('orders').doc(orderId).delete(); }
   catch (e) { console.error('deleteOrder error:', e); throw e; }
+}
+
+// ลบหลายรายการพร้อมกัน (batch)
+async function deleteOrdersBatch(orderIds) {
+  try {
+    const chunkSize = 400;
+    for (let i = 0; i < orderIds.length; i += chunkSize) {
+      const batch = window.db.batch();
+      orderIds.slice(i, i + chunkSize).forEach(id => {
+        batch.delete(window.db.collection('orders').doc(id));
+      });
+      await batch.commit();
+    }
+  } catch (e) {
+    console.error('deleteOrdersBatch error:', e);
+    throw e;
+  }
+}
+
+// ลบ orders + collections ทั้งหมดของ brand (สำหรับเริ่มใหม่)
+async function deleteAllForBrand(brand) {
+  try {
+    // ลบ orders ทั้งหมด
+    const ordersSnap = await window.db.collection('orders').where('brand', '==', brand).get();
+    const collectionsSnap = await window.db.collection('collections').where('brand', '==', brand).get();
+    
+    // ใช้ batch ลบเป็นชุด (Firestore batch limit = 500)
+    const allDocs = [...ordersSnap.docs, ...collectionsSnap.docs];
+    const chunkSize = 400;
+    for (let i = 0; i < allDocs.length; i += chunkSize) {
+      const batch = window.db.batch();
+      allDocs.slice(i, i + chunkSize).forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
+    return { ordersDeleted: ordersSnap.size, collectionsDeleted: collectionsSnap.size };
+  } catch (e) {
+    console.error('deleteAllForBrand error:', e);
+    throw e;
+  }
 }
 async function loadCollectionsFromCloud(brand) {
   try {
@@ -568,7 +618,7 @@ function App() {
     return <BrandSelector onSelect={setBrand} />;
   }
   
-  const config = brand === 'otteri' ? OTTERI_CONFIG : TEDDY_CONFIG;
+  const config = brand === 'otteri' ? OTTERI_CONFIG : brand === 'trainee' ? TRAINEE_CONFIG : TEDDY_CONFIG;
   return <BrandApp config={config} onChangeBrand={() => setBrand(null)} />;
 }
 
@@ -603,6 +653,20 @@ function BrandSelector({ onSelect }) {
             <p className="text-xs text-blue-600 mt-1 font-bold">🐻 ฝากซัก-อบ-พับ ฟรี + Delivery</p>
           </div>
           <Icon name="chevron-right" className="w-6 h-6 text-slate-400" />
+        </button>
+
+        {/* แบรนด์ที่ 3: โหมดฝึกสำหรับแม่บ้านใหม่ — ใช้สูตรเหมือน Teddy */}
+        <button onClick={() => onSelect('trainee')} className="w-full rounded-3xl p-5 shadow-xl active:scale-95 transition flex items-center gap-4 border-2 border-emerald-200 relative overflow-hidden" style={{background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)'}}>
+          <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-extrabold tracking-wider">ฝึกใช้งาน</div>
+          <div className="bg-gradient-to-br from-emerald-300 to-emerald-500 p-2 rounded-2xl flex items-center justify-center" style={{width: 96, height: 96}}>
+            <span className="text-5xl">🎓</span>
+          </div>
+          <div className="text-left flex-1">
+            <p className="text-2xl font-extrabold text-slate-900">มือใหม่หัดใช้</p>
+            <p className="text-sm text-slate-600">โหมดฝึก — ไม่กวนงานจริง</p>
+            <p className="text-xs text-emerald-700 mt-1 font-bold">📚 ใช้สูตรเดียวกับ Teddy</p>
+          </div>
+          <Icon name="chevron-right" className="w-6 h-6 text-emerald-600" />
         </button>
       </div>
 
@@ -669,6 +733,42 @@ function BrandApp({ config, onChangeBrand }) {
     }
   };
 
+  const handleResetAll = async (enteredPassword) => {
+    if (enteredPassword !== OWNER_PASSWORD) {
+      alert('❌ รหัสไม่ถูกต้อง');
+      return false;
+    }
+    if (!confirm(`⚠️ ลบข้อมูลทั้งหมดของ ${config.name}?\n\n• รายการรับงาน ${orders.length} รายการ\n• ประวัติเก็บเงิน ${collections.length} รายการ\n\n❗ ลบแล้วกู้ไม่ได้!`)) return false;
+    if (!confirm(`ยืนยันอีกครั้ง — ลบทั้งหมดจริง?`)) return false;
+
+    try {
+      const result = await deleteAllForBrand(config.brand);
+      alert(`✓ ลบเรียบร้อย\n\nลบรายการรับงาน ${result.ordersDeleted} รายการ\nลบประวัติเก็บเงิน ${result.collectionsDeleted} รายการ`);
+      return true;
+    } catch (e) {
+      alert('ลบล้มเหลว: ' + e.message);
+      return false;
+    }
+  };
+
+  const handleDeleteSelected = async (orderIds, enteredPassword) => {
+    if (enteredPassword !== OWNER_PASSWORD) {
+      alert('❌ รหัสไม่ถูกต้อง');
+      return false;
+    }
+    if (orderIds.length === 0) return false;
+    if (!confirm(`ลบ ${orderIds.length} รายการที่เลือก?\n\n❗ ลบแล้วกู้ไม่ได้!`)) return false;
+
+    try {
+      await deleteOrdersBatch(orderIds);
+      alert(`✓ ลบ ${orderIds.length} รายการเรียบร้อย`);
+      return true;
+    } catch (e) {
+      alert('ลบล้มเหลว: ' + e.message);
+      return false;
+    }
+  };
+
   const handleCollectMoney = async (method) => {
     const uncollected = orders.filter(o => !o.collected && o.paymentMethod === method);
     if (uncollected.length === 0) {
@@ -706,7 +806,7 @@ function BrandApp({ config, onChangeBrand }) {
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
-      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} />}
+      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} />}
     </div>
@@ -724,6 +824,12 @@ function HomeView({ config, orders, onNewOrder, onOwnerLogin, onSelectOrder, onC
 
   return (
     <div className="min-h-screen">
+      {config.brand === 'trainee' && (
+        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 flex items-center justify-center gap-2 text-white text-xs font-bold">
+          <span>🎓</span>
+          <span>โหมดฝึกใช้งาน — ข้อมูลแยกจากของจริง ลองเล่นได้เต็มที่</span>
+        </div>
+      )}
       <div className="relative overflow-hidden" style={{ background: config.gradient }}>
         <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white opacity-10"></div>
         <div className="absolute top-20 -left-10 w-32 h-32 rounded-full bg-white opacity-10"></div>
@@ -1368,12 +1474,8 @@ function ReceiptView({ config, order, onBack }) {
       const canvas = await html2canvas(receiptRef.current, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
       const receiptBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       const receiptFile = new File([receiptBlob], `ใบรับงาน-${order.customerName}.png`, { type: 'image/png' });
-      const files = [];
-      if (order.basketPhoto) {
-        const basketFile = await dataURLtoFile(order.basketPhoto, `ตะกร้าผ้า-${order.customerName}.jpg`);
-        files.push(basketFile);
-      }
-      files.push(receiptFile);
+      // ส่งแค่ใบรับงาน 1 รูป (ไม่ส่งรูปตะกร้าซ้ำ)
+      const files = [receiptFile];
       const emoji = config.brand === 'otteri' ? '🦦' : '🐻';
       const text = `${emoji} ${config.name} - รับงานใหม่\n━━━━━━━━━━━\n👤 ${order.customerName}\n📞 ${order.customerPhone}${order.clothCount ? `\n🧺 ${order.clothCount}` : ''}${order.deliveryZone ? `\n🚚 Delivery (${config.deliveryZones.find(z => z.id === order.deliveryZone)?.label})` : ''}${order.fromKev ? '\n👨‍💼 จากเคฟ' : ''}\n💵 ${formatMoney(total)} บาท (${order.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'})\n⏰ ${formatDate(order.createdAt)}`;
       
@@ -1466,13 +1568,6 @@ function ReceiptView({ config, order, onBack }) {
               )}
             </div>
           </div>
-
-          {order.basketPhoto && (
-            <div className="px-6 py-3 bg-white border-t border-slate-100">
-              <p className="text-xs font-bold tracking-wider mb-2" style={{color: headerColor}}>▎ รูปตะกร้าผ้า</p>
-              <img src={order.basketPhoto} className="w-full rounded-xl border-2 border-slate-100" />
-            </div>
-          )}
 
           <div className="px-6 py-4 bg-white border-t border-slate-100">
             <p className="text-xs font-bold tracking-wider mb-3" style={{color: headerColor}}>▎ รายการบริการ</p>
@@ -1834,8 +1929,47 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
 }
 
 
-function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrder, onCollect, onNewOrder, onChangeBrand }) {
+function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrder, onCollect, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
   const [tab, setTab] = useState('cash');
+  
+  // Selection mode: ติ๊กเลือกหลายรายการเพื่อลบ
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showDeletePrompt, setShowDeletePrompt] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  // ออกจากโหมดเลือกตอนเปลี่ยน tab
+  useEffect(() => {
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+    }
+  }, [tab]);
+
+  const toggleSelected = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setShowDeletePrompt(false);
+    setDeletePassword('');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setDeleting(true);
+    const success = await onDeleteSelected(Array.from(selectedIds), deletePassword);
+    setDeleting(false);
+    if (success) exitSelectionMode();
+  };
   
   const uncollectedCash = orders.filter(o => !o.collected && o.paymentMethod === 'cash');
   const uncollectedTransfer = orders.filter(o => !o.collected && o.paymentMethod === 'transfer');
@@ -1962,11 +2096,32 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           {config.hasKev && <TabBtn active={tab === 'kev'} onClick={() => setTab('kev')}>👨‍💼 เคฟ</TabBtn>}
           <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>ประวัติ</TabBtn>
         </div>
+        
+        {/* ปุ่มสลับโหมดเลือก — เฉพาะ tab ที่แสดง list */}
+        {(['cash', 'transfer', 'all'].includes(tab) && listToShow.length > 0) && (
+          <div className="mt-2 flex justify-end">
+            {!selectionMode ? (
+              <button 
+                onClick={() => setSelectionMode(true)}
+                className="text-xs font-bold text-rose-600 px-3 py-1.5 bg-white rounded-lg border border-rose-200 active:scale-95 transition flex items-center gap-1"
+              >
+                ✏️ เลือกเพื่อลบ
+              </button>
+            ) : (
+              <button 
+                onClick={exitSelectionMode}
+                className="text-xs font-bold text-slate-600 px-3 py-1.5 bg-white rounded-lg border border-slate-300 active:scale-95 transition"
+              >
+                ✕ ยกเลิก
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="px-5 py-4 pb-8">
         {tab === 'stats' ? (
-          <StatsView stats={stats} />
+          <StatsView stats={stats} config={config} onResetAll={onResetAll} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'kev' && config.hasKev ? (
@@ -1982,8 +2137,35 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           </div>
         ) : (
           <div className="space-y-2">
-            {listToShow.map(o => (
-              <button key={o.id} onClick={() => onSelectOrder(o)} className="w-full bg-white rounded-2xl p-3 active:scale-95 transition flex items-center gap-3 text-left shadow-sm">
+            {selectionMode && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 flex items-center justify-between">
+                <p className="text-xs text-rose-700 font-bold">
+                  เลือกแล้ว {selectedIds.size} / {listToShow.length} รายการ
+                </p>
+                <button 
+                  onClick={() => {
+                    if (selectedIds.size === listToShow.length) setSelectedIds(new Set());
+                    else setSelectedIds(new Set(listToShow.map(o => o.id)));
+                  }}
+                  className="text-xs font-bold text-rose-600 px-2 py-1 bg-white rounded-lg border border-rose-300"
+                >
+                  {selectedIds.size === listToShow.length ? '☐ ยกเลิกทั้งหมด' : '☑ เลือกทั้งหมด'}
+                </button>
+              </div>
+            )}
+            {listToShow.map(o => {
+              const isChecked = selectedIds.has(o.id);
+              const onRowClick = () => {
+                if (selectionMode) toggleSelected(o.id);
+                else onSelectOrder(o);
+              };
+              return (
+              <button key={o.id} onClick={onRowClick} className={`w-full rounded-2xl p-3 active:scale-95 transition flex items-center gap-3 text-left shadow-sm ${selectionMode && isChecked ? 'bg-rose-50 ring-2 ring-rose-400' : 'bg-white'}`}>
+                {selectionMode && (
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition ${isChecked ? 'bg-rose-500 border-rose-500' : 'bg-white border-2 border-slate-300'}`}>
+                    {isChecked && <Icon name="check" className="w-4 h-4 text-white" strokeWidth={4} />}
+                  </div>
+                )}
                 {o.basketPhoto ? (
                   <img src={o.basketPhoto} className="w-14 h-14 rounded-xl object-cover" />
                 ) : (
@@ -2011,15 +2193,87 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
                   <p className="font-extrabold text-slate-900">฿{formatMoney(calculateTotal(o, config))}</p>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Floating bar - แสดงเมื่ออยู่ในโหมดเลือก */}
+      {selectionMode && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-rose-200 shadow-2xl z-30">
+          <div className="max-w-screen-md mx-auto px-4 py-3">
+            {!showDeletePrompt ? (
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-xs text-slate-500">เลือกแล้ว</p>
+                  <p className="text-lg font-extrabold text-slate-900">{selectedIds.size} รายการ</p>
+                </div>
+                <button 
+                  onClick={() => selectedIds.size > 0 && setShowDeletePrompt(true)}
+                  disabled={selectedIds.size === 0}
+                  className={`px-5 py-3 rounded-xl font-bold text-sm transition active:scale-95 ${selectedIds.size > 0 ? 'bg-rose-600 text-white shadow-lg' : 'bg-slate-200 text-slate-400'}`}
+                >
+                  🗑️ ลบที่เลือก
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-rose-700 font-bold">🔒 ใส่รหัสเจ้าของเพื่อลบ {selectedIds.size} รายการ</p>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="••••"
+                  maxLength="4"
+                  autoFocus
+                  className="w-full px-4 py-3 bg-rose-50 rounded-xl border-2 border-rose-300 focus:bg-white outline-none transition text-center text-2xl font-bold tracking-[0.5em]"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => { setShowDeletePrompt(false); setDeletePassword(''); }}
+                    disabled={deleting}
+                    className="py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm active:scale-95 transition"
+                  >
+                    ย้อนกลับ
+                  </button>
+                  <button 
+                    onClick={handleConfirmDelete}
+                    disabled={deleting || !deletePassword}
+                    className="py-3 bg-rose-600 text-white rounded-xl font-bold text-sm active:scale-95 transition disabled:opacity-50"
+                  >
+                    {deleting ? 'กำลังลบ...' : `🗑️ ลบ ${selectedIds.size} รายการ`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function StatsView({ stats }) {
+function StatsView({ stats, config, onResetAll }) {
+  const [showReset, setShowReset] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetting, setResetting] = useState(false);
+
+  const handleConfirmReset = async () => {
+    if (!resetPassword) {
+      alert('กรุณาใส่รหัส');
+      return;
+    }
+    setResetting(true);
+    const success = await onResetAll(resetPassword);
+    if (success) {
+      setShowReset(false);
+      setResetPassword('');
+    }
+    setResetting(false);
+  };
+
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-2xl p-4">
@@ -2087,6 +2341,55 @@ function StatsView({ stats }) {
             <p className="font-extrabold text-violet-700">฿{formatMoney(stats.transferRevenue)}</p>
           </div>
         </div>
+      </div>
+
+      {/* Danger Zone — ลบข้อมูลทั้งหมด */}
+      <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-4 mt-4">
+        <div className="flex items-start gap-2 mb-3">
+          <span className="text-xl">⚠️</span>
+          <div className="flex-1">
+            <p className="font-extrabold text-rose-700 text-sm">เขตอันตราย</p>
+            <p className="text-xs text-rose-600">ลบข้อมูลทั้งหมดเพื่อเริ่มใหม่ — ลบแล้วกู้ไม่ได้</p>
+          </div>
+        </div>
+        
+        {!showReset ? (
+          <button 
+            onClick={() => setShowReset(true)} 
+            className="w-full py-3 bg-white border-2 border-rose-300 text-rose-600 rounded-xl font-bold text-sm active:scale-95 transition"
+          >
+            🗑️ ลบข้อมูลทั้งหมด ({config?.name})
+          </button>
+        ) : (
+          <div className="space-y-2 bg-white rounded-xl p-3 border-2 border-rose-300">
+            <p className="text-xs text-rose-700 font-bold">🔒 ใส่รหัสเจ้าของเพื่อยืนยัน</p>
+            <input
+              type="password"
+              inputMode="numeric"
+              value={resetPassword}
+              onChange={(e) => setResetPassword(e.target.value)}
+              placeholder="••••"
+              maxLength="4"
+              className="w-full px-4 py-3 bg-rose-50 rounded-xl border-2 border-rose-300 focus:bg-white outline-none transition text-center text-2xl font-bold tracking-[0.5em]"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button 
+                onClick={() => { setShowReset(false); setResetPassword(''); }}
+                disabled={resetting}
+                className="py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm active:scale-95 transition"
+              >
+                ยกเลิก
+              </button>
+              <button 
+                onClick={handleConfirmReset}
+                disabled={resetting || !resetPassword}
+                className="py-3 bg-rose-600 text-white rounded-xl font-bold text-sm active:scale-95 transition disabled:opacity-50"
+              >
+                {resetting ? 'กำลังลบ...' : '🗑️ ลบทั้งหมด'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
