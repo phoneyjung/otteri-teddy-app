@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v19-2026-04-28';
+  window.APP_VERSION = 'v20-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -794,6 +794,56 @@ function BrandApp({ config, onChangeBrand }) {
     }
   };
 
+  // จ่ายค่าพับ (Otteri) หรือค่า Delivery (Teddy/Trainee) — สำหรับ owner เคลียยอด
+  // type = 'service' (ค่าพับ) | 'delivery' (ค่าส่ง)
+  const handlePayFees = async (type) => {
+    const isService = type === 'service';
+    const flagField = isService ? 'serviceFeePaid' : 'deliveryFeePaid';
+    const label = isService ? 'จ่ายค่าพับให้แม่บ้าน' : 'จ่ายค่า Delivery';
+    const recordType = isService ? 'service' : 'delivery';
+    
+    // กรองรายการที่เข้าเกณฑ์ + ยังไม่ได้จ่ายค่านั้น
+    const matched = orders.filter(o => {
+      if (o[flagField]) return false; // จ่ายแล้ว ข้าม
+      if (isService) return o.useService !== false && (config.servicePrice > 0);
+      else return !!o.deliveryZone;
+    });
+    
+    if (matched.length === 0) {
+      alert(`ไม่มีรายการ${isService ? 'ค่าพับ' : 'ค่าส่ง'}ที่ต้องเคลียร์`);
+      return;
+    }
+    
+    // คำนวณยอดรวม
+    const totalAmount = matched.reduce((sum, o) => {
+      if (isService) return sum + config.servicePrice;
+      const zone = config.deliveryZones?.find(z => z.id === o.deliveryZone);
+      return sum + (zone?.price || 0);
+    }, 0);
+    
+    if (!confirm(`${label}?\n\nจำนวน ${matched.length} รายการ\nยอดรวม: ${formatMoney(totalAmount)} บาท`)) return;
+    
+    try {
+      // Save record into collections (เพื่อมีประวัติ)
+      const round = {
+        collectedAt: Date.now(),
+        method: recordType,
+        orderIds: matched.map(o => o.id),
+        orderCount: matched.length,
+        totalReceived: totalAmount,
+        totalShould: totalAmount,
+      };
+      await saveCollectionToCloud(config.brand, round);
+      
+      // Mark orders as paid for this fee type
+      await batchUpdateOrders(matched.map(o => o.id), { [flagField]: true, [`${flagField}At`]: Date.now() });
+      
+      alert(`✓ ${label} เรียบร้อย`);
+    } catch (e) {
+      alert('จ่ายล้มเหลว: ' + e.message);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Sync status indicator */}
@@ -806,7 +856,7 @@ function BrandApp({ config, onChangeBrand }) {
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
-      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
@@ -2003,7 +2053,7 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
 }
 
 
-function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrder, onCollect, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
+function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrder, onCollect, onPayFees, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
   const [tab, setTab] = useState('cash');
   
   // Selection mode: ติ๊กเลือกหลายรายการเพื่อลบ
@@ -2047,6 +2097,21 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
   
   const uncollectedCash = orders.filter(o => !o.collected && o.paymentMethod === 'cash');
   const uncollectedTransfer = orders.filter(o => !o.collected && o.paymentMethod === 'transfer');
+  
+  // ค่าพับ (Otteri) — รายการที่ติ๊กฝากซัก-อบ-พับ และยังไม่ได้จ่ายค่าพับ
+  const unpaidServiceOrders = config.servicePrice > 0
+    ? orders.filter(o => o.useService !== false && !o.serviceFeePaid)
+    : [];
+  const unpaidServiceTotal = unpaidServiceOrders.length * config.servicePrice;
+  
+  // ค่า Delivery (Teddy) — รายการที่มี deliveryZone และยังไม่ได้จ่ายค่าส่ง
+  const unpaidDeliveryOrders = config.hasDelivery
+    ? orders.filter(o => !!o.deliveryZone && !o.deliveryFeePaid)
+    : [];
+  const unpaidDeliveryTotal = unpaidDeliveryOrders.reduce((sum, o) => {
+    const zone = config.deliveryZones?.find(z => z.id === o.deliveryZone);
+    return sum + (zone?.price || 0);
+  }, 0);
   
   const todayOrders = orders.filter(o => {
     const d = new Date(o.createdAt); const today = new Date();
@@ -2165,6 +2230,8 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           <TabBtn active={tab === 'cash'} onClick={() => setTab('cash')}>💵 สด ({uncollectedCash.length})</TabBtn>
           <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({uncollectedTransfer.length})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
+          {config.servicePrice > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
+          {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
           <TabBtn active={tab === 'topup'} onClick={() => setTab('topup')}>⏱️ หยอดเพิ่ม</TabBtn>
           {config.hasKev && <TabBtn active={tab === 'kev'} onClick={() => setTab('kev')}>👨‍💼 เคฟ</TabBtn>}
@@ -2198,6 +2265,40 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           <StatsView stats={stats} config={config} onResetAll={onResetAll} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
+        ) : tab === 'service' && config.servicePrice > 0 ? (
+          <FeeView 
+            type="service"
+            title="ค่าพับ (ส่วนของแม่บ้าน)"
+            emoji="🧺"
+            color="emerald"
+            unpaidOrders={unpaidServiceOrders}
+            totalAmount={unpaidServiceTotal}
+            paidOrders={orders.filter(o => o.serviceFeePaid)}
+            unitPrice={config.servicePrice}
+            onPay={() => onPayFees('service')}
+            getOrderAmount={() => config.servicePrice}
+            actionLabel="จ่ายค่าพับให้แม่บ้านแล้ว"
+            description="20 บาท × รายการที่ติ๊กฝากซัก-อบ-พับ"
+            config={config}
+          />
+        ) : tab === 'delivery' && config.hasDelivery ? (
+          <FeeView
+            type="delivery"
+            title="ค่า Delivery (ส่วนของพาร์ตเนอร์ส่ง)"
+            emoji="🚚"
+            color="orange"
+            unpaidOrders={unpaidDeliveryOrders}
+            totalAmount={unpaidDeliveryTotal}
+            paidOrders={orders.filter(o => o.deliveryFeePaid)}
+            onPay={() => onPayFees('delivery')}
+            getOrderAmount={(o) => {
+              const z = config.deliveryZones?.find(z => z.id === o.deliveryZone);
+              return z?.price || 0;
+            }}
+            actionLabel="จ่ายค่า Delivery แล้ว"
+            description="ตามโซนของแต่ละรายการ"
+            config={config}
+          />
         ) : tab === 'kev' && config.hasKev ? (
           <KevReportView orders={orders} config={config} />
         ) : tab === 'history' ? (
@@ -2611,6 +2712,99 @@ function TopUpReportView({ orders, config }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FeeView({ type, title, emoji, color, unpaidOrders, totalAmount, paidOrders, onPay, getOrderAmount, actionLabel, description, config }) {
+  const [showPaid, setShowPaid] = useState(false);
+  
+  const colorMap = {
+    emerald: { bg: 'from-emerald-400 to-emerald-600', accent: 'emerald', btn: 'bg-emerald-500 hover:bg-emerald-600' },
+    orange: { bg: 'from-orange-400 to-orange-600', accent: 'orange', btn: 'bg-orange-500 hover:bg-orange-600' },
+  };
+  const c = colorMap[color] || colorMap.emerald;
+  
+  // คำนวณยอดที่จ่ายไปแล้วทั้งหมด
+  const totalPaid = paidOrders.reduce((sum, o) => sum + (getOrderAmount(o) || 0), 0);
+
+  return (
+    <div className="space-y-3">
+      {/* Header summary */}
+      <div className={`bg-gradient-to-br ${c.bg} rounded-2xl p-5 text-white shadow-lg`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-2xl">{emoji}</span>
+          <p className="text-white text-sm font-bold opacity-90">{title}</p>
+        </div>
+        <p className="text-4xl font-extrabold">฿{formatMoney(totalAmount)}</p>
+        <p className="text-white text-xs opacity-80 mt-1">
+          📋 ยังไม่จ่าย {unpaidOrders.length} รายการ • {description}
+        </p>
+        
+        {/* ปุ่มจ่าย */}
+        <button 
+          onClick={onPay}
+          disabled={unpaidOrders.length === 0}
+          className={`mt-3 w-full py-3 rounded-xl font-extrabold text-sm transition active:scale-95 ${unpaidOrders.length === 0 ? 'bg-white bg-opacity-20 text-white opacity-50 cursor-not-allowed' : 'bg-white text-slate-900 shadow-lg'}`}
+        >
+          {unpaidOrders.length === 0 ? '✓ ไม่มีรายการที่ต้องจ่าย' : `💰 ${actionLabel}`}
+        </button>
+      </div>
+
+      {/* List unpaid */}
+      <div className="bg-white rounded-2xl p-4">
+        <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-3">
+          📋 รายการที่ยังไม่จ่าย ({unpaidOrders.length})
+        </p>
+        {unpaidOrders.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-slate-400 text-sm">✓ ไม่มีรายการค้างจ่าย</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {unpaidOrders.map(o => (
+              <div key={o.id} className={`flex items-center justify-between bg-${c.accent}-50 rounded-xl p-3`}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-900 truncate">{o.customerName}</p>
+                  <p className="text-xs text-slate-500">{formatDate(o.createdAt)}</p>
+                  {type === 'delivery' && o.deliveryZone && (
+                    <p className={`text-xs text-${c.accent}-600 font-semibold`}>
+                      🚚 {config.deliveryZones?.find(z => z.id === o.deliveryZone)?.label}
+                    </p>
+                  )}
+                </div>
+                <p className={`font-extrabold text-${c.accent}-700 ml-2`}>+฿{formatMoney(getOrderAmount(o))}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Toggle paid history */}
+      {paidOrders.length > 0 && (
+        <div className="bg-white rounded-2xl p-4">
+          <button onClick={() => setShowPaid(!showPaid)} className="w-full flex items-center justify-between">
+            <div className="text-left">
+              <p className="text-xs text-slate-500 uppercase tracking-wider font-bold">✓ ประวัติที่จ่ายแล้ว ({paidOrders.length})</p>
+              <p className="text-sm font-bold text-slate-700 mt-0.5">รวม ฿{formatMoney(totalPaid)}</p>
+            </div>
+            <Icon name={showPaid ? 'chevron-up' : 'chevron-down'} className="w-5 h-5 text-slate-400" />
+          </button>
+          {showPaid && (
+            <div className="space-y-1.5 mt-3 max-h-96 overflow-auto">
+              {paidOrders.slice().sort((a, b) => b.createdAt - a.createdAt).map(o => (
+                <div key={o.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-700 truncate">{o.customerName}</p>
+                    <p className="text-[10px] text-slate-400">{formatDate(o.createdAt)}</p>
+                  </div>
+                  <p className="text-xs font-bold text-slate-500">฿{formatMoney(getOrderAmount(o))}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
