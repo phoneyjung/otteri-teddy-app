@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v16-2026-04-28';
+  window.APP_VERSION = 'v17-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1032,7 +1032,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   };
   const breakdown = calculateBreakdown(tempOrder, config);
   const total = breakdown.total;
-  const canSubmit = (washItems.length > 0 || dryItems.length > 0) && (!useLinePromo || linePromoPhoto);
+  const hasAnyItem = washItems.length > 0 || dryItems.length > 0 || (detergentQty > 0) || (softenerQty > 0);
+  const canSubmit = hasAnyItem && (!useLinePromo || linePromoPhoto);
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
 
@@ -1052,8 +1053,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
   }, [fromKev]);
 
   const handleSubmit = () => {
-    if (washItems.length === 0 && dryItems.length === 0) {
-      alert('เลือกบริการอย่างน้อย 1 รายการ');
+    if (!hasAnyItem) {
+      alert('เลือกบริการอย่างน้อย 1 รายการ\n(เครื่องซัก / เครื่องอบ / น้ำยาซัก / น้ำยานุ่ม)');
       return;
     }
     if (useLinePromo && !linePromoPhoto) {
@@ -1240,7 +1241,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder }) {
           </div>
         </Section>
 
-        <Section iconName="sparkles" title="รายการเสริม">
+        <Section iconName="sparkles" title="รายการเสริม / ขายแยก">
+          <p className="text-[11px] text-slate-500 -mt-2 mb-2">💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ</p>
           <CounterRow iconEmoji="🧴" label="น้ำยาซัก" sublabel={`฿${config.detergentPrice} / ซอง`} unit="ซอง" qty={detergentQty} onAdd={() => setDetergentQty(q => q + 1)} onRemove={() => setDetergentQty(q => Math.max(0, q - 1))} colorActive="bg-purple-500" />
           <CounterRow iconEmoji="🌸" label="น้ำยาปรับผ้านุ่ม" sublabel={`฿${config.softenerPrice} / ซอง`} unit="ซอง" qty={softenerQty} onAdd={() => setSoftenerQty(q => q + 1)} onRemove={() => setSoftenerQty(q => Math.max(0, q - 1))} colorActive="bg-pink-500" />
           {!config.freeService && (
