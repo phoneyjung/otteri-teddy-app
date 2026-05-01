@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v18-2026-04-28';
+  window.APP_VERSION = 'v19-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1071,7 +1071,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       alert('กรุณาถ่ายรูปคูปองส่วนลดแอดไลน์ก่อน');
       return;
     }
-    const order = {
     // ถ้าเจ้าของเปิด "เลือกเวลาเอง" → ใช้เวลาที่เลือก ไม่งั้นใช้เวลาเดิม / ปัจจุบัน
     let finalCreatedAt;
     if (isOwner && useCustomTime && customDateTime) {
