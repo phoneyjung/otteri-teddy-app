@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v21-2026-04-28';
+  window.APP_VERSION = 'v22-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -567,7 +567,9 @@ function calculateBreakdown(order, config) {
   const detergentTotal = (order.detergentQty || 0) * config.detergentPrice;
   const softenerTotal = (order.softenerQty || 0) * config.softenerPrice;
   const foldTotal = (order.foldBaskets || 0) * config.foldPricePerBasket;
-  const serviceTotal = config.freeService ? 0 : (order.useService !== false ? config.servicePrice : 0);
+  // Note: serviceTotal เก็บไว้เป็น 0 เสมอ (ใช้ foldTotal แทนแล้ว)
+  // — แต่ยังคง field ไว้เพื่อ compat กับโค้ดเก่าและรายงาน
+  const serviceTotal = 0;
   
   // Delivery (Teddy only)
   let deliveryTotal = 0;
@@ -587,7 +589,7 @@ function calculateBreakdown(order, config) {
     lineDiscount = Math.min(config.linePromoDiscount, Math.max(0, remainingWash));
   }
   
-  const subtotal = washSubtotal + drySubtotal + dryTopUpTotal + detergentTotal + softenerTotal + foldTotal + serviceTotal + deliveryTotal;
+  const subtotal = washSubtotal + drySubtotal + dryTopUpTotal + detergentTotal + softenerTotal + foldTotal + deliveryTotal;
   const totalDiscount = promoDiscount + lineDiscount;
   const total = Math.max(0, subtotal - totalDiscount);
   
@@ -805,7 +807,7 @@ function BrandApp({ config, onChangeBrand }) {
     // กรองรายการที่เข้าเกณฑ์ + ยังไม่ได้จ่ายค่านั้น
     const matched = orders.filter(o => {
       if (o[flagField]) return false; // จ่ายแล้ว ข้าม
-      if (isService) return o.useService !== false && (config.servicePrice > 0);
+      if (isService) return (o.foldBaskets || 0) > 0 && (config.foldPricePerBasket > 0);
       else return !!o.deliveryZone;
     });
     
@@ -816,7 +818,7 @@ function BrandApp({ config, onChangeBrand }) {
     
     // คำนวณยอดรวม
     const totalAmount = matched.reduce((sum, o) => {
-      if (isService) return sum + config.servicePrice;
+      if (isService) return sum + ((o.foldBaskets || 0) * config.foldPricePerBasket);
       const zone = config.deliveryZones?.find(z => z.id === o.deliveryZone);
       return sum + (zone?.price || 0);
     }, 0);
@@ -998,7 +1000,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   const [detergentQty, setDetergentQty] = useState(editingOrder?.detergentQty || 0);
   const [softenerQty, setSoftenerQty] = useState(editingOrder?.softenerQty || 0);
   const [foldBaskets, setFoldBaskets] = useState(editingOrder?.foldBaskets ?? (config.freeService ? 0 : 1));
-  const [useService, setUseService] = useState(editingOrder?.useService ?? true);
   const [paymentMethod, setPaymentMethod] = useState(editingOrder?.paymentMethod || 'cash');
   const [note, setNote] = useState(editingOrder?.note || '');
   const [deliveryZone, setDeliveryZone] = useState(editingOrder?.deliveryZone || null);
@@ -1086,7 +1087,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
   const orderTime = editingOrder?.createdAt || Date.now();
   const tempOrder = { 
-    washItems, dryItems, detergentQty, softenerQty, foldBaskets, useService,
+    washItems, dryItems, detergentQty, softenerQty, foldBaskets,
     deliveryZone, useLinePromo,
     createdAt: orderTime,
   };
@@ -1149,7 +1150,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       detergentQty: detergentQty || 0,
       softenerQty: softenerQty || 0,
       foldBaskets: foldBaskets || 0,
-      useService: useService === undefined ? true : useService,
       paymentMethod: paymentMethod || 'cash',
       cashReceived: total,
       note: note.trim() || '',
@@ -1763,13 +1763,6 @@ function ReceiptView({ config, order, onBack }) {
                     <div className="col-span-3 text-right font-semibold text-slate-900">฿{formatMoney(order.foldBaskets * config.foldPricePerBasket)}</div>
                   </div>
                 )}
-                {breakdown.serviceTotal > 0 && (
-                  <div className="grid grid-cols-12 gap-2 px-3 py-2 text-sm bg-emerald-50">
-                    <div className="col-span-7 flex items-center gap-1.5"><span>🧺</span><span className="text-emerald-700 font-semibold">ค่าฝาก ซัก อบ พับ</span></div>
-                    <div className="col-span-2 text-center">1</div>
-                    <div className="col-span-3 text-right font-semibold text-emerald-700">฿{formatMoney(breakdown.serviceTotal)}</div>
-                  </div>
-                )}
                 {breakdown.deliveryTotal > 0 && (
                   <div className="grid grid-cols-12 gap-2 px-3 py-2 text-sm bg-orange-50">
                     <div className="col-span-7 flex items-center gap-1.5"><span>🚚</span><span className="text-orange-700 font-semibold">Delivery</span></div>
@@ -1998,9 +1991,6 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
           {order.foldBaskets > 0 && config.foldPricePerBasket > 0 && (
             <div className="flex items-center justify-between text-sm py-1"><span>🧺 ค่าพับ × {order.foldBaskets} ตะกร้า</span><span className="font-semibold">฿{formatMoney(order.foldBaskets * config.foldPricePerBasket)}</span></div>
           )}
-          {breakdown.serviceTotal > 0 && (
-            <div className="flex items-center justify-between text-sm py-1"><span>🧺 ค่าฝาก ซัก อบ พับ</span><span className="font-semibold">฿{formatMoney(breakdown.serviceTotal)}</span></div>
-          )}
           {breakdown.deliveryTotal > 0 && (
             <div className="flex items-center justify-between text-sm py-1"><span>🚚 Delivery</span><span className="font-semibold">฿{formatMoney(breakdown.deliveryTotal)}</span></div>
           )}
@@ -2108,11 +2098,12 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
   const uncollectedCash = orders.filter(o => !o.collected && o.paymentMethod === 'cash');
   const uncollectedTransfer = orders.filter(o => !o.collected && o.paymentMethod === 'transfer');
   
-  // ค่าพับ (Otteri) — รายการที่ติ๊กฝากซัก-อบ-พับ และยังไม่ได้จ่ายค่าพับ
-  const unpaidServiceOrders = config.servicePrice > 0
-    ? orders.filter(o => o.useService !== false && !o.serviceFeePaid)
+  // ค่าพับ (Otteri) — รายการที่มี foldBaskets > 0 และยังไม่ได้จ่ายค่าพับ
+  const unpaidServiceOrders = config.foldPricePerBasket > 0
+    ? orders.filter(o => (o.foldBaskets || 0) > 0 && !o.serviceFeePaid)
     : [];
-  const unpaidServiceTotal = unpaidServiceOrders.length * config.servicePrice;
+  const unpaidServiceTotal = unpaidServiceOrders.reduce((sum, o) => 
+    sum + ((o.foldBaskets || 0) * config.foldPricePerBasket), 0);
   
   // ค่า Delivery (Teddy) — รายการที่มี deliveryZone และยังไม่ได้จ่ายค่าส่ง
   const unpaidDeliveryOrders = config.hasDelivery
@@ -2240,7 +2231,7 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           <TabBtn active={tab === 'cash'} onClick={() => setTab('cash')}>💵 สด ({uncollectedCash.length})</TabBtn>
           <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({uncollectedTransfer.length})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
-          {config.servicePrice > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
+          {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
           <TabBtn active={tab === 'topup'} onClick={() => setTab('topup')}>⏱️ หยอดเพิ่ม</TabBtn>
@@ -2275,7 +2266,7 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           <StatsView stats={stats} config={config} onResetAll={onResetAll} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
-        ) : tab === 'service' && config.servicePrice > 0 ? (
+        ) : tab === 'service' && config.foldPricePerBasket > 0 ? (
           <FeeView 
             type="service"
             title="ค่าพับ (ส่วนของแม่บ้าน)"
@@ -2284,11 +2275,11 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
             unpaidOrders={unpaidServiceOrders}
             totalAmount={unpaidServiceTotal}
             paidOrders={orders.filter(o => o.serviceFeePaid)}
-            unitPrice={config.servicePrice}
+            unitPrice={config.foldPricePerBasket}
             onPay={() => onPayFees('service')}
-            getOrderAmount={() => config.servicePrice}
+            getOrderAmount={(o) => (o.foldBaskets || 0) * config.foldPricePerBasket}
             actionLabel="จ่ายค่าพับให้แม่บ้านแล้ว"
-            description="20 บาท × รายการที่ติ๊กฝากซัก-อบ-พับ"
+            description={`${config.foldPricePerBasket} บาท × ตะกร้าที่กรอกค่าพับ`}
             config={config}
           />
         ) : tab === 'delivery' && config.hasDelivery ? (
