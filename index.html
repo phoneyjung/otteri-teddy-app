@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v23-2026-04-28';
+  window.APP_VERSION = 'v24-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1100,7 +1100,14 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
     });
   };
 
-  const orderTime = editingOrder?.createdAt || Date.now();
+  // เวลาที่ใช้คำนวณโปรโมชั่น (พุธ/ดึก) — ขึ้นกับว่า owner เลือกเองหรือไม่
+  const orderTime = (() => {
+    if (isOwner && useCustomTime && customDateTime) {
+      const ms = new Date(customDateTime).getTime();
+      if (!isNaN(ms)) return ms;
+    }
+    return editingOrder?.createdAt || Date.now();
+  })();
   const tempOrder = { 
     washItems, dryItems, detergentQty, softenerQty, foldBaskets,
     deliveryZone, useLinePromo,
@@ -1118,6 +1125,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
     if (deliveryZone && useLinePromo) {
       setUseLinePromo(false);
       setLinePromoPhoto('');
+    }
+    // Clear rider when delivery cancelled
+    if (!deliveryZone && riderId) {
+      setRiderId(null);
     }
   }, [deliveryZone]);
 
@@ -2183,7 +2194,9 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
   const stats = useMemo(() => {
     const phoneMap = new Map();
     orders.forEach(o => {
-      const key = o.customerPhone;
+      const key = (o.customerPhone || '').trim();
+      // ข้ามรายการที่ไม่มีเบอร์ (anonymous) — ไม่ใช่ลูกค้าประจำ
+      if (!key) return;
       if (!phoneMap.has(key)) phoneMap.set(key, { name: o.customerName, phone: key, count: 0, total: 0 });
       const e = phoneMap.get(key);
       e.count += 1;
@@ -2344,7 +2357,7 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
         ) : tab === 'kev' && config.hasKev ? (
           <KevReportView orders={orders} config={config} />
         ) : tab === 'history' ? (
-          <CollectionHistory collections={collections} />
+          <CollectionHistory collections={collections} config={config} />
         ) : listToShow.length === 0 ? (
           <div className="bg-white rounded-2xl p-8 text-center mt-2">
             <div className="w-14 h-14 mx-auto rounded-full bg-slate-100 flex items-center justify-center mb-2">
@@ -2916,7 +2929,7 @@ function DeliveryReportView({ orders, config, onPay }) {
     });
     
     return Array.from(map.values()).filter(e => e.totalCount > 0 || (config.riders || []).some(r => r.id === e.rider.id));
-  }, [deliveryOrders]);
+  }, [orders, period, config]);
 
   const grandUnpaid = riderStats.reduce((s, r) => s + r.unpaidTotal, 0);
   const grandTotal = riderStats.reduce((s, r) => s + r.totalAmount, 0);
@@ -3240,19 +3253,37 @@ function KevReportView({ orders, config }) {
   );
 }
 
-function CollectionHistory({ collections }) {
+function CollectionHistory({ collections, config }) {
   if (collections.length === 0) {
     return (<div className="bg-white rounded-2xl p-8 text-center mt-2"><p className="text-slate-600 text-sm">ยังไม่มีประวัติเก็บเงิน</p></div>);
   }
+
+  // Helper: convert method into label/style
+  const methodLabel = (method) => {
+    if (method === 'cash') return { label: '💵 เก็บเงินสด', cls: 'bg-emerald-100 text-emerald-700' };
+    if (method === 'transfer') return { label: '💳 เคลียร์ยอดโอน', cls: 'bg-violet-100 text-violet-700' };
+    if (method === 'service') return { label: '🧺 จ่ายค่าพับ (แม่บ้าน)', cls: 'bg-emerald-100 text-emerald-700' };
+    if (method === 'delivery') return { label: '🚚 จ่ายค่า Delivery', cls: 'bg-orange-100 text-orange-700' };
+    if (method && method.startsWith('delivery-')) {
+      const riderId = method.replace('delivery-', '');
+      const rider = config?.riders?.find(r => r.id === riderId);
+      const name = rider ? `${rider.emoji} ${rider.label}` : riderId;
+      return { label: `🚚 จ่ายค่าส่ง ${name}`, cls: 'bg-orange-100 text-orange-700' };
+    }
+    return { label: '💵 เก็บเงิน', cls: 'bg-slate-100 text-slate-700' };
+  };
+
   return (
     <div className="space-y-2">
-      {collections.map((c, i) => (
+      {collections.map((c, i) => {
+        const m = methodLabel(c.method);
+        return (
         <div key={c.id} className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <div>
               <p className="text-xs text-slate-500">{formatDate(c.collectedAt)}</p>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${c.method === 'transfer' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                {c.method === 'transfer' ? '💳 เคลียร์ยอดโอน' : '💵 เก็บเงินสด'}
+              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${m.cls}`}>
+                {m.label}
               </span>
             </div>
             <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">รอบ {collections.length - i}</span>
@@ -3277,7 +3308,8 @@ function CollectionHistory({ collections }) {
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
