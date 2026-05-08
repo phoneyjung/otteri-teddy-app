@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v27-2026-04-28';
+  window.APP_VERSION = 'v28-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -816,34 +816,35 @@ function BrandApp({ config, onChangeBrand }) {
 
   const handleCollectMoney = async (method) => {
     const uncollected = orders.filter(o => !o.collected && o.paymentMethod === method);
-    if (uncollected.length === 0) {
+    
+    // ถ้าเป็นเงินสด → ตรวจ token cash ค้างด้วย (อาจมี token ค้างแม้ไม่มี order)
+    let activeTokens = [];
+    if (method === 'cash') {
+      activeTokens = tokenExchanges.filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
+    }
+    
+    if (uncollected.length === 0 && activeTokens.length === 0) {
       alert(`ไม่มีรายการ${method === 'cash' ? 'เงินสด' : 'เงินโอน'}ที่ต้องเคลียร์`);
       return;
     }
     const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config), 0);
     const methodLabel = method === 'cash' ? 'เก็บเงินสดจากแม่บ้าน' : 'เคลียร์ยอดโอน';
     
-    // ถ้าเป็นเงินสด → คำนวณ token exchange ที่ยังไม่เคลียที่ค้างอยู่ด้วย
-    // (เฉพาะ token ที่ลูกค้าจ่ายเงินสด — ถ้าโอนไม่ทำให้แม่บ้านถือเงินเพิ่ม)
     let extraInfo = '';
-    let activeTokens = [];
-    if (method === 'cash') {
-      activeTokens = tokenExchanges.filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
+    if (method === 'cash' && activeTokens.length > 0) {
       const tokenSum = activeTokens.reduce((s, t) => s + (t.amount || 0), 0);
-      if (tokenSum > 0) {
-        extraInfo = `\n\n🪙 เงินแลก token เงินสด (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
-      }
+      extraInfo = `\n\n🪙 เงินแลก token เงินสด (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
     }
     
     if (!confirm(`${methodLabel}?\n\n📋 รายได้ร้าน:\n   ${uncollected.length} รายการ • ฿${formatMoney(totalShould)}${extraInfo}`)) return;
 
     try {
-      // Save collection record
-      const round = { collectedAt: Date.now(), method, orderIds: uncollected.map(o => o.id), orderCount: uncollected.length, totalReceived: totalShould, totalShould };
-      await saveCollectionToCloud(config.brand, round);
-      
-      // Update orders to collected
-      await batchUpdateOrders(uncollected.map(o => o.id), { collected: true, collectedAt: Date.now() });
+      // Save collection record (เฉพาะถ้ามี order — ไม่งั้น token-only ไม่ต้องสร้าง record)
+      if (uncollected.length > 0) {
+        const round = { collectedAt: Date.now(), method, orderIds: uncollected.map(o => o.id), orderCount: uncollected.length, totalReceived: totalShould, totalShould };
+        await saveCollectionToCloud(config.brand, round);
+        await batchUpdateOrders(uncollected.map(o => o.id), { collected: true, collectedAt: Date.now() });
+      }
       
       // ถ้าเป็นเงินสด → mark cash-paid token exchanges ว่า cleared แล้วด้วย
       if (method === 'cash' && activeTokens.length > 0) {
@@ -2589,6 +2590,13 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
   const cashPending = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config), 0);
   const transferPending = uncollectedTransfer.reduce((s, o) => s + calculateTotal(o, config), 0);
 
+  // เงินแลก token ที่จ่ายมาเป็นเงินสด + ยังไม่ถูกเคลีย — ต้องเก็บจากแม่บ้านด้วย
+  const activeCashTokens = (tokenExchanges || []).filter(t => 
+    !t.cleared && (t.paymentMethod || 'cash') === 'cash'
+  );
+  const activeCashTokenSum = activeCashTokens.reduce((s, t) => s + (t.amount || 0), 0);
+  const totalCashToCollect = cashPending + activeCashTokenSum;
+
   const stats = useMemo(() => {
     const phoneMap = new Map();
     orders.forEach(o => {
@@ -2651,9 +2659,16 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
                 <Icon name="banknote" className="w-4 h-4 text-white" />
                 <p className="text-white text-xs font-medium">เงินสด (ต้องไปเก็บ)</p>
               </div>
-              <p className="text-white text-2xl font-extrabold">฿{formatMoney(cashPending)}</p>
-              <p className="text-emerald-50 text-xs">{uncollectedCash.length} รายการ</p>
-              <button onClick={() => onCollect('cash')} disabled={uncollectedCash.length === 0} className={`mt-2 w-full text-xs font-bold rounded-lg py-1.5 transition ${uncollectedCash.length === 0 ? 'bg-white bg-opacity-10 text-emerald-100 opacity-50' : 'bg-white text-emerald-700 active:scale-95'}`}>
+              <p className="text-white text-2xl font-extrabold">฿{formatMoney(totalCashToCollect)}</p>
+              {activeCashTokenSum > 0 ? (
+                <div className="text-emerald-50 text-[10px] mt-0.5 space-y-0.5">
+                  <p>💵 ค่าซัก/อบ: ฿{formatMoney(cashPending)} ({uncollectedCash.length} ใบ)</p>
+                  <p>🪙 แลก Token: ฿{formatMoney(activeCashTokenSum)} ({activeCashTokens.length} ครั้ง)</p>
+                </div>
+              ) : (
+                <p className="text-emerald-50 text-xs">{uncollectedCash.length} รายการ</p>
+              )}
+              <button onClick={() => onCollect('cash')} disabled={uncollectedCash.length === 0 && activeCashTokens.length === 0} className={`mt-2 w-full text-xs font-bold rounded-lg py-1.5 transition ${(uncollectedCash.length === 0 && activeCashTokens.length === 0) ? 'bg-white bg-opacity-10 text-emerald-100 opacity-50' : 'bg-white text-emerald-700 active:scale-95'}`}>
                 เก็บเงินแล้ว
               </button>
             </div>
