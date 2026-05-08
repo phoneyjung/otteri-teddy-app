@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v24-2026-04-28';
+  window.APP_VERSION = 'v25-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -435,22 +435,22 @@ async function deleteOrdersBatch(orderIds) {
   }
 }
 
-// ลบ orders + collections ทั้งหมดของ brand (สำหรับเริ่มใหม่)
+// ลบ orders + collections + tokenExchanges ทั้งหมดของ brand (สำหรับเริ่มใหม่)
 async function deleteAllForBrand(brand) {
   try {
-    // ลบ orders ทั้งหมด
     const ordersSnap = await window.db.collection('orders').where('brand', '==', brand).get();
     const collectionsSnap = await window.db.collection('collections').where('brand', '==', brand).get();
+    const tokensSnap = await window.db.collection('tokenExchanges').where('brand', '==', brand).get();
     
     // ใช้ batch ลบเป็นชุด (Firestore batch limit = 500)
-    const allDocs = [...ordersSnap.docs, ...collectionsSnap.docs];
+    const allDocs = [...ordersSnap.docs, ...collectionsSnap.docs, ...tokensSnap.docs];
     const chunkSize = 400;
     for (let i = 0; i < allDocs.length; i += chunkSize) {
       const batch = window.db.batch();
       allDocs.slice(i, i + chunkSize).forEach(doc => batch.delete(doc.ref));
       await batch.commit();
     }
-    return { ordersDeleted: ordersSnap.size, collectionsDeleted: collectionsSnap.size };
+    return { ordersDeleted: ordersSnap.size, collectionsDeleted: collectionsSnap.size, tokensDeleted: tokensSnap.size };
   } catch (e) {
     console.error('deleteAllForBrand error:', e);
     throw e;
@@ -504,6 +504,36 @@ function subscribeToCollections(brand, callback) {
       callback(items);
     },
     error => console.error('subscribe collections error:', error)
+  );
+}
+
+// ============ TOKEN EXCHANGES (เก็บกรณีตู้แลกเหรียญเสีย) ============
+async function saveTokenExchangeToCloud(brand, item) {
+  try {
+    let data = { ...item, brand };
+    delete data.id;
+    data = cleanUndefined(data);
+    data = JSON.parse(JSON.stringify(data));
+    const docRef = await window.db.collection('tokenExchanges').add(data);
+    return docRef.id;
+  } catch (e) {
+    console.error('saveTokenExchange error:', e);
+    throw e;
+  }
+}
+
+async function deleteTokenExchangeFromCloud(id) {
+  try { await window.db.collection('tokenExchanges').doc(id).delete(); }
+  catch (e) { console.error('deleteTokenExchange error:', e); throw e; }
+}
+
+function subscribeToTokenExchanges(brand, callback) {
+  return window.db.collection('tokenExchanges').where('brand', '==', brand).onSnapshot(
+    snapshot => {
+      const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      callback(items);
+    },
+    error => console.error('subscribe tokenExchanges error:', error)
   );
 }
 
@@ -686,6 +716,7 @@ function BrandApp({ config, onChangeBrand }) {
   const [view, setView] = useState('home');
   const [orders, setOrders] = useState([]);
   const [collections, setCollections] = useState([]);
+  const [tokenExchanges, setTokenExchanges] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
   const [syncStatus, setSyncStatus] = useState('connecting'); // connecting/synced/offline
@@ -700,9 +731,13 @@ function BrandApp({ config, onChangeBrand }) {
     const unsubCollections = subscribeToCollections(config.brand, (newCollections) => {
       setCollections(newCollections.sort((a, b) => b.collectedAt - a.collectedAt));
     });
+    const unsubTokens = subscribeToTokenExchanges(config.brand, (items) => {
+      setTokenExchanges(items.sort((a, b) => b.createdAt - a.createdAt));
+    });
     return () => {
       unsubOrders && unsubOrders();
       unsubCollections && unsubCollections();
+      unsubTokens && unsubTokens();
     };
   }, [config.brand]);
 
@@ -750,7 +785,7 @@ function BrandApp({ config, onChangeBrand }) {
 
     try {
       const result = await deleteAllForBrand(config.brand);
-      alert(`✓ ลบเรียบร้อย\n\nลบรายการรับงาน ${result.ordersDeleted} รายการ\nลบประวัติเก็บเงิน ${result.collectionsDeleted} รายการ`);
+      alert(`✓ ลบเรียบร้อย\n\nลบรายการรับงาน ${result.ordersDeleted} รายการ\nลบประวัติเก็บเงิน ${result.collectionsDeleted} รายการ\nลบรายการแลก token ${result.tokensDeleted} รายการ`);
       return true;
     } catch (e) {
       alert('ลบล้มเหลว: ' + e.message);
@@ -785,7 +820,18 @@ function BrandApp({ config, onChangeBrand }) {
     const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config), 0);
     const methodLabel = method === 'cash' ? 'เก็บเงินสดจากแม่บ้าน' : 'เคลียร์ยอดโอน';
     
-    if (!confirm(`${methodLabel}?\n\nจำนวน ${uncollected.length} รายการ\nยอดรวม: ${formatMoney(totalShould)} บาท`)) return;
+    // ถ้าเป็นเงินสด → คำนวณ token exchange ที่ยังไม่เคลียที่ค้างอยู่ด้วย
+    let extraInfo = '';
+    let activeTokens = [];
+    if (method === 'cash') {
+      activeTokens = tokenExchanges.filter(t => !t.cleared);
+      const tokenSum = activeTokens.reduce((s, t) => s + (t.amount || 0), 0);
+      if (tokenSum > 0) {
+        extraInfo = `\n\n🪙 เงินแลก token (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
+      }
+    }
+    
+    if (!confirm(`${methodLabel}?\n\n📋 รายได้ร้าน:\n   ${uncollected.length} รายการ • ฿${formatMoney(totalShould)}${extraInfo}`)) return;
 
     try {
       // Save collection record
@@ -795,15 +841,52 @@ function BrandApp({ config, onChangeBrand }) {
       // Update orders to collected
       await batchUpdateOrders(uncollected.map(o => o.id), { collected: true, collectedAt: Date.now() });
       
+      // ถ้าเป็นเงินสด → mark token exchanges ว่า cleared แล้วด้วย
+      if (method === 'cash' && activeTokens.length > 0) {
+        const batch = window.db.batch();
+        activeTokens.forEach(t => {
+          batch.update(window.db.collection('tokenExchanges').doc(t.id), { cleared: true, clearedAt: Date.now() });
+        });
+        await batch.commit();
+      }
+      
       alert(`✓ ${methodLabel} เรียบร้อย`);
     } catch (e) {
       alert('เคลียร์ยอดล้มเหลว: ' + e.message);
     }
   };
 
+  // เพิ่มรายการแลก token (กรณีตู้แลกเหรียญเสีย แม่บ้านแลกแทน)
+  const handleAddTokenExchange = async ({ amount, tokenCount, note }) => {
+    if (!amount || amount <= 0) {
+      alert('กรุณาระบุจำนวนเงิน');
+      return false;
+    }
+    try {
+      const item = {
+        amount: Number(amount),
+        tokenCount: Number(tokenCount) || 0,
+        note: note || '',
+        createdAt: Date.now(),
+      };
+      await saveTokenExchangeToCloud(config.brand, item);
+      return true;
+    } catch (e) {
+      alert('บันทึกแลก token ล้มเหลว: ' + e.message);
+      return false;
+    }
+  };
+
+  const handleDeleteTokenExchange = async (id) => {
+    if (!confirm('ลบรายการแลก token นี้?')) return;
+    try {
+      await deleteTokenExchangeFromCloud(id);
+    } catch (e) {
+      alert('ลบไม่สำเร็จ: ' + e.message);
+    }
+  };
+
   // จ่ายค่าพับ (Otteri) หรือค่า Delivery (Teddy/Trainee) — สำหรับ owner เคลียยอด
-  // type = 'service' (ค่าพับ) | 'delivery' (ค่าส่ง)
-  // riderFilter = (optional) รหัสไลเดอร์ — สำหรับจ่ายเฉพาะไลเดอร์คนนั้น
   const handlePayFees = async (type, riderFilter) => {
     const isService = type === 'service';
     const flagField = isService ? 'serviceFeePaid' : 'deliveryFeePaid';
@@ -868,11 +951,11 @@ function BrandApp({ config, onChangeBrand }) {
           🔄 กำลังเชื่อมต่อ cloud...
         </div>
       )}
-      {view === 'home' && <HomeView config={config} orders={orders} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} />}
+      {view === 'home' && <HomeView config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} />}
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
-      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
@@ -880,7 +963,31 @@ function BrandApp({ config, onChangeBrand }) {
 }
 
 
-function HomeView({ config, orders, onNewOrder, onOwnerLogin, onSelectOrder, onChangeBrand }) {
+function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onOwnerLogin, onSelectOrder, onChangeBrand }) {
+  const [showTokenForm, setShowTokenForm] = useState(false);
+  const [tokenAmount, setTokenAmount] = useState('');
+  const [tokenCount, setTokenCount] = useState('');
+  const [savingToken, setSavingToken] = useState(false);
+
+  // รายการแลก token ที่ยังไม่ถูกเคลีย (= แม่บ้านยังถือเงินอยู่)
+  const activeTokens = (tokenExchanges || []).filter(t => !t.cleared);
+  const activeTokenSum = activeTokens.reduce((s, t) => s + (t.amount || 0), 0);
+
+  const handleSubmitToken = async () => {
+    const amount = parseFloat(tokenAmount);
+    if (!amount || amount <= 0) {
+      alert('กรุณาระบุจำนวนเงิน');
+      return;
+    }
+    setSavingToken(true);
+    const ok = await onAddToken({ amount, tokenCount: parseInt(tokenCount) || 0 });
+    setSavingToken(false);
+    if (ok) {
+      setTokenAmount('');
+      setTokenCount('');
+      setShowTokenForm(false);
+    }
+  };
   const uncollected = orders.filter(o => !o.collected);
   const todayOrders = orders.filter(o => {
     const d = new Date(o.createdAt); const today = new Date();
@@ -942,6 +1049,104 @@ function HomeView({ config, orders, onNewOrder, onOwnerLogin, onSelectOrder, onC
             <p className="text-slate-500 text-sm">{config.freeService ? 'ฟรีค่าบริการฝาก ซัก อบ พับ' : 'ฝาก ซัก อบ พับ'}</p>
           </div>
         </button>
+      </div>
+
+      {/* ปุ่มแลก token (กรณีตู้แลกเหรียญเสีย) */}
+      <div className="px-5 mt-3">
+        {!showTokenForm ? (
+          <button 
+            onClick={() => setShowTokenForm(true)}
+            className="w-full bg-amber-50 rounded-2xl p-3 border-2 border-amber-200 active:scale-95 transition flex items-center gap-3"
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-xl shadow">
+              🪙
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-bold text-amber-900 text-sm">แลก Token (ตู้แลกเหรียญเสีย)</p>
+              {activeTokenSum > 0 ? (
+                <p className="text-xs text-amber-700">รอเคลีย: ฿{formatMoney(activeTokenSum)} • {activeTokens.length} ครั้ง</p>
+              ) : (
+                <p className="text-xs text-amber-700">ลูกค้าเอาเงินสดมาแลก token</p>
+              )}
+            </div>
+            <Icon name="chevron-right" className="w-5 h-5 text-amber-600" />
+          </button>
+        ) : (
+          <div className="bg-white rounded-2xl p-4 border-2 border-amber-300 shadow-lg">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">🪙</span>
+              <p className="font-extrabold text-slate-900">บันทึกแลก Token</p>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs font-bold text-slate-600 mb-1 block">💵 จำนวนเงินที่รับมา (บาท)</label>
+                <input 
+                  type="number"
+                  value={tokenAmount}
+                  onChange={(e) => setTokenAmount(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="เช่น 100"
+                  autoFocus
+                  className="w-full px-4 py-3 bg-amber-50 rounded-xl border-2 border-amber-200 focus:bg-white outline-none transition text-lg font-bold text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 mb-1 block">🪙 จำนวน Token ที่ให้ลูกค้า (เหรียญ)</label>
+                <input 
+                  type="number"
+                  value={tokenCount}
+                  onChange={(e) => setTokenCount(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="เช่น 10"
+                  className="w-full px-4 py-3 bg-amber-50 rounded-xl border-2 border-amber-200 focus:bg-white outline-none transition text-lg font-bold text-slate-900"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button 
+                  onClick={() => { setShowTokenForm(false); setTokenAmount(''); setTokenCount(''); }}
+                  disabled={savingToken}
+                  className="py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm active:scale-95 transition"
+                >
+                  ยกเลิก
+                </button>
+                <button 
+                  onClick={handleSubmitToken}
+                  disabled={savingToken || !tokenAmount}
+                  className="py-3 bg-amber-500 text-white rounded-xl font-bold text-sm active:scale-95 transition disabled:opacity-50"
+                >
+                  {savingToken ? 'กำลังบันทึก...' : '✓ บันทึก'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* รายการแลก token ล่าสุด — แสดงเฉพาะ active (ยังไม่ถูกเคลีย) */}
+        {!showTokenForm && activeTokens.length > 0 && (
+          <div className="mt-2 bg-white rounded-2xl p-3 border border-amber-100">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700 mb-2">🪙 แลก Token รอเคลีย</p>
+            <div className="space-y-1 max-h-40 overflow-auto">
+              {activeTokens.slice(0, 8).map(t => (
+                <div key={t.id} className="flex items-center justify-between bg-amber-50 rounded-lg px-2.5 py-1.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-700">฿{formatMoney(t.amount)}{t.tokenCount ? ` → ${t.tokenCount} เหรียญ` : ''}</p>
+                    <p className="text-[10px] text-slate-400">{formatDate(t.createdAt)}</p>
+                  </div>
+                  <button 
+                    onClick={() => onDeleteToken(t.id)} 
+                    className="ml-2 p-1.5 rounded-md text-rose-500 active:bg-rose-100"
+                    title="ลบ"
+                  >
+                    <Icon name="trash-2" className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            {activeTokens.length > 8 && (
+              <p className="text-[10px] text-slate-400 mt-1 text-center">+ อีก {activeTokens.length - 8} รายการ</p>
+            )}
+          </div>
+        )}
       </div>
 
       {currentPromo.active && (
@@ -2121,7 +2326,7 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
 }
 
 
-function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrder, onCollect, onPayFees, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
+function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLogout, onSelectOrder, onCollect, onPayFees, onDeleteToken, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
   const [tab, setTab] = useState('cash');
   
   // Selection mode: ติ๊กเลือกหลายรายการเพื่อลบ
@@ -2301,6 +2506,7 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           <TabBtn active={tab === 'cash'} onClick={() => setTab('cash')}>💵 สด ({uncollectedCash.length})</TabBtn>
           <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({uncollectedTransfer.length})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
+          <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 แลก Token ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
@@ -2336,6 +2542,8 @@ function OwnerDashboardView({ config, orders, collections, onLogout, onSelectOrd
           <StatsView stats={stats} config={config} onResetAll={onResetAll} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
+        ) : tab === 'token' ? (
+          <TokenExchangeReportView tokenExchanges={tokenExchanges || []} onDelete={onDeleteToken} />
         ) : tab === 'service' && config.foldPricePerBasket > 0 ? (
           <FeeView 
             type="service"
@@ -2860,6 +3068,130 @@ function FeeView({ type, title, emoji, color, unpaidOrders, totalAmount, paidOrd
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TokenExchangeReportView({ tokenExchanges, onDelete }) {
+  const [period, setPeriod] = useState('today');
+  const [showCleared, setShowCleared] = useState(false);
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfWeek = (() => { const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0,0,0,0); return d.getTime(); })();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  const inPeriod = (t) => {
+    if (period === 'today') return t.createdAt >= startOfToday;
+    if (period === 'week') return t.createdAt >= startOfWeek;
+    if (period === 'month') return t.createdAt >= startOfMonth;
+    return true;
+  };
+
+  const filtered = tokenExchanges.filter(inPeriod);
+  const active = filtered.filter(t => !t.cleared);
+  const cleared = filtered.filter(t => t.cleared);
+  
+  const activeAmount = active.reduce((s, t) => s + (t.amount || 0), 0);
+  const activeTokens = active.reduce((s, t) => s + (t.tokenCount || 0), 0);
+  const clearedAmount = cleared.reduce((s, t) => s + (t.amount || 0), 0);
+
+  const periodLabels = { today: 'วันนี้', week: '7 วันล่าสุด', month: 'เดือนนี้', all: 'ทั้งหมด' };
+
+  // Group by day
+  const byDay = useMemo(() => {
+    const map = new Map();
+    filtered.forEach(t => {
+      const d = new Date(t.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (!map.has(key)) map.set(key, { date: key, total: 0, tokens: 0, count: 0, items: [] });
+      const e = map.get(key);
+      e.total += (t.amount || 0);
+      e.tokens += (t.tokenCount || 0);
+      e.count += 1;
+      e.items.push(t);
+    });
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [filtered]);
+
+  return (
+    <div className="space-y-3">
+      {/* Period selector */}
+      <div className="bg-white rounded-2xl p-1 flex gap-1 shadow-sm">
+        <TabBtn active={period === 'today'} onClick={() => setPeriod('today')}>วันนี้</TabBtn>
+        <TabBtn active={period === 'week'} onClick={() => setPeriod('week')}>7 วัน</TabBtn>
+        <TabBtn active={period === 'month'} onClick={() => setPeriod('month')}>เดือนนี้</TabBtn>
+        <TabBtn active={period === 'all'} onClick={() => setPeriod('all')}>ทั้งหมด</TabBtn>
+      </div>
+
+      {/* Summary card */}
+      <div className="bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl p-5 text-white shadow-lg">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-2xl">🪙</span>
+          <p className="text-amber-50 text-sm font-bold">เงินแลก Token • {periodLabels[period]}</p>
+        </div>
+        <div className="flex items-end gap-4">
+          <div>
+            <p className="text-amber-100 text-xs">รอเคลีย (แม่บ้านยังถือเงินไว้)</p>
+            <p className="text-3xl font-extrabold">฿{formatMoney(activeAmount)}</p>
+          </div>
+          <div className="border-l border-white border-opacity-30 pl-4">
+            <p className="text-amber-100 text-xs">รวมเหรียญ</p>
+            <p className="text-xl font-bold">{activeTokens} 🪙</p>
+          </div>
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-amber-50 text-xs">
+          <span>📋 รอเคลีย {active.length} ครั้ง</span>
+          {cleared.length > 0 && <><span>•</span><span>✓ เคลียแล้ว {cleared.length} ครั้ง (฿{formatMoney(clearedAmount)})</span></>}
+        </div>
+        <p className="text-amber-50 text-[10px] mt-2 italic">💡 เงินนี้ไม่ใช่รายได้ร้าน — เก็บแล้วต้องคืน/หัก</p>
+      </div>
+
+      {/* Empty */}
+      {filtered.length === 0 && (
+        <div className="bg-white rounded-2xl p-8 text-center">
+          <div className="w-14 h-14 mx-auto rounded-full bg-slate-100 flex items-center justify-center mb-2">
+            <span className="text-2xl">🪙</span>
+          </div>
+          <p className="text-slate-600 text-sm">ยังไม่มีรายการแลก token ในช่วงนี้</p>
+        </div>
+      )}
+
+      {/* By day */}
+      {byDay.length > 0 && (
+        <div className="bg-white rounded-2xl p-4">
+          <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-3">📅 แยกตามวัน</p>
+          <div className="space-y-3">
+            {byDay.map(day => (
+              <div key={day.date} className="border-l-4 border-amber-400 pl-3">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-bold text-slate-900">{day.date}</p>
+                  <p className="text-base font-extrabold text-amber-700">฿{formatMoney(day.total)}</p>
+                </div>
+                <p className="text-xs text-slate-500 mb-1.5">{day.count} ครั้ง • {day.tokens} เหรียญ</p>
+                <div className="space-y-1">
+                  {day.items.map(t => (
+                    <div key={t.id} className={`flex items-center justify-between text-xs rounded-lg px-2 py-1.5 ${t.cleared ? 'bg-slate-50 opacity-60' : 'bg-amber-50'}`}>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-bold ${t.cleared ? 'text-slate-500 line-through' : 'text-amber-700'}`}>
+                          ฿{formatMoney(t.amount)}{t.tokenCount ? ` → ${t.tokenCount} เหรียญ` : ''}
+                          {t.cleared && <span className="ml-2 text-[10px] text-emerald-600 not-italic font-bold">✓ เคลียแล้ว</span>}
+                        </p>
+                        <p className="text-[10px] text-slate-400">{new Date(t.createdAt).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})}</p>
+                      </div>
+                      {!t.cleared && (
+                        <button onClick={() => onDelete(t.id)} className="ml-2 p-1 rounded-md text-rose-500 active:bg-rose-100">
+                          <Icon name="trash-2" className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
