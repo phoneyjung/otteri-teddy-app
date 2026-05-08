@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v28-2026-04-28';
+  window.APP_VERSION = 'v29-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -978,6 +978,9 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
   const [tokenPhoto, setTokenPhoto] = useState('');
   const [savingToken, setSavingToken] = useState(false);
   
+  // หลังบันทึก token แสดง popup สรุป + ปุ่มแชร์
+  const [savedToken, setSavedToken] = useState(null);
+  
   // จำนวน token ของร้าน (เฉพาะ Teddy) + จำนวนเหรียญ 10 จริง (ทั้ง 2 แบรนด์)
   // คำนวณ default จากจำนวนเงิน: 1 token / 1 เหรียญ = 10 บาท
   // Teddy default: ใช้ token หมด (coinCount = 0)
@@ -1041,21 +1044,73 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
       }
     }
     setSavingToken(true);
-    const ok = await onAddToken({ 
+    const submittedData = { 
       amount, 
       tokenCount: displayedTokenCount,
       coinCount: displayedCoinCount,
       paymentMethod: tokenPayment,
       photo: tokenPhoto || '',
-    });
+      createdAt: Date.now(),
+    };
+    const ok = await onAddToken(submittedData);
     setSavingToken(false);
     if (ok) {
+      // เก็บข้อมูลไว้แสดง popup share
+      setSavedToken(submittedData);
+      // ล้าง form
       setTokenAmount('');
       setTokenCount('');
       setCoinCount('');
       setTokenPayment('cash');
       setTokenPhoto('');
       setShowTokenForm(false);
+    }
+  };
+
+  // สร้างข้อความสำหรับแชร์ Line
+  const buildTokenShareText = (t) => {
+    if (!t) return '';
+    const dateStr = formatDate(t.createdAt);
+    const payLabel = t.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด';
+    let breakdown = '';
+    if (t.tokenCount > 0 && t.coinCount > 0) {
+      breakdown = `\n🪙 Token ร้าน: ${t.tokenCount} เหรียญ\n🪙 เหรียญ 10: ${t.coinCount} เหรียญ`;
+    } else if (t.tokenCount > 0) {
+      breakdown = `\n🪙 Token ร้าน: ${t.tokenCount} เหรียญ`;
+    } else if (t.coinCount > 0) {
+      breakdown = `\n🪙 เหรียญ 10: ${t.coinCount} เหรียญ`;
+    }
+    return `🪙 ${config.name} - แลก Token\n━━━━━━━━━━━\n💵 จำนวนเงิน: ${formatMoney(t.amount)} บาท\n${payLabel}${breakdown}\n⏰ ${dateStr}`;
+  };
+
+  // แชร์ผ่าน Line / Web Share API
+  const handleShareToken = async () => {
+    if (!savedToken) return;
+    const text = buildTokenShareText(savedToken);
+    
+    try {
+      if (navigator.share) {
+        await navigator.share({ text, title: `${config.name} - แลก Token` });
+      } else {
+        // Fallback: copy clipboard + open Line
+        await navigator.clipboard.writeText(text);
+        alert('✓ คัดลอกข้อความแล้ว — ไปวางใน Line ได้เลย');
+        window.open(`https://line.me/R/share?text=${encodeURIComponent(text)}`, '_blank');
+      }
+    } catch (e) {
+      // user cancel share — ไม่ต้องทำอะไร
+      if (e.name !== 'AbortError') console.error('share error:', e);
+    }
+  };
+
+  // คัดลอกข้อความ Token
+  const handleCopyToken = async () => {
+    if (!savedToken) return;
+    try {
+      await navigator.clipboard.writeText(buildTokenShareText(savedToken));
+      alert('✓ คัดลอกข้อความแล้ว');
+    } catch (e) {
+      alert('คัดลอกไม่สำเร็จ');
     }
   };
   const uncollected = orders.filter(o => !o.collected);
@@ -1067,6 +1122,76 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
 
   return (
     <div className="min-h-screen">
+      {/* Modal: หลังบันทึก Token แสดงสรุป + ปุ่มแชร์ Line */}
+      {savedToken && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-[slideUp_.2s_ease-out]">
+            {/* Header */}
+            <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-5 text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-white bg-opacity-20 flex items-center justify-center text-3xl">
+                  🪙
+                </div>
+                <div>
+                  <p className="text-amber-50 text-xs font-bold">บันทึกแลก Token เรียบร้อย</p>
+                  <p className="text-2xl font-extrabold">฿{formatMoney(savedToken.amount)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body — รายละเอียด */}
+            <div className="p-5 space-y-2.5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">วิธีจ่าย</span>
+                <span className={`font-bold px-2 py-0.5 rounded-full text-xs ${savedToken.paymentMethod === 'transfer' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {savedToken.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด'}
+                </span>
+              </div>
+              {savedToken.tokenCount > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">🪙 Token ร้าน</span>
+                  <span className="font-bold text-amber-700">{savedToken.tokenCount} เหรียญ</span>
+                </div>
+              )}
+              {savedToken.coinCount > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">🪙 เหรียญ 10 บาท</span>
+                  <span className="font-bold text-slate-900">{savedToken.coinCount} เหรียญ</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-100">
+                <span className="text-slate-500">เวลา</span>
+                <span className="text-slate-700 text-xs">{formatDate(savedToken.createdAt)}</span>
+              </div>
+
+              {/* ปุ่ม actions */}
+              <div className="grid grid-cols-2 gap-2 pt-3">
+                <button 
+                  onClick={handleCopyToken}
+                  className="py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm active:scale-95 transition flex items-center justify-center gap-1.5"
+                >
+                  <Icon name="copy" className="w-4 h-4" />
+                  คัดลอก
+                </button>
+                <button 
+                  onClick={handleShareToken}
+                  className="py-3 bg-green-500 text-white rounded-xl font-bold text-sm active:scale-95 transition shadow-lg flex items-center justify-center gap-1.5"
+                >
+                  <span>💬</span>
+                  ส่ง Line
+                </button>
+              </div>
+              <button 
+                onClick={() => setSavedToken(null)}
+                className="w-full py-3 mt-1 text-slate-500 font-bold text-sm active:scale-95 transition"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {config.brand === 'trainee' && (
         <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 flex items-center justify-center gap-2 text-white text-xs font-bold">
           <span>🎓</span>
