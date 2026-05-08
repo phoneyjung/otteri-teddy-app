@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v25-2026-04-28';
+  window.APP_VERSION = 'v27-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -278,6 +278,7 @@ const OTTERI_CONFIG = {
   hasDelivery: false,
   freeService: false,
   servicePrice: 20,
+  hasToken: false, // Otteri ไม่มี token ของร้าน — แลกเป็นเหรียญ 10 อย่างเดียว
   washMachines: [
     { size: 9, count: 2, prices: { cold: 50, warm: 50, hot: 50 } },
     { size: 14, count: 2, prices: { cold: 70, warm: 70, hot: 70 } },
@@ -293,6 +294,7 @@ const OTTERI_CONFIG = {
   foldPricePerBasket: 20,
   hasLinePromo: false,
   hasKev: false,
+  hasToken: false, // Otteri ใช้แค่เหรียญ 10 ไม่มี token ของร้าน
 };
 
 const TEDDY_CONFIG = {
@@ -305,6 +307,7 @@ const TEDDY_CONFIG = {
   hasDelivery: true,
   freeService: true,
   servicePrice: 0,
+  hasToken: true, // Teddy มี token ของร้าน (default แลกเป็น token, มีเหรียญ 10 จริงเป็น backup)
   washMachines: [
     { size: 10, count: 4, prices: { cold: 40, warm: 50, hot: 60 } },
     { size: 13, count: 1, prices: { cold: 50, warm: 60, hot: 70 } },
@@ -821,13 +824,14 @@ function BrandApp({ config, onChangeBrand }) {
     const methodLabel = method === 'cash' ? 'เก็บเงินสดจากแม่บ้าน' : 'เคลียร์ยอดโอน';
     
     // ถ้าเป็นเงินสด → คำนวณ token exchange ที่ยังไม่เคลียที่ค้างอยู่ด้วย
+    // (เฉพาะ token ที่ลูกค้าจ่ายเงินสด — ถ้าโอนไม่ทำให้แม่บ้านถือเงินเพิ่ม)
     let extraInfo = '';
     let activeTokens = [];
     if (method === 'cash') {
-      activeTokens = tokenExchanges.filter(t => !t.cleared);
+      activeTokens = tokenExchanges.filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
       const tokenSum = activeTokens.reduce((s, t) => s + (t.amount || 0), 0);
       if (tokenSum > 0) {
-        extraInfo = `\n\n🪙 เงินแลก token (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
+        extraInfo = `\n\n🪙 เงินแลก token เงินสด (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
       }
     }
     
@@ -841,7 +845,7 @@ function BrandApp({ config, onChangeBrand }) {
       // Update orders to collected
       await batchUpdateOrders(uncollected.map(o => o.id), { collected: true, collectedAt: Date.now() });
       
-      // ถ้าเป็นเงินสด → mark token exchanges ว่า cleared แล้วด้วย
+      // ถ้าเป็นเงินสด → mark cash-paid token exchanges ว่า cleared แล้วด้วย
       if (method === 'cash' && activeTokens.length > 0) {
         const batch = window.db.batch();
         activeTokens.forEach(t => {
@@ -857,7 +861,7 @@ function BrandApp({ config, onChangeBrand }) {
   };
 
   // เพิ่มรายการแลก token (กรณีตู้แลกเหรียญเสีย แม่บ้านแลกแทน)
-  const handleAddTokenExchange = async ({ amount, tokenCount, note }) => {
+  const handleAddTokenExchange = async ({ amount, tokenCount, coinCount, paymentMethod, photo, note }) => {
     if (!amount || amount <= 0) {
       alert('กรุณาระบุจำนวนเงิน');
       return false;
@@ -866,6 +870,9 @@ function BrandApp({ config, onChangeBrand }) {
       const item = {
         amount: Number(amount),
         tokenCount: Number(tokenCount) || 0,
+        coinCount: Number(coinCount) || 0,
+        paymentMethod: paymentMethod || 'cash',
+        photo: photo || '',
         note: note || '',
         createdAt: Date.now(),
       };
@@ -966,12 +973,59 @@ function BrandApp({ config, onChangeBrand }) {
 function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onOwnerLogin, onSelectOrder, onChangeBrand }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [tokenAmount, setTokenAmount] = useState('');
-  const [tokenCount, setTokenCount] = useState('');
+  const [tokenPayment, setTokenPayment] = useState('cash'); // cash | transfer
+  const [tokenPhoto, setTokenPhoto] = useState('');
   const [savingToken, setSavingToken] = useState(false);
+  
+  // จำนวน token ของร้าน (เฉพาะ Teddy) + จำนวนเหรียญ 10 จริง (ทั้ง 2 แบรนด์)
+  // คำนวณ default จากจำนวนเงิน: 1 token / 1 เหรียญ = 10 บาท
+  // Teddy default: ใช้ token หมด (coinCount = 0)
+  // Otteri default: ใช้ coin หมด (no token at all)
+  const [tokenCount, setTokenCount] = useState(''); // เหรียญร้าน (Teddy เท่านั้น)
+  const [coinCount, setCoinCount] = useState(''); // เหรียญ 10 บาทจริง
+
+  const tokenInputRef = useRef(null);
+  const tokenCameraRef = useRef(null);
 
   // รายการแลก token ที่ยังไม่ถูกเคลีย (= แม่บ้านยังถือเงินอยู่)
+  // นับเฉพาะเงินสด — เพราะโอนไม่ได้ทำให้แม่บ้านถือเงินเพิ่ม
   const activeTokens = (tokenExchanges || []).filter(t => !t.cleared);
-  const activeTokenSum = activeTokens.reduce((s, t) => s + (t.amount || 0), 0);
+  const activeCashTokens = activeTokens.filter(t => (t.paymentMethod || 'cash') === 'cash');
+  const activeTokenSum = activeCashTokens.reduce((s, t) => s + (t.amount || 0), 0);
+
+  // คำนวณ default ตาม amount + แบรนด์
+  // Teddy: token = amount/10, coin = 0
+  // Otteri: token = 0 (ไม่มี), coin = amount/10
+  const amountNum = parseFloat(tokenAmount) || 0;
+  const autoCount = Math.floor(amountNum / 10);
+  const displayedTokenCount = tokenCount === '' 
+    ? (config.hasToken ? autoCount : 0) 
+    : (parseInt(tokenCount) || 0);
+  const displayedCoinCount = coinCount === ''
+    ? (config.hasToken ? 0 : autoCount)
+    : (parseInt(coinCount) || 0);
+  const totalCoinValue = (displayedTokenCount + displayedCoinCount) * 10;
+
+  // Photo handler
+  const handleTokenPhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 600;
+        const ratio = Math.min(1, maxW / img.width);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setTokenPhoto(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmitToken = async () => {
     const amount = parseFloat(tokenAmount);
@@ -979,12 +1033,27 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
       alert('กรุณาระบุจำนวนเงิน');
       return;
     }
+    // Validate: รวม Token + เหรียญ × 10 ต้องเท่ากับจำนวนเงิน
+    if (totalCoinValue !== amount) {
+      if (!confirm(`⚠️ รวมที่ให้ลูกค้า (฿${totalCoinValue}) ไม่เท่ากับจำนวนเงิน (฿${amount})\n\nบันทึกต่อมั้ย?`)) {
+        return;
+      }
+    }
     setSavingToken(true);
-    const ok = await onAddToken({ amount, tokenCount: parseInt(tokenCount) || 0 });
+    const ok = await onAddToken({ 
+      amount, 
+      tokenCount: displayedTokenCount,
+      coinCount: displayedCoinCount,
+      paymentMethod: tokenPayment,
+      photo: tokenPhoto || '',
+    });
     setSavingToken(false);
     if (ok) {
       setTokenAmount('');
       setTokenCount('');
+      setCoinCount('');
+      setTokenPayment('cash');
+      setTokenPhoto('');
       setShowTokenForm(false);
     }
   };
@@ -1077,33 +1146,141 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
               <span className="text-xl">🪙</span>
               <p className="font-extrabold text-slate-900">บันทึกแลก Token</p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
+
+              {/* วิธีจ่าย: เงินสด / โอน */}
               <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">💵 จำนวนเงินที่รับมา (บาท)</label>
+                <label className="text-xs font-bold text-slate-600 mb-1 block">💳 ลูกค้าจ่ายมาแบบไหน</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setTokenPayment('cash')}
+                    className={`py-2.5 rounded-xl font-bold text-sm transition active:scale-95 ${tokenPayment === 'cash' ? 'bg-emerald-500 text-white shadow' : 'bg-slate-50 text-slate-600 border-2 border-slate-200'}`}
+                  >
+                    💵 เงินสด
+                  </button>
+                  <button
+                    onClick={() => setTokenPayment('transfer')}
+                    className={`py-2.5 rounded-xl font-bold text-sm transition active:scale-95 ${tokenPayment === 'transfer' ? 'bg-violet-500 text-white shadow' : 'bg-slate-50 text-slate-600 border-2 border-slate-200'}`}
+                  >
+                    💳 โอน
+                  </button>
+                </div>
+                {tokenPayment === 'transfer' && (
+                  <p className="text-[10px] text-violet-600 mt-1">💡 โอนเข้าบัญชีร้านโดยตรง — ไม่ต้องเก็บเงินสดจากแม่บ้าน</p>
+                )}
+              </div>
+
+              {/* จำนวนเงิน */}
+              <div>
+                <label className="text-xs font-bold text-slate-600 mb-1 block">💵 จำนวนเงิน (บาท)</label>
                 <input 
                   type="number"
                   value={tokenAmount}
-                  onChange={(e) => setTokenAmount(e.target.value)}
+                  onChange={(e) => {
+                    setTokenAmount(e.target.value);
+                    // Reset counts ให้ใช้ default ใหม่
+                    setTokenCount('');
+                    setCoinCount('');
+                  }}
                   inputMode="numeric"
                   placeholder="เช่น 100"
                   autoFocus
                   className="w-full px-4 py-3 bg-amber-50 rounded-xl border-2 border-amber-200 focus:bg-white outline-none transition text-lg font-bold text-slate-900"
                 />
               </div>
+
+              {/* Teddy: 2 ช่อง — Token ของร้าน + เหรียญ 10 จริง */}
+              {config.hasToken && amountNum > 0 && (
+                <div className="bg-amber-50 rounded-xl p-3 space-y-2 border border-amber-200">
+                  <p className="text-xs text-amber-800 font-bold">🎁 ให้ลูกค้าเป็น</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 mb-1 block">🪙 Token ร้าน</label>
+                      <input 
+                        type="number"
+                        value={tokenCount === '' ? autoCount : tokenCount}
+                        onChange={(e) => setTokenCount(e.target.value)}
+                        inputMode="numeric"
+                        className="w-full px-3 py-2.5 bg-white rounded-lg border-2 border-amber-300 focus:border-amber-500 outline-none text-base font-bold text-amber-900"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">×10 = ฿{displayedTokenCount * 10}</p>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 mb-1 block">🪙 เหรียญ 10</label>
+                      <input 
+                        type="number"
+                        value={coinCount === '' ? 0 : coinCount}
+                        onChange={(e) => setCoinCount(e.target.value)}
+                        inputMode="numeric"
+                        className="w-full px-3 py-2.5 bg-white rounded-lg border-2 border-slate-200 focus:border-slate-400 outline-none text-base font-bold text-slate-900"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">×10 = ฿{displayedCoinCount * 10}</p>
+                    </div>
+                  </div>
+                  <div className={`flex items-center justify-between pt-2 border-t border-amber-200 ${totalCoinValue !== amountNum ? 'text-rose-600' : 'text-emerald-700'}`}>
+                    <span className="text-xs font-bold">รวมที่ให้ลูกค้า</span>
+                    <span className="text-sm font-extrabold">฿{totalCoinValue} {totalCoinValue !== amountNum && `(ควรเป็น ฿${amountNum})`}</span>
+                  </div>
+                  <p className="text-[10px] text-amber-700 italic">💡 Default: ใช้ Token ทั้งหมด — ถ้า Token หมด เพิ่มจำนวน "เหรียญ 10" แทน</p>
+                </div>
+              )}
+
+              {/* Otteri: 1 ช่อง — เหรียญ 10 อย่างเดียว */}
+              {!config.hasToken && amountNum > 0 && (
+                <div className="bg-amber-50 rounded-xl p-3 space-y-2 border border-amber-200">
+                  <p className="text-xs text-amber-800 font-bold">🎁 ให้ลูกค้าเป็น</p>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 mb-1 block">🪙 เหรียญ 10 บาท (เหรียญ)</label>
+                    <input 
+                      type="number"
+                      value={coinCount === '' ? autoCount : coinCount}
+                      onChange={(e) => setCoinCount(e.target.value)}
+                      inputMode="numeric"
+                      className="w-full px-3 py-2.5 bg-white rounded-lg border-2 border-amber-300 focus:border-amber-500 outline-none text-base font-bold text-amber-900"
+                    />
+                  </div>
+                  <div className="bg-emerald-50 rounded-lg p-2.5 border border-emerald-200">
+                    <p className="text-xs font-bold text-emerald-800 text-center">
+                      📢 ให้แม่บ้านหยิบเหรียญ 10 ให้ลูกค้า
+                    </p>
+                    <p className="text-base font-extrabold text-emerald-700 text-center">
+                      {displayedCoinCount} เหรียญ = ฿{totalCoinValue}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* รูปหลักฐาน */}
               <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">🪙 จำนวน Token ที่ให้ลูกค้า (เหรียญ)</label>
-                <input 
-                  type="number"
-                  value={tokenCount}
-                  onChange={(e) => setTokenCount(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="เช่น 10"
-                  className="w-full px-4 py-3 bg-amber-50 rounded-xl border-2 border-amber-200 focus:bg-white outline-none transition text-lg font-bold text-slate-900"
-                />
+                <label className="text-xs font-bold text-slate-600 mb-1 block">
+                  📷 รูปหลักฐาน {tokenPayment === 'transfer' ? '(สลิปโอน)' : '(เงินที่รับ)'} <span className="text-slate-400 font-normal">— ไม่บังคับ</span>
+                </label>
+                <input ref={tokenInputRef} type="file" accept="image/*" onChange={handleTokenPhotoUpload} className="hidden" />
+                <input ref={tokenCameraRef} type="file" accept="image/*" capture="environment" onChange={handleTokenPhotoUpload} className="hidden" />
+                {tokenPhoto ? (
+                  <div className="relative">
+                    <img src={tokenPhoto} className="w-full rounded-xl" />
+                    <button onClick={() => setTokenPhoto('')} className="absolute top-2 right-2 bg-rose-500 text-white rounded-full p-2 shadow-lg">
+                      <Icon name="x" className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => tokenCameraRef.current?.click()} className="py-3 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+                      <Icon name="camera" className="w-5 h-5 text-sky-600" />
+                      <span className="text-xs text-sky-700 font-bold">📷 ถ่าย</span>
+                    </button>
+                    <button onClick={() => tokenInputRef.current?.click()} className="py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
+                      <Icon name="image" className="w-5 h-5 text-slate-500" />
+                      <span className="text-xs text-slate-600 font-bold">🖼️ อัลบั้ม</span>
+                    </button>
+                  </div>
+                )}
               </div>
+
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button 
-                  onClick={() => { setShowTokenForm(false); setTokenAmount(''); setTokenCount(''); }}
+                  onClick={() => { setShowTokenForm(false); setTokenAmount(''); setTokenCount(''); setCoinCount(''); setTokenPhoto(''); setTokenPayment('cash'); }}
                   disabled={savingToken}
                   className="py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm active:scale-95 transition"
                 >
@@ -1124,23 +1301,39 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
         {/* รายการแลก token ล่าสุด — แสดงเฉพาะ active (ยังไม่ถูกเคลีย) */}
         {!showTokenForm && activeTokens.length > 0 && (
           <div className="mt-2 bg-white rounded-2xl p-3 border border-amber-100">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700 mb-2">🪙 แลก Token รอเคลีย</p>
-            <div className="space-y-1 max-h-40 overflow-auto">
-              {activeTokens.slice(0, 8).map(t => (
-                <div key={t.id} className="flex items-center justify-between bg-amber-50 rounded-lg px-2.5 py-1.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-700">฿{formatMoney(t.amount)}{t.tokenCount ? ` → ${t.tokenCount} เหรียญ` : ''}</p>
-                    <p className="text-[10px] text-slate-400">{formatDate(t.createdAt)}</p>
+            <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700 mb-2">🪙 แลก Token ล่าสุด</p>
+            <div className="space-y-1 max-h-44 overflow-auto">
+              {activeTokens.slice(0, 8).map(t => {
+                const pm = t.paymentMethod || 'cash';
+                const tCount = t.tokenCount || 0;
+                const cCount = t.coinCount || 0;
+                const breakdown = [];
+                if (tCount > 0) breakdown.push(`${tCount} Token`);
+                if (cCount > 0) breakdown.push(`${cCount} เหรียญ 10`);
+                return (
+                  <div key={t.id} className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${pm === 'transfer' ? 'bg-violet-50' : 'bg-amber-50'}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-700">฿{formatMoney(t.amount)}</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${pm === 'transfer' ? 'bg-violet-200 text-violet-800' : 'bg-emerald-200 text-emerald-800'}`}>
+                          {pm === 'transfer' ? '💳 โอน' : '💵 สด'}
+                        </span>
+                      </div>
+                      {breakdown.length > 0 && (
+                        <p className="text-[10px] text-slate-500 mt-0.5">→ {breakdown.join(' + ')}</p>
+                      )}
+                      <p className="text-[10px] text-slate-400">{formatDate(t.createdAt)}</p>
+                    </div>
+                    <button 
+                      onClick={() => onDeleteToken(t.id)} 
+                      className="ml-2 p-1.5 rounded-md text-rose-500 active:bg-rose-100"
+                      title="ลบ"
+                    >
+                      <Icon name="trash-2" className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => onDeleteToken(t.id)} 
-                    className="ml-2 p-1.5 rounded-md text-rose-500 active:bg-rose-100"
-                    title="ลบ"
-                  >
-                    <Icon name="trash-2" className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
             {activeTokens.length > 8 && (
               <p className="text-[10px] text-slate-400 mt-1 text-center">+ อีก {activeTokens.length - 8} รายการ</p>
@@ -3170,24 +3363,45 @@ function TokenExchangeReportView({ tokenExchanges, onDelete }) {
                   <p className="text-sm font-bold text-slate-900">{day.date}</p>
                   <p className="text-base font-extrabold text-amber-700">฿{formatMoney(day.total)}</p>
                 </div>
-                <p className="text-xs text-slate-500 mb-1.5">{day.count} ครั้ง • {day.tokens} เหรียญ</p>
+                <p className="text-xs text-slate-500 mb-1.5">{day.count} ครั้ง</p>
                 <div className="space-y-1">
-                  {day.items.map(t => (
-                    <div key={t.id} className={`flex items-center justify-between text-xs rounded-lg px-2 py-1.5 ${t.cleared ? 'bg-slate-50 opacity-60' : 'bg-amber-50'}`}>
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-bold ${t.cleared ? 'text-slate-500 line-through' : 'text-amber-700'}`}>
-                          ฿{formatMoney(t.amount)}{t.tokenCount ? ` → ${t.tokenCount} เหรียญ` : ''}
-                          {t.cleared && <span className="ml-2 text-[10px] text-emerald-600 not-italic font-bold">✓ เคลียแล้ว</span>}
-                        </p>
-                        <p className="text-[10px] text-slate-400">{new Date(t.createdAt).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})}</p>
+                  {day.items.map(t => {
+                    const pm = t.paymentMethod || 'cash';
+                    const tCount = t.tokenCount || 0;
+                    const cCount = t.coinCount || 0;
+                    const breakdown = [];
+                    if (tCount > 0) breakdown.push(`${tCount} Token`);
+                    if (cCount > 0) breakdown.push(`${cCount} เหรียญ 10`);
+                    return (
+                      <div key={t.id} className={`text-xs rounded-lg px-2 py-1.5 ${t.cleared ? 'bg-slate-50 opacity-60' : (pm === 'transfer' ? 'bg-violet-50' : 'bg-amber-50')}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`font-bold ${t.cleared ? 'text-slate-500 line-through' : (pm === 'transfer' ? 'text-violet-700' : 'text-amber-700')}`}>
+                                ฿{formatMoney(t.amount)}
+                              </span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${pm === 'transfer' ? 'bg-violet-200 text-violet-800' : 'bg-emerald-200 text-emerald-800'}`}>
+                                {pm === 'transfer' ? '💳 โอน' : '💵 สด'}
+                              </span>
+                              {t.cleared && <span className="text-[10px] text-emerald-600 font-bold">✓ เคลียแล้ว</span>}
+                            </div>
+                            {breakdown.length > 0 && (
+                              <p className="text-[10px] text-slate-500 mt-0.5">→ {breakdown.join(' + ')}</p>
+                            )}
+                            <p className="text-[10px] text-slate-400">{new Date(t.createdAt).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})}</p>
+                            {t.photo && (
+                              <img src={t.photo} className="mt-1.5 w-16 h-16 rounded-md object-cover border border-slate-200 cursor-pointer" onClick={() => window.open(t.photo, '_blank')} />
+                            )}
+                          </div>
+                          {!t.cleared && (
+                            <button onClick={() => onDelete(t.id)} className="ml-2 p-1 rounded-md text-rose-500 active:bg-rose-100">
+                              <Icon name="trash-2" className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      {!t.cleared && (
-                        <button onClick={() => onDelete(t.id)} className="ml-2 p-1 rounded-md text-rose-500 active:bg-rose-100">
-                          <Icon name="trash-2" className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
