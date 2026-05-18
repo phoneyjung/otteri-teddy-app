@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v29-2026-04-28';
+  window.APP_VERSION = 'v30-2026-04-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1639,7 +1639,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   };
   const breakdown = calculateBreakdown(tempOrder, config);
   const total = breakdown.total;
-  const hasAnyItem = washItems.length > 0 || dryItems.length > 0 || (detergentQty > 0) || (softenerQty > 0);
+  const hasAnyItem = washItems.length > 0 || dryItems.length > 0 || (detergentQty > 0) || (softenerQty > 0) || (foldBaskets > 0);
   const canSubmit = hasAnyItem && (!useLinePromo || linePromoPhoto);
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
@@ -1665,7 +1665,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
   const handleSubmit = () => {
     if (!hasAnyItem) {
-      alert('เลือกบริการอย่างน้อย 1 รายการ\n(เครื่องซัก / เครื่องอบ / น้ำยาซัก / น้ำยานุ่ม)');
+      alert('เลือกบริการอย่างน้อย 1 รายการ\n(เครื่องซัก / เครื่องอบ / น้ำยาซัก / น้ำยานุ่ม / ค่าพับ)');
       return;
     }
     if (useLinePromo && !linePromoPhoto) {
