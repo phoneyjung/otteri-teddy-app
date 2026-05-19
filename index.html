@@ -20919,6 +20919,104 @@ function openWalkinDetailModal(walkinId) {
           ${w.fromBooking ? `<div style="margin-top:2px;">📋 มาจากการจอง</div>` : ''}
         </div>
         
+        <!-- ⭐ r38r15uuuuuu: Comprehensive detail panel — แสดงทุก field ที่บันทึก -->
+        ${(() => {
+          const lines = [];
+          // ลำดับ + วันที่
+          if (w.bookNo) lines.push(`<div><strong>#${w.bookNo}</strong> · <span style="color:var(--text-soft);">${w.date || '—'}</span></div>`);
+          else if (w.date) lines.push(`<div>📅 ${w.date}</div>`);
+          
+          // Booking type
+          const btLabel = {
+            'single': '👤 เดี่ยว',
+            'couple': '👫 คู่',
+            'walkin': '🚶 หน้าร้าน',
+            'booking': '📅 จองล่วงหน้า',
+          };
+          if (w.bookingType && btLabel[w.bookingType]) {
+            lines.push(`<div>ประเภท: ${btLabel[w.bookingType]}${w.groupSize > 1 ? ` (${w.groupSize} คน)` : ''}</div>`);
+          }
+          
+          // Customer extras
+          if (w.memberCode) lines.push(`<div>👑 รหัสเมม: <strong>${escapeHtml(w.memberCode)}</strong></div>`);
+          if (w.skipCustomer) lines.push(`<div style="color:#f59e0b;">🚫 ลูกค้าไม่สะดวกให้ข้อมูล</div>`);
+          if (w.customerType === 'new' || w.isNewCustomer || w.newCustomer) lines.push(`<div style="color:#2563eb;">🆕 ลูกค้าใหม่</div>`);
+          
+          // Customer waiting / continuation
+          if (w.customerWaiting) {
+            lines.push(`<div style="color:#f59e0b;">⏳ ลูกค้านั่งรอ${w.notifiedAt ? ' (แจ้งแล้ว)' : ''}</div>`);
+          }
+          if (w.continuedFrom) lines.push(`<div>➕ ต่อจากรอบก่อนหน้า</div>`);
+          if (w.fromBooking || w.bookingId) lines.push(`<div>📋 มาจากการจอง${w.bookingId ? ` (ID: ${w.bookingId.slice(0,8)}...)` : ''}</div>`);
+          
+          // Pricing detail
+          if (w.basePrice) lines.push(`<div>💰 ราคาคอร์ส: <strong>฿${w.basePrice.toLocaleString()}</strong>${w.isPromo ? ' <span style="color:#dc2626; font-weight:700;">(โปร)</span>' : ''}</div>`);
+          if (w.discount > 0) {
+            let dline = `💸 ส่วนลด: −฿${w.discount.toLocaleString()}`;
+            if (w.discountReason) dline += ` (${escapeHtml(w.discountReason)})`;
+            if (w.discountCouponId) dline += ` <span style="background:#dbeafe; color:#1e40af; padding:1px 6px; border-radius:4px; font-size:10px;">คูปอง</span>`;
+            if (w.discountOverride) dline += ` <span style="background:#fee2e2; color:#991b1b; padding:1px 6px; border-radius:4px; font-size:10px;">🔓 Override</span>`;
+            lines.push(`<div style="color:#dc2626;">${dline}</div>`);
+          }
+          
+          // Payment detail
+          if (w.paymentMethod === 'split' && w.splitPayment) {
+            const sp = w.splitPayment;
+            const parts = [];
+            if (sp.cash) parts.push(`💵${sp.cash}`);
+            if (sp.transfer) parts.push(`🏦${sp.transfer}`);
+            if (sp.card) parts.push(`💳${sp.card}`);
+            lines.push(`<div>🧩 แบ่งจ่าย: ${parts.join(' · ')}</div>`);
+          }
+          if (w.cardFee > 0) lines.push(`<div>💳 ค่าบัตร: +฿${w.cardFee.toLocaleString()} (3%)</div>`);
+          
+          // Status detail
+          if (w.status === 'early' && w.earlyMinutes) {
+            lines.push(`<div style="color:#f59e0b;">⏪ จบก่อน ${w.earlyMinutes} นาที${w.earlyReason ? ` — ${escapeHtml(w.earlyReason)}` : ''}</div>`);
+          }
+          if (w.endTimeActual && w.endTimeActual !== w.endTime) {
+            lines.push(`<div>🕒 จบจริง: ${w.endTimeActual}</div>`);
+          }
+          if (w.customerArrivedAt) {
+            lines.push(`<div>🚪 ลูกค้ามาถึง: ${w.customerArrivedAt}</div>`);
+          }
+          
+          // Update history
+          if (w.updatedAt && w.updatedBy) {
+            let updStr = '✏️ แก้ไขล่าสุด: ' + escapeHtml(w.updatedBy);
+            try {
+              if (w.updatedAt?.toDate) {
+                const d = w.updatedAt.toDate();
+                updStr += ` · ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+              } else if (w.updatedAt?.seconds) {
+                const d = new Date(w.updatedAt.seconds * 1000);
+                updStr += ` · ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+              }
+            } catch(e) {}
+            lines.push(`<div>${updStr}</div>`);
+          }
+          
+          // Cancelled info
+          if (w.status === 'cancelled' && w.cancelledBy) {
+            lines.push(`<div style="color:#dc2626;">❌ ยกเลิกโดย: ${escapeHtml(w.cancelledBy)}</div>`);
+          }
+          
+          // ID for reference
+          lines.push(`<div style="color:var(--text-mute); font-size:10px; margin-top:4px;">🔗 ID: <code>${w.id.slice(0, 12)}...</code></div>`);
+          
+          if (lines.length === 0) return '';
+          return `
+            <details style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+              <summary style="cursor:pointer; font-size:12px; color:#475569; font-weight:600; user-select:none;">
+                🔍 รายละเอียดทั้งหมด (${lines.length} รายการ)
+              </summary>
+              <div style="margin-top:8px; display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--text);">
+                ${lines.join('')}
+              </div>
+            </details>
+          `;
+        })()}
+        
         <!-- Action buttons -->
         ${actionButtons ? `<div style="display:flex; gap:8px;">${actionButtons}</div>` : ''}
         
