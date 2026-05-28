@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v30-2026-04-28';
+  window.APP_VERSION = 'v31-2026-05-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -816,6 +816,11 @@ function BrandApp({ config, onChangeBrand }) {
 
   const handleCollectMoney = async (method) => {
     const uncollected = orders.filter(o => !o.collected && o.paymentMethod === method);
+    // รายการแบ่งจ่ายที่ยังไม่เก็บ — มี portion ของ method นี้
+    const splitOrders = orders.filter(o => 
+      !o.collected && o.paymentMethod === 'split' && 
+      ((method === 'cash' && (o.cashAmount || 0) > 0) || (method === 'transfer' && (o.transferAmount || 0) > 0))
+    );
     
     // ถ้าเป็นเงินสด → ตรวจ token cash ค้างด้วย (อาจมี token ค้างแม้ไม่มี order)
     let activeTokens = [];
@@ -823,27 +828,48 @@ function BrandApp({ config, onChangeBrand }) {
       activeTokens = tokenExchanges.filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
     }
     
-    if (uncollected.length === 0 && activeTokens.length === 0) {
+    if (uncollected.length === 0 && splitOrders.length === 0 && activeTokens.length === 0) {
       alert(`ไม่มีรายการ${method === 'cash' ? 'เงินสด' : 'เงินโอน'}ที่ต้องเคลียร์`);
       return;
     }
-    const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config), 0);
+    // ยอดจาก order ปกติ + ยอด portion จาก split
+    const splitPortion = splitOrders.reduce((s, o) => s + (method === 'cash' ? (o.cashAmount || 0) : (o.transferAmount || 0)), 0);
+    const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config), 0) + splitPortion;
     const methodLabel = method === 'cash' ? 'เก็บเงินสดจากแม่บ้าน' : 'เคลียร์ยอดโอน';
     
     let extraInfo = '';
+    if (splitOrders.length > 0) {
+      extraInfo += `\n\n💵💳 รวมส่วนแบ่งจ่าย: ${splitOrders.length} ใบ • ฿${formatMoney(splitPortion)}`;
+    }
     if (method === 'cash' && activeTokens.length > 0) {
       const tokenSum = activeTokens.reduce((s, t) => s + (t.amount || 0), 0);
-      extraInfo = `\n\n🪙 เงินแลก token เงินสด (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
+      extraInfo += `\n\n🪙 เงินแลก token เงินสด (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
     }
     
-    if (!confirm(`${methodLabel}?\n\n📋 รายได้ร้าน:\n   ${uncollected.length} รายการ • ฿${formatMoney(totalShould)}${extraInfo}`)) return;
+    if (!confirm(`${methodLabel}?\n\n📋 รายได้ร้าน:\n   ${uncollected.length + splitOrders.length} รายการ • ฿${formatMoney(totalShould)}${extraInfo}`)) return;
 
     try {
-      // Save collection record (เฉพาะถ้ามี order — ไม่งั้น token-only ไม่ต้องสร้าง record)
-      if (uncollected.length > 0) {
-        const round = { collectedAt: Date.now(), method, orderIds: uncollected.map(o => o.id), orderCount: uncollected.length, totalReceived: totalShould, totalShould };
+      const allOrderIds = [...uncollected.map(o => o.id), ...splitOrders.map(o => o.id)];
+      if (allOrderIds.length > 0) {
+        const round = { collectedAt: Date.now(), method, orderIds: allOrderIds, orderCount: allOrderIds.length, totalReceived: totalShould, totalShould };
         await saveCollectionToCloud(config.brand, round);
-        await batchUpdateOrders(uncollected.map(o => o.id), { collected: true, collectedAt: Date.now() });
+        
+        // order ปกติ → mark collected
+        // split order → mark collected เฉพาะ side ที่เก็บ (ใช้ flag แยก)
+        if (uncollected.length > 0) {
+          await batchUpdateOrders(uncollected.map(o => o.id), { collected: true, collectedAt: Date.now() });
+        }
+        // split: เก็บ side ใด mark flag side นั้น — ถ้าครบ 2 ฝั่งแล้วค่อย collected
+        for (const o of splitOrders) {
+          const update = { collectedAt: Date.now() };
+          if (method === 'cash') update.cashCollected = true;
+          else update.transferCollected = true;
+          // เช็คว่าอีกฝั่งเก็บแล้วหรือยัง → ถ้าครบทั้ง 2 → collected = true
+          const otherSideCollected = method === 'cash' ? o.transferCollected : o.cashCollected;
+          const otherSideAmount = method === 'cash' ? (o.transferAmount || 0) : (o.cashAmount || 0);
+          if (otherSideCollected || otherSideAmount === 0) update.collected = true;
+          await batchUpdateOrders([o.id], update);
+        }
       }
       
       // ถ้าเป็นเงินสด → mark cash-paid token exchanges ว่า cleared แล้วด้วย
@@ -1539,6 +1565,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   const [softenerQty, setSoftenerQty] = useState(editingOrder?.softenerQty || 0);
   const [foldBaskets, setFoldBaskets] = useState(editingOrder?.foldBaskets ?? (config.freeService ? 0 : 1));
   const [paymentMethod, setPaymentMethod] = useState(editingOrder?.paymentMethod || 'cash');
+  const [splitCash, setSplitCash] = useState(editingOrder?.cashAmount != null ? String(editingOrder.cashAmount) : '');
+  const [splitTransfer, setSplitTransfer] = useState(editingOrder?.transferAmount != null ? String(editingOrder.transferAmount) : '');
   const [note, setNote] = useState(editingOrder?.note || '');
   const [deliveryZone, setDeliveryZone] = useState(editingOrder?.deliveryZone || null);
   const [riderId, setRiderId] = useState(editingOrder?.riderId || null);
@@ -1678,10 +1706,23 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
     }
     
     // ป้องกันแม่บ้านกดสด/โอนผิด — ยืนยันวิธีจ่ายก่อนบันทึก
-    const payLabel = paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด';
-    const altLabel = paymentMethod === 'transfer' ? 'เงินสด' : 'โอน';
-    if (!confirm(`✅ ยืนยันการรับงาน\n\nวิธีจ่าย: ${payLabel}\nยอด: ${formatMoney(total)} บาท\n\n❓ แน่ใจนะ? (ถ้าผิดให้กดยกเลิก แล้วเปลี่ยนเป็น "${altLabel}")`)) {
-      return;
+    let splitCashNum = 0, splitTransferNum = 0;
+    if (paymentMethod === 'split') {
+      splitCashNum = parseFloat(splitCash) || 0;
+      splitTransferNum = parseFloat(splitTransfer) || 0;
+      if (splitCashNum + splitTransferNum !== total) {
+        alert(`⚠️ ยอดแบ่งจ่ายไม่ตรง\n\nเงินสด ฿${formatMoney(splitCashNum)} + โอน ฿${formatMoney(splitTransferNum)} = ฿${formatMoney(splitCashNum + splitTransferNum)}\nแต่ยอดรวม = ฿${formatMoney(total)}\n\nกรุณาแก้ให้ตรง`);
+        return;
+      }
+      if (!confirm(`✅ ยืนยันการรับงาน (แบ่งจ่าย)\n\n💵 เงินสด: ฿${formatMoney(splitCashNum)}\n💳 โอน: ฿${formatMoney(splitTransferNum)}\nรวม: ฿${formatMoney(total)}\n\n❓ แน่ใจนะ?`)) {
+        return;
+      }
+    } else {
+      const payLabel = paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด';
+      const altLabel = paymentMethod === 'transfer' ? 'เงินสด' : 'โอน';
+      if (!confirm(`✅ ยืนยันการรับงาน\n\nวิธีจ่าย: ${payLabel}\nยอด: ${formatMoney(total)} บาท\n\n❓ แน่ใจนะ? (ถ้าผิดให้กดยกเลิก แล้วเปลี่ยนเป็น "${altLabel}")`)) {
+        return;
+      }
     }
     // ถ้าเจ้าของเปิด "เลือกเวลาเอง" → ใช้เวลาที่เลือก ไม่งั้นใช้เวลาเดิม / ปัจจุบัน
     let finalCreatedAt;
@@ -1712,6 +1753,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       softenerQty: softenerQty || 0,
       foldBaskets: foldBaskets || 0,
       paymentMethod: paymentMethod || 'cash',
+      cashAmount: paymentMethod === 'split' ? splitCashNum : null,
+      transferAmount: paymentMethod === 'split' ? splitTransferNum : null,
       cashReceived: total,
       note: note.trim() || '',
       deliveryZone: deliveryZone || null,
@@ -2044,23 +2087,84 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
         <Section iconName="dollar-sign" title="การชำระเงิน">
           <div>
             <p className="text-xs font-medium text-slate-600 mb-2">วิธีชำระเงิน <span className="text-rose-500">*</span></p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setPaymentMethod('cash')} className={`p-4 rounded-2xl border-2 transition ${paymentMethod === 'cash' ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-transparent'}`}>
+            <div className="grid grid-cols-3 gap-2">
+              <button onClick={() => setPaymentMethod('cash')} className={`p-3 rounded-2xl border-2 transition ${paymentMethod === 'cash' ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-transparent'}`}>
                 <div className="flex flex-col items-center gap-1">
-                  <Icon name="banknote" className={`w-7 h-7 ${paymentMethod === 'cash' ? 'text-emerald-600' : 'text-slate-400'}`} />
-                  <span className={`font-bold text-sm ${paymentMethod === 'cash' ? 'text-emerald-700' : 'text-slate-600'}`}>เงินสด</span>
+                  <Icon name="banknote" className={`w-6 h-6 ${paymentMethod === 'cash' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                  <span className={`font-bold text-xs ${paymentMethod === 'cash' ? 'text-emerald-700' : 'text-slate-600'}`}>เงินสด</span>
                 </div>
               </button>
-              <button onClick={() => setPaymentMethod('transfer')} className={`p-4 rounded-2xl border-2 transition ${paymentMethod === 'transfer' ? 'bg-violet-50 border-violet-500' : 'bg-slate-50 border-transparent'}`}>
+              <button onClick={() => setPaymentMethod('transfer')} className={`p-3 rounded-2xl border-2 transition ${paymentMethod === 'transfer' ? 'bg-violet-50 border-violet-500' : 'bg-slate-50 border-transparent'}`}>
                 <div className="flex flex-col items-center gap-1">
-                  <Icon name="smartphone" className={`w-7 h-7 ${paymentMethod === 'transfer' ? 'text-violet-600' : 'text-slate-400'}`} />
-                  <span className={`font-bold text-sm ${paymentMethod === 'transfer' ? 'text-violet-700' : 'text-slate-600'}`}>โอน</span>
+                  <Icon name="smartphone" className={`w-6 h-6 ${paymentMethod === 'transfer' ? 'text-violet-600' : 'text-slate-400'}`} />
+                  <span className={`font-bold text-xs ${paymentMethod === 'transfer' ? 'text-violet-700' : 'text-slate-600'}`}>โอน</span>
+                </div>
+              </button>
+              <button onClick={() => setPaymentMethod('split')} className={`p-3 rounded-2xl border-2 transition ${paymentMethod === 'split' ? 'bg-amber-50 border-amber-500' : 'bg-slate-50 border-transparent'}`}>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xl">💵💳</span>
+                  <span className={`font-bold text-xs ${paymentMethod === 'split' ? 'text-amber-700' : 'text-slate-600'}`}>สด+โอน</span>
                 </div>
               </button>
             </div>
           </div>
 
-          <div className={`rounded-2xl p-4 border ${paymentMethod === 'transfer' ? 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-200' : 'bg-gradient-to-br from-sky-50 to-blue-50 border-sky-100'}`}>
+          {/* ช่องกรอกแยกเมื่อเลือก สด+โอน */}
+          {paymentMethod === 'split' && (
+            <div className="rounded-2xl p-4 border-2 border-amber-200 bg-amber-50 space-y-3">
+              <p className="text-xs font-bold text-amber-800">แบ่งจ่าย — กรอกทั้ง 2 ช่อง (รวมต้องเท่ายอด ฿{formatMoney(total)})</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-emerald-700 mb-1 block">💵 เงินสด</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={splitCash}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSplitCash(v);
+                      // auto-fill โอน = ยอดรวม - สด
+                      const cashNum = parseFloat(v) || 0;
+                      if (v !== '') setSplitTransfer(String(Math.max(0, total - cashNum)));
+                    }}
+                    placeholder="0"
+                    className="w-full px-3 py-2.5 bg-white rounded-xl border-2 border-emerald-200 focus:border-emerald-400 outline-none text-lg font-bold text-emerald-700"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-violet-700 mb-1 block">💳 โอน</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={splitTransfer}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSplitTransfer(v);
+                      const transNum = parseFloat(v) || 0;
+                      if (v !== '') setSplitCash(String(Math.max(0, total - transNum)));
+                    }}
+                    placeholder="0"
+                    className="w-full px-3 py-2.5 bg-white rounded-xl border-2 border-violet-200 focus:border-violet-400 outline-none text-lg font-bold text-violet-700"
+                  />
+                </div>
+              </div>
+              {/* แสดงสถานะรวม */}
+              {(() => {
+                const c = parseFloat(splitCash) || 0;
+                const t = parseFloat(splitTransfer) || 0;
+                const sum = c + t;
+                const match = sum === total;
+                return (
+                  <div className={`flex items-center justify-between text-sm font-bold rounded-lg px-3 py-2 ${match ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                    <span>รวม: ฿{formatMoney(sum)}</span>
+                    <span>{match ? '✓ ตรงยอด' : `${sum > total ? 'เกิน' : 'ขาด'} ฿${formatMoney(Math.abs(total - sum))}`}</span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          <div className={`rounded-2xl p-4 border ${paymentMethod === 'transfer' ? 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-200' : paymentMethod === 'split' ? 'bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200' : 'bg-gradient-to-br from-sky-50 to-blue-50 border-sky-100'}`}>
             {breakdown.totalDiscount > 0 && (
               <>
                 <div className="flex items-center justify-between mb-1">
@@ -2084,7 +2188,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             )}
             <div className="flex items-center justify-between">
               <span className="text-slate-600 text-sm font-semibold">ยอดที่ต้องเก็บ</span>
-              <span className={`text-2xl font-extrabold ${paymentMethod === 'transfer' ? 'text-violet-700' : 'text-sky-700'}`}>฿{formatMoney(total)}</span>
+              <span className={`text-2xl font-extrabold ${paymentMethod === 'transfer' ? 'text-violet-700' : paymentMethod === 'split' ? 'text-amber-700' : 'text-sky-700'}`}>฿{formatMoney(total)}</span>
             </div>
           </div>
 
@@ -2689,6 +2793,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
   
   const uncollectedCash = orders.filter(o => !o.collected && o.paymentMethod === 'cash');
   const uncollectedTransfer = orders.filter(o => !o.collected && o.paymentMethod === 'transfer');
+  // รายการแบ่งจ่าย (สด+โอน) ที่ยังไม่เก็บ
+  const uncollectedSplit = orders.filter(o => !o.collected && o.paymentMethod === 'split');
   
   // ค่าพับ (Otteri) — รายการที่มี foldBaskets > 0 และยังไม่ได้จ่ายค่าพับ
   const unpaidServiceOrders = config.foldPricePerBasket > 0
@@ -2712,8 +2818,10 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
   });
   const todayRevenue = todayOrders.reduce((s, o) => s + calculateTotal(o, config), 0);
   
-  const cashPending = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config), 0);
-  const transferPending = uncollectedTransfer.reduce((s, o) => s + calculateTotal(o, config), 0);
+  const cashPending = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config), 0)
+    + uncollectedSplit.reduce((s, o) => s + (o.cashAmount || 0), 0);
+  const transferPending = uncollectedTransfer.reduce((s, o) => s + calculateTotal(o, config), 0)
+    + uncollectedSplit.reduce((s, o) => s + (o.transferAmount || 0), 0);
 
   // เงินแลก token ที่จ่ายมาเป็นเงินสด + ยังไม่ถูกเคลีย — ต้องเก็บจากแม่บ้านด้วย
   const activeCashTokens = (tokenExchanges || []).filter(t => 
@@ -2738,6 +2846,9 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
     const totalRevenue = orders.reduce((s, o) => s + calculateTotal(o, config), 0);
     const cashOrders = orders.filter(o => o.paymentMethod === 'cash');
     const transferOrders = orders.filter(o => o.paymentMethod === 'transfer');
+    const splitOrders = orders.filter(o => o.paymentMethod === 'split');
+    const splitCashSum = splitOrders.reduce((s, o) => s + (o.cashAmount || 0), 0);
+    const splitTransferSum = splitOrders.reduce((s, o) => s + (o.transferAmount || 0), 0);
     return {
       uniqueCustomers: allCustomers.length,
       repeatCustomers,
@@ -2745,14 +2856,14 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
       totalRevenue,
       cashCount: cashOrders.length,
       transferCount: transferOrders.length,
-      cashRevenue: cashOrders.reduce((s, o) => s + calculateTotal(o, config), 0),
-      transferRevenue: transferOrders.reduce((s, o) => s + calculateTotal(o, config), 0),
+      cashRevenue: cashOrders.reduce((s, o) => s + calculateTotal(o, config), 0) + splitCashSum,
+      transferRevenue: transferOrders.reduce((s, o) => s + calculateTotal(o, config), 0) + splitTransferSum,
     };
   }, [orders, config]);
 
   let listToShow = [];
-  if (tab === 'cash') listToShow = uncollectedCash;
-  else if (tab === 'transfer') listToShow = uncollectedTransfer;
+  if (tab === 'cash') listToShow = [...uncollectedCash, ...uncollectedSplit.filter(o => (o.cashAmount || 0) > 0)];
+  else if (tab === 'transfer') listToShow = [...uncollectedTransfer, ...uncollectedSplit.filter(o => (o.transferAmount || 0) > 0)];
   else if (tab === 'all') listToShow = orders;
 
   return (
@@ -2947,8 +3058,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1 flex-wrap">
                     <p className="font-bold text-slate-900 truncate">{o.customerName}</p>
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${o.paymentMethod === 'transfer' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                      {o.paymentMethod === 'transfer' ? 'โอน' : 'สด'}
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${o.paymentMethod === 'transfer' ? 'bg-violet-100 text-violet-700' : o.paymentMethod === 'split' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {o.paymentMethod === 'transfer' ? 'โอน' : o.paymentMethod === 'split' ? `สด ฿${formatMoney(o.cashAmount||0)}+โอน ฿${formatMoney(o.transferAmount||0)}` : 'สด'}
                     </span>
                     {o.deliveryZone && <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🚚</span>}
                     {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">เคฟ</span>}
