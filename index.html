@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v31-2026-05-28';
+  window.APP_VERSION = 'v32-2026-05-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -816,11 +816,12 @@ function BrandApp({ config, onChangeBrand }) {
 
   const handleCollectMoney = async (method) => {
     const uncollected = orders.filter(o => !o.collected && o.paymentMethod === method);
-    // รายการแบ่งจ่ายที่ยังไม่เก็บ — มี portion ของ method นี้
-    const splitOrders = orders.filter(o => 
-      !o.collected && o.paymentMethod === 'split' && 
-      ((method === 'cash' && (o.cashAmount || 0) > 0) || (method === 'transfer' && (o.transferAmount || 0) > 0))
-    );
+    // รายการแบ่งจ่ายที่ยังไม่เก็บฝั่งของ method นี้
+    const splitOrders = orders.filter(o => {
+      if (o.collected || o.paymentMethod !== 'split') return false;
+      if (method === 'cash') return (o.cashAmount || 0) > 0 && !o.cashCollected;
+      return (o.transferAmount || 0) > 0 && !o.transferCollected;
+    });
     
     // ถ้าเป็นเงินสด → ตรวจ token cash ค้างด้วย (อาจมี token ค้างแม้ไม่มี order)
     let activeTokens = [];
@@ -2795,6 +2796,12 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
   const uncollectedTransfer = orders.filter(o => !o.collected && o.paymentMethod === 'transfer');
   // รายการแบ่งจ่าย (สด+โอน) ที่ยังไม่เก็บ
   const uncollectedSplit = orders.filter(o => !o.collected && o.paymentMethod === 'split');
+  // split ที่ยังไม่เก็บฝั่งสด (มียอดสด > 0 และยังไม่ถูก mark cashCollected)
+  const uncollectedSplitCash = uncollectedSplit.filter(o => (o.cashAmount || 0) > 0 && !o.cashCollected);
+  const uncollectedSplitTransfer = uncollectedSplit.filter(o => (o.transferAmount || 0) > 0 && !o.transferCollected);
+  // จำนวนรายการรวมที่ต้องเก็บ (สำหรับแต่ละการ์ด/tab)
+  const cashCount = uncollectedCash.length + uncollectedSplitCash.length;
+  const transferCount = uncollectedTransfer.length + uncollectedSplitTransfer.length;
   
   // ค่าพับ (Otteri) — รายการที่มี foldBaskets > 0 และยังไม่ได้จ่ายค่าพับ
   const unpaidServiceOrders = config.foldPricePerBasket > 0
@@ -2819,9 +2826,9 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
   const todayRevenue = todayOrders.reduce((s, o) => s + calculateTotal(o, config), 0);
   
   const cashPending = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config), 0)
-    + uncollectedSplit.reduce((s, o) => s + (o.cashAmount || 0), 0);
+    + uncollectedSplitCash.reduce((s, o) => s + (o.cashAmount || 0), 0);
   const transferPending = uncollectedTransfer.reduce((s, o) => s + calculateTotal(o, config), 0)
-    + uncollectedSplit.reduce((s, o) => s + (o.transferAmount || 0), 0);
+    + uncollectedSplitTransfer.reduce((s, o) => s + (o.transferAmount || 0), 0);
 
   // เงินแลก token ที่จ่ายมาเป็นเงินสด + ยังไม่ถูกเคลีย — ต้องเก็บจากแม่บ้านด้วย
   const activeCashTokens = (tokenExchanges || []).filter(t => 
@@ -2862,8 +2869,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
   }, [orders, config]);
 
   let listToShow = [];
-  if (tab === 'cash') listToShow = [...uncollectedCash, ...uncollectedSplit.filter(o => (o.cashAmount || 0) > 0)];
-  else if (tab === 'transfer') listToShow = [...uncollectedTransfer, ...uncollectedSplit.filter(o => (o.transferAmount || 0) > 0)];
+  if (tab === 'cash') listToShow = [...uncollectedCash, ...uncollectedSplitCash];
+  else if (tab === 'transfer') listToShow = [...uncollectedTransfer, ...uncollectedSplitTransfer];
   else if (tab === 'all') listToShow = orders;
 
   return (
@@ -2898,13 +2905,13 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
               <p className="text-white text-2xl font-extrabold">฿{formatMoney(totalCashToCollect)}</p>
               {activeCashTokenSum > 0 ? (
                 <div className="text-emerald-50 text-[10px] mt-0.5 space-y-0.5">
-                  <p>💵 ค่าซัก/อบ: ฿{formatMoney(cashPending)} ({uncollectedCash.length} ใบ)</p>
+                  <p>💵 ค่าซัก/อบ: ฿{formatMoney(cashPending)} ({cashCount} ใบ)</p>
                   <p>🪙 แลก Token: ฿{formatMoney(activeCashTokenSum)} ({activeCashTokens.length} ครั้ง)</p>
                 </div>
               ) : (
-                <p className="text-emerald-50 text-xs">{uncollectedCash.length} รายการ</p>
+                <p className="text-emerald-50 text-xs">{cashCount} รายการ{uncollectedSplitCash.length > 0 ? ` (รวมแบ่งจ่าย ${uncollectedSplitCash.length})` : ''}</p>
               )}
-              <button onClick={() => onCollect('cash')} disabled={uncollectedCash.length === 0 && activeCashTokens.length === 0} className={`mt-2 w-full text-xs font-bold rounded-lg py-1.5 transition ${(uncollectedCash.length === 0 && activeCashTokens.length === 0) ? 'bg-white bg-opacity-10 text-emerald-100 opacity-50' : 'bg-white text-emerald-700 active:scale-95'}`}>
+              <button onClick={() => onCollect('cash')} disabled={cashCount === 0 && activeCashTokens.length === 0} className={`mt-2 w-full text-xs font-bold rounded-lg py-1.5 transition ${(cashCount === 0 && activeCashTokens.length === 0) ? 'bg-white bg-opacity-10 text-emerald-100 opacity-50' : 'bg-white text-emerald-700 active:scale-95'}`}>
                 เก็บเงินแล้ว
               </button>
             </div>
@@ -2914,8 +2921,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
                 <p className="text-white text-xs font-medium">เงินโอน (เข้าแล้ว)</p>
               </div>
               <p className="text-white text-2xl font-extrabold">฿{formatMoney(transferPending)}</p>
-              <p className="text-violet-50 text-xs">{uncollectedTransfer.length} รายการ</p>
-              <button onClick={() => onCollect('transfer')} disabled={uncollectedTransfer.length === 0} className={`mt-2 w-full text-xs font-bold rounded-lg py-1.5 transition ${uncollectedTransfer.length === 0 ? 'bg-white bg-opacity-10 text-violet-100 opacity-50' : 'bg-white text-violet-700 active:scale-95'}`}>
+              <p className="text-violet-50 text-xs">{transferCount} รายการ{uncollectedSplitTransfer.length > 0 ? ` (รวมแบ่งจ่าย ${uncollectedSplitTransfer.length})` : ''}</p>
+              <button onClick={() => onCollect('transfer')} disabled={transferCount === 0} className={`mt-2 w-full text-xs font-bold rounded-lg py-1.5 transition ${transferCount === 0 ? 'bg-white bg-opacity-10 text-violet-100 opacity-50' : 'bg-white text-violet-700 active:scale-95'}`}>
                 เคลียร์ยอด
               </button>
             </div>
@@ -2947,8 +2954,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
 
       <div className="px-5 mt-5">
         <div className="bg-white rounded-2xl p-1 flex gap-1 shadow-sm overflow-x-auto">
-          <TabBtn active={tab === 'cash'} onClick={() => setTab('cash')}>💵 สด ({uncollectedCash.length})</TabBtn>
-          <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({uncollectedTransfer.length})</TabBtn>
+          <TabBtn active={tab === 'cash'} onClick={() => setTab('cash')}>💵 สด ({cashCount})</TabBtn>
+          <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({transferCount})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
           <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 แลก Token ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
