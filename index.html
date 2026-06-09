@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v32-2026-05-28';
+  window.APP_VERSION = 'v33-2026-05-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -852,7 +852,16 @@ function BrandApp({ config, onChangeBrand }) {
     try {
       const allOrderIds = [...uncollected.map(o => o.id), ...splitOrders.map(o => o.id)];
       if (allOrderIds.length > 0) {
-        const round = { collectedAt: Date.now(), method, orderIds: allOrderIds, orderCount: allOrderIds.length, totalReceived: totalShould, totalShould };
+        const round = { 
+          collectedAt: Date.now(), 
+          method, 
+          orderIds: allOrderIds, 
+          orderCount: allOrderIds.length, 
+          totalReceived: totalShould, 
+          totalShould,
+          splitCount: splitOrders.length,       // จำนวนงานแบ่งจ่ายในรอบนี้
+          splitPortion: splitPortion,            // ยอดจากส่วนแบ่งจ่าย
+        };
         await saveCollectionToCloud(config.brand, round);
         
         // order ปกติ → mark collected
@@ -1765,6 +1774,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       useLinePromo: useLinePromo || false,
       collected: editingOrder?.collected || false,
       collectedAt: editingOrder?.collectedAt || null,
+      // preserve split collected flags (กันเก็บซ้ำตอนแก้ไข)
+      cashCollected: paymentMethod === 'split' ? (editingOrder?.cashCollected || false) : null,
+      transferCollected: paymentMethod === 'split' ? (editingOrder?.transferCollected || false) : null,
     };
     onSubmit(order);
   };
@@ -4109,6 +4121,11 @@ function CollectionHistory({ collections, config }) {
           {c.totalReceived !== c.totalShould && (
             <div className={`mt-2 text-center text-xs font-semibold ${c.totalReceived > c.totalShould ? 'text-amber-700' : 'text-rose-700'}`}>
               {c.totalReceived > c.totalShould ? `เกิน ${formatMoney(c.totalReceived - c.totalShould)} บาท` : `ขาด ${formatMoney(c.totalShould - c.totalReceived)} บาท`}
+            </div>
+          )}
+          {c.splitCount > 0 && (
+            <div className="mt-2 text-center text-[11px] text-amber-700 bg-amber-50 rounded-lg py-1.5 font-semibold">
+              💵💳 มีงานแบ่งจ่าย {c.splitCount} ใบ • เก็บส่วนนี้ ฿{formatMoney(c.splitPortion)}
             </div>
           )}
         </div>
