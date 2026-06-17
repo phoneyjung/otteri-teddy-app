@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v35-2026-06-17';
+  window.APP_VERSION = 'v36-2026-06-17';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -286,7 +286,7 @@
   }
 </script>
 
-<script type="text/babel" data-presets="env,react">
+<script type="text/plain" id="app-source">
 const { useState, useEffect, useRef, useMemo } = React;
 
 const Icon = ({ name, className = "w-5 h-5", strokeWidth = 2 }) => {
@@ -4332,6 +4332,29 @@ try {
 } catch (err) {
   document.getElementById('root').innerHTML = '<div style="padding:20px;font-family:monospace;font-size:13px;color:#b91c1c;background:#fef2f2;min-height:100vh;white-space:pre-wrap;word-break:break-word">⚠️ React mount ล้มเหลว:\n\n<b>' + (err.message || err) + '</b>\n\n' + (err.stack || '') + '</div>';
 }
+</script>
+<script>
+  // Manual Babel compile — จับ error ตอน compile แสดงบนจอ
+  (function() {
+    var statusEl = document.getElementById('boot-status');
+    function showError(title, msg) {
+      document.getElementById('root').innerHTML = 
+        '<div style="padding:20px;font-family:monospace;font-size:12px;color:#b91c1c;background:#fef2f2;min-height:100vh;white-space:pre-wrap;word-break:break-word">' +
+        '⚠️ ' + title + '\n\n<b>' + msg + '</b></div>';
+      if (statusEl) statusEl.style.display = 'none';
+    }
+    try {
+      if (statusEl) statusEl.textContent = '⚙️ กำลัง compile โค้ด...';
+      var source = document.getElementById('app-source').textContent;
+      var compiled = Babel.transform(source, { presets: ['env', 'react'] }).code;
+      if (statusEl) statusEl.textContent = '⚙️ compile สำเร็จ — กำลังรัน...';
+      // รันโค้ดที่ compile แล้ว
+      var fn = new Function(compiled);
+      fn();
+    } catch (e) {
+      showError('Compile/Run Error:', (e.message || e) + '\n\n' + (e.stack || ''));
+    }
+  })();
 </script>
 </body>
 </html>
