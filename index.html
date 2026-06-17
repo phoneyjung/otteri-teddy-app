@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v34-2026-06-17';
+  window.APP_VERSION = 'v35-2026-06-17';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -83,6 +83,45 @@
 <body>
 
 <div id="root" ></div>
+<div id="boot-status" style="position:fixed;bottom:0;left:0;right:0;padding:8px;font-family:monospace;font-size:11px;background:#1e293b;color:#94a3b8;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto">⏳ กำลังโหลด...</div>
+<script>
+  // ตัวแสดงสถานะการโหลด (debug หน้าขาว) — ตรวจว่า CDN/lib ไหนโหลดไม่ได้
+  (function() {
+    var s = document.getElementById('boot-status');
+    function check() {
+      var libs = {
+        'React': typeof React !== 'undefined',
+        'ReactDOM': typeof ReactDOM !== 'undefined',
+        'Babel': typeof Babel !== 'undefined',
+        'Firebase': typeof firebase !== 'undefined',
+        'Tailwind': typeof tailwind !== 'undefined',
+        'lucide': typeof lucide !== 'undefined',
+      };
+      var lines = [];
+      var allOk = true;
+      for (var k in libs) {
+        lines.push((libs[k] ? '✅' : '❌') + ' ' + k);
+        if (!libs[k]) allOk = false;
+      }
+      s.textContent = (allOk ? '✅ libs ครบ — กำลัง compile...' : '⚠️ บาง lib โหลดไม่ได้:') + '\n' + lines.join('  ');
+      return allOk;
+    }
+    check();
+    var tries = 0;
+    var iv = setInterval(function() {
+      tries++;
+      if (check() || tries > 20) {
+        clearInterval(iv);
+        if (tries > 20) s.textContent += '\n\n⏱️ TIMEOUT — บาง lib โหลดไม่เสร็จใน 10 วิ';
+      }
+    }, 500);
+    // ซ่อน status เมื่อ React mount สำเร็จ
+    window.__hideBootStatus = function() {
+      var root = document.getElementById('root');
+      if (root && root.hasChildNodes()) s.style.display = 'none';
+    };
+  })();
+</script>
 
 <!-- Warning สำหรับ Line in-app browser -->
 <div id="line-warning" style="display:none; position:fixed; inset:0; z-index:9999; background:linear-gradient(135deg,#3B82F6,#1E40AF); color:white; padding:20px; font-family:'Noto Sans Thai',sans-serif; overflow:auto;">
@@ -4289,6 +4328,7 @@ window.addEventListener('error', function(e) {
 
 try {
   ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  setTimeout(function(){ if(window.__hideBootStatus) window.__hideBootStatus(); }, 500);
 } catch (err) {
   document.getElementById('root').innerHTML = '<div style="padding:20px;font-family:monospace;font-size:13px;color:#b91c1c;background:#fef2f2;min-height:100vh;white-space:pre-wrap;word-break:break-word">⚠️ React mount ล้มเหลว:\n\n<b>' + (err.message || err) + '</b>\n\n' + (err.stack || '') + '</div>';
 }
