@@ -28,7 +28,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v36-2026-06-17';
+  window.APP_VERSION = 'v37-2026-06-17';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -85,6 +85,18 @@
 <div id="root" ></div>
 <div id="boot-status" style="position:fixed;bottom:0;left:0;right:0;padding:8px;font-family:monospace;font-size:11px;background:#1e293b;color:#94a3b8;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto">⏳ กำลังโหลด...</div>
 <script>
+  // Global error catcher — ติดตั้งก่อน babel compile เพื่อจับ error ทุกชนิด
+  window.addEventListener('error', function(e) {
+    var root = document.getElementById('root');
+    var s = document.getElementById('boot-status');
+    if (root && !root.hasChildNodes()) {
+      root.innerHTML = '<div style="padding:20px;font-family:monospace;font-size:12px;color:#b91c1c;background:#fef2f2;min-height:100vh;white-space:pre-wrap;word-break:break-word">' +
+        '⚠️ เกิด Error:\n\n<b>' + (e.message || 'unknown') + '</b>\n\n' +
+        'ไฟล์: ' + (e.filename || '?') + '\nบรรทัด: ' + (e.lineno || '?') + ':' + (e.colno || '?') + '\n\n' +
+        (e.error && e.error.stack ? e.error.stack : '') + '</div>';
+      if (s) s.style.display = 'none';
+    }
+  });
   // ตัวแสดงสถานะการโหลด (debug หน้าขาว) — ตรวจว่า CDN/lib ไหนโหลดไม่ได้
   (function() {
     var s = document.getElementById('boot-status');
@@ -286,7 +298,7 @@
   }
 </script>
 
-<script type="text/plain" id="app-source">
+<script type="text/babel" data-presets="env,react">
 const { useState, useEffect, useRef, useMemo } = React;
 
 const Icon = ({ name, className = "w-5 h-5", strokeWidth = 2 }) => {
@@ -4332,29 +4344,6 @@ try {
 } catch (err) {
   document.getElementById('root').innerHTML = '<div style="padding:20px;font-family:monospace;font-size:13px;color:#b91c1c;background:#fef2f2;min-height:100vh;white-space:pre-wrap;word-break:break-word">⚠️ React mount ล้มเหลว:\n\n<b>' + (err.message || err) + '</b>\n\n' + (err.stack || '') + '</div>';
 }
-</script>
-<script>
-  // Manual Babel compile — จับ error ตอน compile แสดงบนจอ
-  (function() {
-    var statusEl = document.getElementById('boot-status');
-    function showError(title, msg) {
-      document.getElementById('root').innerHTML = 
-        '<div style="padding:20px;font-family:monospace;font-size:12px;color:#b91c1c;background:#fef2f2;min-height:100vh;white-space:pre-wrap;word-break:break-word">' +
-        '⚠️ ' + title + '\n\n<b>' + msg + '</b></div>';
-      if (statusEl) statusEl.style.display = 'none';
-    }
-    try {
-      if (statusEl) statusEl.textContent = '⚙️ กำลัง compile โค้ด...';
-      var source = document.getElementById('app-source').textContent;
-      var compiled = Babel.transform(source, { presets: ['env', 'react'] }).code;
-      if (statusEl) statusEl.textContent = '⚙️ compile สำเร็จ — กำลังรัน...';
-      // รันโค้ดที่ compile แล้ว
-      var fn = new Function(compiled);
-      fn();
-    } catch (e) {
-      showError('Compile/Run Error:', (e.message || e) + '\n\n' + (e.stack || ''));
-    }
-  })();
 </script>
 </body>
 </html>
