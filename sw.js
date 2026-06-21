@@ -1,7 +1,7 @@
 // Service Worker - ทำให้ทำงานออฟไลน์ได้ + cache assets
 // v4: เปลี่ยนเป็น network-first สำหรับ HTML (ให้ได้โค้ดใหม่เสมอ)
 //     และ cache-first สำหรับ assets อื่น (icon, manifest)
-const CACHE_NAME = 'plp-laundry-v35';
+const CACHE_NAME = 'plp-laundry-v37';
 const urlsToCache = [
   './manifest.json',
   './icon-192.png',
@@ -32,10 +32,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
-  // อย่า cache Firebase/Firestore requests (ต้อง live)
+  // อย่า cache external (Firebase, Leaflet CDN, แผนที่ tiles, OSRM, proxy) — ปล่อยผ่าน
   if (url.includes('firestore.googleapis.com') ||
       url.includes('firebase') ||
-      url.includes('googleapis.com')) {
+      url.includes('googleapis.com') ||
+      url.includes('unpkg.com') ||
+      url.includes('tile.openstreetmap.org') ||
+      url.includes('router.project-osrm.org') ||
+      url.includes('allorigins.win') ||
+      url.includes('codetabs.com') ||
+      url.includes('cors.lol')) {
     return; // ปล่อยให้ browser handle เอง
   }
 
