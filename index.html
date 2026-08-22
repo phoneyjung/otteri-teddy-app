@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v43-2026-06-21';
+  window.APP_VERSION = 'v44-2026-08-22';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -394,7 +394,6 @@ const TEDDY2_LOGO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYE
 const TEDDY2_CONFIG = {
   ...TEDDY_CONFIG,
   brand: 'teddy2',
-  linePromoDiscount: 50, // Teddy 2 ลดค่าซัก 50฿ (override จาก Teddy = 40)
   name: 'Teddy 2',
   subtitle: 'Wash & Dry • ม.ศิลปากร',
   logo: TEDDY2_LOGO,
@@ -3336,6 +3335,14 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
     return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
   });
   const todayRevenue = todayOrders.reduce((s, o) => s + calculateTotal(o, config), 0);
+
+  // ส่วนลด — วันนี้ / เดือนนี้ / ทั้งหมด
+  const startOfThisMonth = (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1).getTime(); })();
+  const todayDiscount = todayOrders.reduce((s, o) => s + calculateBreakdown(o, config).totalDiscount, 0);
+  const monthDiscount = orders
+    .filter(o => o.createdAt >= startOfThisMonth)
+    .reduce((s, o) => s + calculateBreakdown(o, config).totalDiscount, 0);
+  const allDiscount = orders.reduce((s, o) => s + calculateBreakdown(o, config).totalDiscount, 0);
   
   const cashPending = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config), 0)
     + uncollectedSplitCash.reduce((s, o) => s + (o.cashAmount || 0), 0);
@@ -3452,6 +3459,28 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
               <p className="text-sky-200 text-xs">฿{formatMoney(stats.totalRevenue)}</p>
             </div>
           </div>
+
+          {/* สรุปส่วนลด */}
+          <button onClick={() => setTab('discount')} className="w-full mt-2 bg-rose-500 bg-opacity-20 backdrop-blur-sm rounded-xl p-3 border border-rose-300 border-opacity-30 active:scale-95 transition text-left">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-rose-100 text-xs font-bold">🎫 ส่วนลดที่ให้ไป</p>
+              <span className="text-rose-200 text-[10px]">ดูรายละเอียด ›</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <p className="text-rose-200 text-[10px]">วันนี้</p>
+                <p className="text-white font-bold text-sm">฿{formatMoney(todayDiscount)}</p>
+              </div>
+              <div className="border-l border-white border-opacity-20 pl-2">
+                <p className="text-rose-200 text-[10px]">เดือนนี้</p>
+                <p className="text-white font-bold text-sm">฿{formatMoney(monthDiscount)}</p>
+              </div>
+              <div className="border-l border-white border-opacity-20 pl-2">
+                <p className="text-rose-200 text-[10px]">ทั้งหมด</p>
+                <p className="text-white font-bold text-sm">฿{formatMoney(allDiscount)}</p>
+              </div>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -3473,6 +3502,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
+          <TabBtn active={tab === 'discount'} onClick={() => setTab('discount')}>🎫 ส่วนลด</TabBtn>
           <TabBtn active={tab === 'topup'} onClick={() => setTab('topup')}>⏱️ หยอดเพิ่ม</TabBtn>
           {config.hasKev && <TabBtn active={tab === 'kev'} onClick={() => setTab('kev')}>👨‍💼 เคฟ</TabBtn>}
           <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>ประวัติ</TabBtn>
@@ -3503,6 +3533,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
       <div className="px-5 py-4 pb-8">
         {tab === 'stats' ? (
           <StatsView stats={stats} config={config} onResetAll={onResetAll} />
+        ) : tab === 'discount' ? (
+          <DiscountReportView orders={orders} config={config} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'token' ? (
@@ -4380,6 +4412,246 @@ function DeliveryReportView({ orders, config, onPay }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ รายงานส่วนลด ============
+function DiscountReportView({ orders, config }) {
+  const [period, setPeriod] = useState('today');
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfWeek = (() => { const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0,0,0,0); return d.getTime(); })();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  const inPeriod = (o) => {
+    if (period === 'today') return o.createdAt >= startOfToday;
+    if (period === 'week') return o.createdAt >= startOfWeek;
+    if (period === 'month') return o.createdAt >= startOfMonth;
+    return true;
+  };
+
+  const data = useMemo(() => {
+    // ทุกงานที่มีส่วนลดในช่วงที่เลือก
+    const rows = [];
+    orders.filter(inPeriod).forEach(o => {
+      const b = calculateBreakdown(o, config);
+      if (b.totalDiscount > 0) {
+        rows.push({ order: o, b });
+      }
+    });
+
+    const totalDiscount = rows.reduce((s, r) => s + r.b.totalDiscount, 0);
+    const promoSum = rows.reduce((s, r) => s + r.b.promoDiscount, 0);
+    const lineSum = rows.reduce((s, r) => s + r.b.lineDiscount, 0);
+    const totalRevenue = orders.filter(inPeriod).reduce((s, o) => s + calculateTotal(o, config), 0);
+
+    // แยกตามประเภทโปร
+    const typeMap = new Map();
+    const addType = (key, label, emoji, amount) => {
+      if (amount <= 0) return;
+      if (!typeMap.has(key)) typeMap.set(key, { key, label, emoji, amount: 0, count: 0 });
+      const e = typeMap.get(key);
+      e.amount += amount;
+      e.count += 1;
+    };
+    rows.forEach(r => {
+      if (r.b.promoDiscount > 0 && r.b.promo.type) {
+        const t = r.b.promo.type;
+        const label = t === 'wednesday_midnight' ? 'พุธ + ดึกสุดคุ้ม' : t === 'wednesday' ? 'พุธสุดคุ้ม' : 'ดึกสุดคุ้ม';
+        const emoji = t === 'wednesday_midnight' ? '🐻🌙' : t === 'wednesday' ? '🐻' : '🌙';
+        addType(t, label, emoji, r.b.promoDiscount);
+      }
+      if (r.b.lineDiscount > 0) addType('line', 'ส่วนลดแอดไลน์', '💚', r.b.lineDiscount);
+    });
+    const byType = Array.from(typeMap.values()).sort((a, b2) => b2.amount - a.amount);
+
+    // แยกรายวัน
+    const dayMap = new Map();
+    rows.forEach(r => {
+      const d = new Date(r.order.createdAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      if (!dayMap.has(key)) dayMap.set(key, { key, ts: new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(), amount: 0, count: 0 });
+      const e = dayMap.get(key);
+      e.amount += r.b.totalDiscount;
+      e.count += 1;
+    });
+    const byDay = Array.from(dayMap.values()).sort((a, b2) => b2.ts - a.ts);
+
+    // แยกรายเดือน
+    const monthMap = new Map();
+    rows.forEach(r => {
+      const d = new Date(r.order.createdAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!monthMap.has(key)) monthMap.set(key, { key, ts: new Date(d.getFullYear(), d.getMonth(), 1).getTime(), amount: 0, count: 0 });
+      const e = monthMap.get(key);
+      e.amount += r.b.totalDiscount;
+      e.count += 1;
+    });
+    const byMonth = Array.from(monthMap.values()).sort((a, b2) => b2.ts - a.ts);
+
+    return { rows, totalDiscount, promoSum, lineSum, totalRevenue, byType, byDay, byMonth };
+  }, [orders, config, period]);
+
+  const periodLabels = { today: 'วันนี้', week: '7 วันล่าสุด', month: 'เดือนนี้', all: 'ทั้งหมด' };
+  const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const fmtDay = (ts) => {
+    const d = new Date(ts);
+    return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${d.getFullYear() + 543 - 2500}`;
+  };
+  const fmtMonth = (ts) => {
+    const d = new Date(ts);
+    return `${THAI_MONTHS[d.getMonth()]} ${d.getFullYear() + 543 - 2500}`;
+  };
+
+  // % ส่วนลดเทียบยอดขาย
+  const grossSales = data.totalRevenue + data.totalDiscount;
+  const discountPct = grossSales > 0 ? (data.totalDiscount / grossSales * 100) : 0;
+
+  return (
+    <div className="space-y-3">
+      {/* เลือกช่วงเวลา */}
+      <div className="bg-white rounded-2xl p-1 flex gap-1 shadow-sm">
+        <TabBtn active={period === 'today'} onClick={() => setPeriod('today')}>วันนี้</TabBtn>
+        <TabBtn active={period === 'week'} onClick={() => setPeriod('week')}>7 วัน</TabBtn>
+        <TabBtn active={period === 'month'} onClick={() => setPeriod('month')}>เดือนนี้</TabBtn>
+        <TabBtn active={period === 'all'} onClick={() => setPeriod('all')}>ทั้งหมด</TabBtn>
+      </div>
+
+      {/* สรุปรวม */}
+      <div className="bg-gradient-to-br from-rose-400 to-rose-600 rounded-2xl p-5 text-white shadow-lg">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-2xl">🎫</span>
+          <p className="text-rose-50 text-sm font-bold">ส่วนลดรวม • {periodLabels[period]}</p>
+        </div>
+        <p className="text-3xl font-extrabold">฿{formatMoney(data.totalDiscount)}</p>
+        <div className="flex gap-4 mt-3 pt-3 border-t border-white border-opacity-25">
+          <div>
+            <p className="text-rose-100 text-xs">จำนวนงาน</p>
+            <p className="font-bold">{data.rows.length} ใบ</p>
+          </div>
+          <div className="border-l border-white border-opacity-30 pl-4">
+            <p className="text-rose-100 text-xs">คิดเป็น</p>
+            <p className="font-bold">{discountPct.toFixed(1)}%</p>
+          </div>
+          <div className="border-l border-white border-opacity-30 pl-4">
+            <p className="text-rose-100 text-xs">ยอดก่อนลด</p>
+            <p className="font-bold">฿{formatMoney(grossSales)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Empty */}
+      {data.rows.length === 0 && (
+        <div className="bg-white rounded-2xl p-8 text-center">
+          <div className="w-14 h-14 mx-auto rounded-full bg-slate-100 flex items-center justify-center mb-2">
+            <span className="text-2xl">🎫</span>
+          </div>
+          <p className="text-slate-600 text-sm">ยังไม่มีการใช้ส่วนลดใน{periodLabels[period]}</p>
+        </div>
+      )}
+
+      {/* แยกตามประเภท */}
+      {data.byType.length > 0 && (
+        <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <p className="font-bold text-slate-900 text-sm">📌 แยกตามประเภทส่วนลด</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {data.byType.map(t => (
+              <div key={t.key} className="px-4 py-3 flex items-center gap-3">
+                <span className="text-xl">{t.emoji}</span>
+                <div className="flex-1">
+                  <p className="font-bold text-slate-900 text-sm">{t.label}</p>
+                  <p className="text-xs text-slate-400">{t.count} ใบ</p>
+                </div>
+                <p className="font-extrabold text-rose-600">฿{formatMoney(t.amount)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="px-4 py-2 bg-slate-50 flex justify-between text-xs">
+            <span className="text-slate-500">โปรร้าน ฿{formatMoney(data.promoSum)} • แอดไลน์ ฿{formatMoney(data.lineSum)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* แยกรายวัน */}
+      {data.byDay.length > 0 && (
+        <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <p className="font-bold text-slate-900 text-sm">📅 แยกรายวัน</p>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+            {data.byDay.map(d => (
+              <div key={d.key} className="px-4 py-2.5 flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="font-bold text-slate-800 text-sm">{fmtDay(d.ts)}</p>
+                  <p className="text-xs text-slate-400">{d.count} ใบ</p>
+                </div>
+                <p className="font-bold text-rose-600">฿{formatMoney(d.amount)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* แยกรายเดือน */}
+      {data.byMonth.length > 0 && (
+        <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <p className="font-bold text-slate-900 text-sm">🗓️ แยกรายเดือน</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {data.byMonth.map(m => (
+              <div key={m.key} className="px-4 py-2.5 flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="font-bold text-slate-800 text-sm">{fmtMonth(m.ts)}</p>
+                  <p className="text-xs text-slate-400">{m.count} ใบ</p>
+                </div>
+                <p className="font-bold text-rose-600">฿{formatMoney(m.amount)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* รายการที่ใช้ส่วนลด */}
+      {data.rows.length > 0 && (
+        <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <p className="font-bold text-slate-900 text-sm">🧾 รายการที่ใช้ส่วนลด ({data.rows.length})</p>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+            {data.rows.sort((a, b2) => b2.order.createdAt - a.order.createdAt).map(r => (
+              <div key={r.order.id} className="px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-900 text-sm truncate">{r.order.customerName || 'หน้าร้าน'}</p>
+                    <p className="text-xs text-slate-400">{new Date(r.order.createdAt).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {r.b.promoDiscount > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                          {r.b.promo.shortLabel} -฿{formatMoney(r.b.promoDiscount)}
+                        </span>
+                      )}
+                      {r.b.lineDiscount > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
+                          แอดไลน์ -฿{formatMoney(r.b.lineDiscount)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-extrabold text-rose-600">-฿{formatMoney(r.b.totalDiscount)}</p>
+                    <p className="text-xs text-slate-400">จ่าย ฿{formatMoney(r.b.total)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
