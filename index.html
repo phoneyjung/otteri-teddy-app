@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v53-2026-08-22';
+  window.APP_VERSION = 'v54-2026-08-22';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -3285,6 +3285,7 @@ function ReceiptView({ config, order, onBack }) {
   const jobTicketRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const [showJobTicket, setShowJobTicket] = useState(false);
+  const [ticketPreview, setTicketPreview] = useState(''); // ภาพจริงที่จะพิมพ์ (ใช้แสดงพรีวิว)
   const breakdown = calculateBreakdown(order, config);
   const total = breakdown.total;
 
@@ -3340,13 +3341,23 @@ function ReceiptView({ config, order, onBack }) {
 
   // ===== ใบงาน 80mm (thermal) =====
   const captureJobTicket = async () => {
-    // ต้องแสดง ticket ก่อน render เป็นรูป
-    setShowJobTicket(true);
-    await new Promise(r => setTimeout(r, 120)); // รอ DOM แสดง
-    // ตัวใบเป็น 576px (font ใหญ่ ชัด) แต่ย่อ output เป็น 384px — ความกว้างที่เครื่องนี้ถนัด ไม่หมุนภาพเอง
-    const canvas = await html2canvas(jobTicketRef.current, { backgroundColor: '#ffffff', scale: 384/576, useCORS: true, width: 576 });
+    // จับภาพจากโหนดสะอาด (ไม่มี transform) — ได้ภาพแนวตั้ง 576px ตรงเป๊ะกับหัวพิมพ์ 80mm
+    const canvas = await html2canvas(jobTicketRef.current, { backgroundColor: '#ffffff', scale: 1, useCORS: true, width: 576 });
     return canvas;
   };
+
+  // สร้างภาพพรีวิวเมื่อเปิดใบงาน — พรีวิวนี้คือภาพเดียวกับที่ส่งพิมพ์ 100%
+  useEffect(() => {
+    if (!showJobTicket) { setTicketPreview(''); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const canvas = await captureJobTicket();
+        if (!cancelled) setTicketPreview(canvas.toDataURL('image/png'));
+      } catch (e) { console.error('preview error', e); }
+    }, 100);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [showJobTicket]);
 
   const handleSaveJobTicket = async () => {
     setSaving(true);
@@ -3611,8 +3622,9 @@ function ReceiptView({ config, order, onBack }) {
       {showJobTicket && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-60 flex flex-col items-center justify-start overflow-y-auto py-6 px-4" onClick={() => !saving && setShowJobTicket(false)}>
           <div className="w-full max-w-[340px]" onClick={(e) => e.stopPropagation()}>
-            {/* ใบงานจริง (จับภาพจากตรงนี้) */}
-            <div ref={jobTicketRef} style={{ width: '576px', transform: 'scale(0.5)', transformOrigin: 'top center', marginBottom: '-50%', background: '#fff', padding: '20px 28px', fontFamily: '"Noto Sans Thai", sans-serif', color: '#000' }}>
+            {/* โหนดจับภาพจริง — ซ่อนนอกจอ ไม่มี transform ใดๆ ภาพจึงตรงเป๊ะ */}
+            <div style={{ position: 'fixed', left: '-10000px', top: '0px' }} aria-hidden="true">
+            <div ref={jobTicketRef} style={{ width: '576px', background: '#fff', padding: '20px 28px', boxSizing: 'border-box', fontFamily: '"Noto Sans Thai", sans-serif', color: '#000' }}>
               {/* หัว */}
               <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1.1 }}>{config.brand === 'otteri' ? '🦦' : '🐻'} {config.name}</div>
@@ -3706,6 +3718,14 @@ function ReceiptView({ config, order, onBack }) {
                 {config.subtitle}<br/>ขอบคุณที่ใช้บริการ 🙏
               </div>
             </div>
+            </div>
+
+            {/* พรีวิว = ภาพจริงที่จะพิมพ์ */}
+            {ticketPreview ? (
+              <img src={ticketPreview} alt="ใบงาน" className="w-full rounded-xl bg-white shadow-lg" />
+            ) : (
+              <div className="bg-white rounded-xl py-16 text-center text-slate-400 text-sm">⏳ กำลังสร้างใบงาน...</div>
+            )}
 
             {/* ปุ่มควบคุม modal */}
             <div className="bg-white rounded-2xl p-3 mt-2">
