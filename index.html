@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v46-2026-08-22';
+  window.APP_VERSION = 'v48-2026-08-22';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -993,6 +993,129 @@ function BrandSelector({ onSelect, onOpenDelivery }) {
   );
 }
 
+// ============ ระบบ Avatar แม่บ้าน (SVG ประกอบเอง) ============
+// สีผิว 5 เฉด
+const SKIN_TONES = ['#F8D9B5', '#F1C27D', '#E0A96D', '#C68642', '#8D5524'];
+// สีผม 5 เฉด
+const HAIR_COLORS = ['#2B1B12', '#4E342E', '#8D6E63', '#C69C6D', '#D65B3A'];
+// ทรงผม 5 แบบ (index 0-4) — จะวาดต่างกันใน component
+// เพศ: 'f' (หญิง) / 'm' (ชาย)
+
+function StaffAvatar({ avatar, size = 48 }) {
+  const a = avatar || {};
+  const skin = SKIN_TONES[a.skin ?? 0];
+  const hair = HAIR_COLORS[a.hairColor ?? 0];
+  const hairStyle = a.hair ?? 0;
+  const sex = a.sex || 'f';
+
+  // ทรงผม 5 แบบ (path วาดทับหัว)
+  const hairPaths = [
+    // 0: ผมสั้นแนบหัว
+    <path key="h0" d="M14 28 Q14 12 32 12 Q50 12 50 28 L50 24 Q50 16 32 16 Q14 16 14 24 Z" fill={hair} />,
+    // 1: ผมยาวสองข้าง
+    <g key="h1"><path d="M13 30 Q13 11 32 11 Q51 11 51 30 L51 22 Q51 15 32 15 Q13 15 13 22 Z" fill={hair} /><path d="M13 26 Q11 40 15 46 L19 44 Q16 36 17 28 Z" fill={hair} /><path d="M51 26 Q53 40 49 46 L45 44 Q48 36 47 28 Z" fill={hair} /></g>,
+    // 2: ผมม้าหน้าตรง (bob)
+    <path key="h2" d="M12 32 Q12 10 32 10 Q52 10 52 32 L52 20 Q52 14 32 14 Q12 14 12 20 Z M12 20 Q10 30 13 38 L17 37 Q14 28 15 20 Z M52 20 Q54 30 51 38 L47 37 Q50 28 49 20 Z" fill={hair} />,
+    // 3: มวยผม (bun)
+    <g key="h3"><circle cx="32" cy="9" r="5" fill={hair} /><path d="M14 28 Q14 13 32 13 Q50 13 50 28 L50 23 Q50 17 32 17 Q14 17 14 23 Z" fill={hair} /></g>,
+    // 4: ผมหยิก/ฟู
+    <g key="h4"><circle cx="20" cy="18" r="7" fill={hair} /><circle cx="32" cy="13" r="8" fill={hair} /><circle cx="44" cy="18" r="7" fill={hair} /><circle cx="15" cy="26" r="5" fill={hair} /><circle cx="49" cy="26" r="5" fill={hair} /></g>,
+  ];
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" style={{ display: 'block' }}>
+      {/* คอ */}
+      <rect x="27" y="42" width="10" height="10" rx="3" fill={skin} />
+      {/* หน้า */}
+      <ellipse cx="32" cy="30" rx="16" ry="17" fill={skin} />
+      {/* หู */}
+      <circle cx="16" cy="31" r="3" fill={skin} />
+      <circle cx="48" cy="31" r="3" fill={skin} />
+      {/* ผม (วาดหลังหน้า) */}
+      {hairPaths[hairStyle]}
+      {/* ตา */}
+      <ellipse cx="25" cy="30" rx="2" ry="2.6" fill="#3A2A20" />
+      <ellipse cx="39" cy="30" rx="2" ry="2.6" fill="#3A2A20" />
+      {/* คิ้ว */}
+      <rect x="22" y="24.5" width="6" height="1.6" rx="0.8" fill={hair} />
+      <rect x="36" y="24.5" width="6" height="1.6" rx="0.8" fill={hair} />
+      {/* จมูก */}
+      <path d="M32 32 L30.5 36 Q32 37 33.5 36 Z" fill={skin} stroke="#00000015" strokeWidth="0.5" />
+      {/* ปาก */}
+      <path d="M28 39 Q32 42 36 39" stroke="#B5566B" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+      {/* ชาย: มีหนวดบางๆ / หญิง: ต่างหู */}
+      {sex === 'm'
+        ? <path d="M27 40 Q32 41.5 37 40" stroke={hair} strokeWidth="1" fill="none" opacity="0.5" />
+        : <g><circle cx="16" cy="35" r="1.6" fill="#F5C542" /><circle cx="48" cy="35" r="1.6" fill="#F5C542" /></g>}
+    </svg>
+  );
+}
+
+// ตัวเลือก avatar (ใช้ตอนเพิ่ม/แก้แม่บ้าน)
+function AvatarPicker({ value, onChange }) {
+  const a = value || { skin: 0, hair: 0, hairColor: 0, sex: 'f' };
+  const set = (patch) => onChange({ ...a, ...patch });
+  const Chip = ({ active, children, onClick }) => (
+    <button onClick={onClick} className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition active:scale-90 ${active ? 'border-slate-800 scale-110' : 'border-transparent'}`}>{children}</button>
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* พรีวิว */}
+      <div className="flex justify-center">
+        <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center">
+          <StaffAvatar avatar={a} size={64} />
+        </div>
+      </div>
+
+      {/* เพศ */}
+      <div>
+        <p className="text-xs font-bold text-slate-500 mb-1">เพศ</p>
+        <div className="flex gap-2">
+          <button onClick={() => set({ sex: 'f' })} className={`flex-1 py-1.5 rounded-lg text-sm font-bold transition ${a.sex === 'f' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>หญิง</button>
+          <button onClick={() => set({ sex: 'm' })} className={`flex-1 py-1.5 rounded-lg text-sm font-bold transition ${a.sex === 'm' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>ชาย</button>
+        </div>
+      </div>
+
+      {/* สีผิว */}
+      <div>
+        <p className="text-xs font-bold text-slate-500 mb-1">สีผิว</p>
+        <div className="flex gap-1.5 flex-wrap">
+          {SKIN_TONES.map((c, i) => (
+            <Chip key={i} active={a.skin === i} onClick={() => set({ skin: i })}>
+              <span className="w-6 h-6 rounded-full" style={{ background: c }} />
+            </Chip>
+          ))}
+        </div>
+      </div>
+
+      {/* ทรงผม */}
+      <div>
+        <p className="text-xs font-bold text-slate-500 mb-1">ทรงผม</p>
+        <div className="flex gap-1.5 flex-wrap">
+          {[0,1,2,3,4].map(i => (
+            <button key={i} onClick={() => set({ hair: i })} className={`w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center border-2 transition active:scale-90 ${a.hair === i ? 'border-slate-800' : 'border-transparent'}`}>
+              <StaffAvatar avatar={{ ...a, hair: i }} size={34} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* สีผม */}
+      <div>
+        <p className="text-xs font-bold text-slate-500 mb-1">สีผม</p>
+        <div className="flex gap-1.5 flex-wrap">
+          {HAIR_COLORS.map((c, i) => (
+            <Chip key={i} active={a.hairColor === i} onClick={() => set({ hairColor: i })}>
+              <span className="w-6 h-6 rounded-full" style={{ background: c }} />
+            </Chip>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============ หน้า Login แม่บ้าน (เฟส 1) ============
 function StaffLoginView({ config, staffList, onLogin }) {
   const [step, setStep] = useState('pick'); // pick | pin
@@ -1002,6 +1125,11 @@ function StaffLoginView({ config, staffList, onLogin }) {
   const [manageMode, setManageMode] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPin, setNewPin] = useState('');
+  const [newAvatar, setNewAvatar] = useState({ skin: 0, hair: 0, hairColor: 0, sex: 'f' });
+  const [editingStaffId, setEditingStaffId] = useState(null); // id ของคนที่กำลังแก้ไข
+  const [editName, setEditName] = useState('');
+  const [editPin, setEditPin] = useState('');
+  const [editAvatar, setEditAvatar] = useState({ skin: 0, hair: 0, hairColor: 0, sex: 'f' });
 
   const activeStaff = staffList.filter(s => s.active !== false);
 
@@ -1046,9 +1174,10 @@ function StaffLoginView({ config, staffList, onLogin }) {
     if (!name) { alert('กรุณาใส่ชื่อ'); return; }
     if (!/^\d{4}$/.test(newPin)) { alert('PIN ต้องเป็นตัวเลข 4 หลัก'); return; }
     try {
-      await saveStaffToCloud(config.brand, { name, pin: newPin, active: true, createdAt: Date.now() });
+      await saveStaffToCloud(config.brand, { name, pin: newPin, avatar: newAvatar, active: true, createdAt: Date.now() });
       setNewName('');
       setNewPin('');
+      setNewAvatar({ skin: 0, hair: 0, hairColor: 0, sex: 'f' });
       alert('เพิ่มแม่บ้าน "' + name + '" แล้ว');
     } catch (e) {
       alert('เพิ่มไม่สำเร็จ: ' + e.message);
@@ -1060,6 +1189,31 @@ function StaffLoginView({ config, staffList, onLogin }) {
       await updateStaffInCloud(staff.id, { active: staff.active === false });
     } catch (e) {
       alert('อัปเดตไม่สำเร็จ: ' + e.message);
+    }
+  };
+
+  // เริ่มแก้ไข — โหลดข้อมูลเดิมเข้าฟอร์ม
+  const handleStartEdit = (staff) => {
+    setEditingStaffId(staff.id);
+    setEditName(staff.name || '');
+    setEditPin(staff.pin || '');
+    setEditAvatar(staff.avatar || { skin: 0, hair: 0, hairColor: 0, sex: 'f' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingStaffId(null);
+  };
+
+  const handleSaveEdit = async () => {
+    const name = editName.trim();
+    if (!name) { alert('กรุณาใส่ชื่อ'); return; }
+    if (!/^\d{4}$/.test(editPin)) { alert('PIN ต้องเป็นตัวเลข 4 หลัก'); return; }
+    try {
+      await updateStaffInCloud(editingStaffId, { name, pin: editPin, avatar: editAvatar });
+      setEditingStaffId(null);
+      alert('แก้ไข "' + name + '" แล้ว');
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + e.message);
     }
   };
 
@@ -1102,8 +1256,12 @@ function StaffLoginView({ config, staffList, onLogin }) {
                 onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 placeholder="PIN 4 หลัก"
                 inputMode="numeric"
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm mb-2 focus:outline-none focus:border-teal-400"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm mb-3 focus:outline-none focus:border-teal-400"
               />
+              {/* เลือกรูป avatar */}
+              <div className="bg-white rounded-xl p-3 mb-2 border border-slate-100">
+                <AvatarPicker value={newAvatar} onChange={setNewAvatar} />
+              </div>
               <button onClick={handleAddStaff} className="w-full py-2 rounded-xl text-white font-bold text-sm active:scale-95 transition" style={{ background: config.gradient }}>
                 เพิ่ม
               </button>
@@ -1115,19 +1273,54 @@ function StaffLoginView({ config, staffList, onLogin }) {
                 <p className="text-center text-slate-400 text-sm py-4">ยังไม่มีแม่บ้าน — เพิ่มด้านบน</p>
               )}
               {staffList.map(s => (
-                <div key={s.id} className="flex items-center gap-2 bg-white border border-slate-100 rounded-xl px-3 py-2">
-                  <span className="text-xl">🧕</span>
-                  <div className="flex-1">
-                    <p className="font-bold text-slate-800 text-sm">{s.name}</p>
-                    <p className="text-xs text-slate-400">PIN: {s.pin}</p>
+                editingStaffId === s.id ? (
+                  /* ===== ฟอร์มแก้ไข inline ===== */
+                  <div key={s.id} className="bg-teal-50 border-2 border-teal-300 rounded-xl p-3">
+                    <p className="text-xs font-bold text-teal-700 mb-2">✏️ แก้ไข {s.name}</p>
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="ชื่อแม่บ้าน"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm mb-2 focus:outline-none focus:border-teal-400"
+                    />
+                    <input
+                      value={editPin}
+                      onChange={(e) => setEditPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      placeholder="PIN 4 หลัก"
+                      inputMode="numeric"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm mb-3 focus:outline-none focus:border-teal-400"
+                    />
+                    <div className="bg-white rounded-xl p-3 mb-2 border border-slate-100">
+                      <AvatarPicker value={editAvatar} onChange={setEditAvatar} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={handleCancelEdit} className="py-2 rounded-xl font-bold text-sm bg-slate-100 text-slate-600 active:scale-95 transition">ยกเลิก</button>
+                      <button onClick={handleSaveEdit} className="py-2 rounded-xl font-bold text-sm text-white active:scale-95 transition" style={{ background: config.gradient }}>บันทึก</button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleToggleActive(s)}
-                    className={`text-xs font-bold px-2.5 py-1 rounded-lg ${s.active === false ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}`}
-                  >
-                    {s.active === false ? 'ปิดอยู่' : 'เปิดอยู่'}
-                  </button>
-                </div>
+                ) : (
+                  <div key={s.id} className="flex items-center gap-2 bg-white border border-slate-100 rounded-xl px-3 py-2">
+                    <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      <StaffAvatar avatar={s.avatar} size={36} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-800 text-sm truncate">{s.name}</p>
+                      <p className="text-xs text-slate-400">PIN: {s.pin}</p>
+                    </div>
+                    <button
+                      onClick={() => handleStartEdit(s)}
+                      className="text-xs font-bold px-2.5 py-1 rounded-lg bg-sky-100 text-sky-700 active:scale-95 transition"
+                    >
+                      ✏️ แก้
+                    </button>
+                    <button
+                      onClick={() => handleToggleActive(s)}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-lg ${s.active === false ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}`}
+                    >
+                      {s.active === false ? 'ปิด' : 'เปิด'}
+                    </button>
+                  </div>
+                )
               ))}
             </div>
           </div>
@@ -1152,7 +1345,9 @@ function StaffLoginView({ config, staffList, onLogin }) {
                     onClick={() => handlePickStaff(s)}
                     className="bg-slate-50 hover:bg-slate-100 border border-slate-100 rounded-2xl p-4 flex flex-col items-center gap-1 active:scale-95 transition"
                   >
-                    <span className="text-3xl">🧕</span>
+                    <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center overflow-hidden shadow-sm">
+                      <StaffAvatar avatar={s.avatar} size={52} />
+                    </div>
                     <span className="font-bold text-slate-800 text-sm">{s.name}</span>
                   </button>
                 ))}
@@ -1173,7 +1368,9 @@ function StaffLoginView({ config, staffList, onLogin }) {
           <div className="bg-white rounded-3xl p-5 shadow-2xl">
             <button onClick={() => setStep('pick')} className="text-sm text-slate-400 font-bold mb-2">‹ กลับ</button>
             <div className="flex flex-col items-center mb-4">
-              <span className="text-4xl mb-1">🧕</span>
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden mb-1 shadow-sm">
+                <StaffAvatar avatar={selectedStaff?.avatar} size={60} />
+              </div>
               <h2 className="font-extrabold text-slate-900">{selectedStaff?.name}</h2>
               <p className="text-xs text-slate-400">ใส่ PIN 4 หลัก</p>
             </div>
@@ -1273,6 +1470,7 @@ function BrandApp({ config, onChangeBrand }) {
       if (currentStaff && !currentStaff.isOwnerLogin) {
         orderWithoutId.staffId = currentStaff.id;
         orderWithoutId.staffName = currentStaff.name;
+        orderWithoutId.staffAvatar = currentStaff.avatar || null;
       }
       const newId = await saveOrderToCloud(config.brand, orderWithoutId);
       const savedOrder = { ...orderWithoutId, id: newId };
@@ -2047,8 +2245,10 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
           </div>
           {/* เฟส 1 — chip ชื่อแม่บ้านที่ login อยู่ */}
           {currentStaff && (
-            <button onClick={onSwitchStaff} className="mb-1 inline-flex items-center gap-1.5 bg-white bg-opacity-20 backdrop-blur-sm rounded-full pl-2 pr-3 py-1 border border-white border-opacity-30 active:scale-95 transition">
-              <span className="text-base">🧕</span>
+            <button onClick={onSwitchStaff} className="mb-1 inline-flex items-center gap-1.5 bg-white bg-opacity-20 backdrop-blur-sm rounded-full pl-1 pr-3 py-1 border border-white border-opacity-30 active:scale-95 transition">
+              <span className="w-6 h-6 rounded-full bg-white flex items-center justify-center overflow-hidden">
+                {currentStaff.avatar ? <StaffAvatar avatar={currentStaff.avatar} size={24} /> : <span className="text-sm">👔</span>}
+              </span>
               <span className="text-white text-xs font-bold">{currentStaff.name}</span>
               <span className="text-white text-opacity-70 text-[10px]">• สลับ</span>
             </button>
