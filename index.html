@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v52-2026-08-22';
+  window.APP_VERSION = 'v53-2026-08-22';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -3285,9 +3285,6 @@ function ReceiptView({ config, order, onBack }) {
   const jobTicketRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const [showJobTicket, setShowJobTicket] = useState(false);
-  const [rotateTicket, setRotateTicket] = useState(() => {
-    try { return localStorage.getItem('rotateTicket-' + config.brand) === '1'; } catch { return false; }
-  });
   const breakdown = calculateBreakdown(order, config);
   const total = breakdown.total;
 
@@ -3346,34 +3343,15 @@ function ReceiptView({ config, order, onBack }) {
     // ต้องแสดง ticket ก่อน render เป็นรูป
     setShowJobTicket(true);
     await new Promise(r => setTimeout(r, 120)); // รอ DOM แสดง
-    const canvas = await html2canvas(jobTicketRef.current, { backgroundColor: '#ffffff', scale: 1, useCORS: true, width: 576 });
+    // ตัวใบเป็น 576px (font ใหญ่ ชัด) แต่ย่อ output เป็น 384px — ความกว้างที่เครื่องนี้ถนัด ไม่หมุนภาพเอง
+    const canvas = await html2canvas(jobTicketRef.current, { backgroundColor: '#ffffff', scale: 384/576, useCORS: true, width: 576 });
     return canvas;
-  };
-
-  // หมุน canvas 90° (แก้ปัญหาเครื่องพิมพ์พิมพ์ตะแคง — RawBT ไม่มีตัวเลือกหมุน)
-  const rotateCanvas90 = (srcCanvas, clockwise = true) => {
-    const rotated = document.createElement('canvas');
-    rotated.width = srcCanvas.height;
-    rotated.height = srcCanvas.width;
-    const ctx = rotated.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, rotated.width, rotated.height);
-    if (clockwise) {
-      ctx.translate(rotated.width, 0);
-      ctx.rotate(Math.PI / 2);
-    } else {
-      ctx.translate(0, rotated.height);
-      ctx.rotate(-Math.PI / 2);
-    }
-    ctx.drawImage(srcCanvas, 0, 0);
-    return rotated;
   };
 
   const handleSaveJobTicket = async () => {
     setSaving(true);
     try {
-      let canvas = await captureJobTicket();
-      if (rotateTicket) canvas = rotateCanvas90(canvas, true);
+      const canvas = await captureJobTicket();
       const link = document.createElement('a');
       link.download = `${config.brand}-jobticket-${queueNo}.png`;
       link.href = canvas.toDataURL('image/png');
@@ -3385,8 +3363,7 @@ function ReceiptView({ config, order, onBack }) {
   const handleShareJobTicket = async () => {
     setSaving(true);
     try {
-      let canvas = await captureJobTicket();
-      if (rotateTicket) canvas = rotateCanvas90(canvas, true);
+      const canvas = await captureJobTicket();
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       const file = new File([blob], `ใบงาน-${queueNo}.png`, { type: 'image/png' });
       const files = [file];
@@ -3732,16 +3709,6 @@ function ReceiptView({ config, order, onBack }) {
 
             {/* ปุ่มควบคุม modal */}
             <div className="bg-white rounded-2xl p-3 mt-2">
-              <button
-                onClick={() => {
-                  const nv = !rotateTicket;
-                  setRotateTicket(nv);
-                  try { localStorage.setItem('rotateTicket-' + config.brand, nv ? '1' : '0'); } catch {}
-                }}
-                className={`w-full mb-2 py-2 rounded-xl font-bold text-sm active:scale-95 transition border-2 ${rotateTicket ? 'bg-amber-50 border-amber-400 text-amber-800' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
-              >
-                🔄 หมุนใบ 90° {rotateTicket ? '(เปิดอยู่)' : '(ปิดอยู่)'}
-              </button>
               <div className="grid grid-cols-3 gap-2">
                 <button onClick={() => setShowJobTicket(false)} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">ปิด</button>
                 <button onClick={handleSaveJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-800 text-white text-sm active:scale-95 transition disabled:opacity-50">💾 บันทึกรูป</button>
