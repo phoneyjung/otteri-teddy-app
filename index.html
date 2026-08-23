@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v48-2026-08-22';
+  window.APP_VERSION = 'v50-2026-08-22';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -400,6 +400,7 @@ const TEDDY2_CONFIG = {
   hasStaffLogin: true, // เฟส 1 — ต้อง login แม่บ้านก่อนใช้งาน (เฉพาะ Teddy 2)
   primaryColor: '#00A19A', // เขียวเวอร์ริเดียน — สีประจำ ม.ศิลปากร
   gradient: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)',
+  linePromoDiscount: 50, // Teddy 2 ลดแอดไลน์ 50 (มากกว่า Teddy 1)
   washMachines: [
     { size: 12, count: 3, prices: { cold: 50, warm: 60, hot: 70 } },
     { size: 17, count: 5, prices: { cold: 60, warm: 70, hot: 80 } },
@@ -2570,6 +2571,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   const [detergentQty, setDetergentQty] = useState(editingOrder?.detergentQty || 0);
   const [softenerQty, setSoftenerQty] = useState(editingOrder?.softenerQty || 0);
   const [foldBaskets, setFoldBaskets] = useState(editingOrder?.foldBaskets ?? (config.freeService ? 0 : 1));
+  const [noFold, setNoFold] = useState(editingOrder?.noFold || false); // ลูกค้าไม่ต้องการพับ (เฉพาะร้านฟรี)
   const [paymentMethod, setPaymentMethod] = useState(editingOrder?.paymentMethod || 'cash');
   const [splitCash, setSplitCash] = useState(editingOrder?.cashAmount != null ? String(editingOrder.cashAmount) : '');
   const [splitTransfer, setSplitTransfer] = useState(editingOrder?.transferAmount != null ? String(editingOrder.transferAmount) : '');
@@ -2760,6 +2762,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       detergentQty: detergentQty || 0,
       softenerQty: softenerQty || 0,
       foldBaskets: foldBaskets || 0,
+      noFold: config.freeService ? (noFold || false) : false,
       paymentMethod: paymentMethod || 'cash',
       cashAmount: paymentMethod === 'split' ? splitCashNum : null,
       transferAmount: paymentMethod === 'split' ? splitTransferNum : null,
@@ -2990,14 +2993,27 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             <CounterRow iconEmoji="🧺" label="ค่าพับผ้า" sublabel={`฿${config.foldPricePerBasket} / ตะกร้า`} unit="ตะกร้า" qty={foldBaskets} onAdd={() => setFoldBaskets(q => q + 1)} onRemove={() => setFoldBaskets(q => Math.max(0, q - 1))} colorActive="bg-emerald-500" hint={foldBaskets === 0 ? '⚠️ ไม่คิดค่าพับ' : null} />
           )}
           {config.freeService && (
-            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3">
+            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3 space-y-3">
               <div className="flex items-center gap-2">
                 <span className="text-xl">✨</span>
                 <div className="flex-1">
                   <p className="font-bold text-emerald-700 text-sm">ฝาก ซัก อบ พับ - ฟรี!</p>
-                  <p className="text-xs text-emerald-600">ไม่คิดค่าบริการเพิ่ม</p>
+                  <p className="text-xs text-emerald-600">พับให้เป็นปกติ ไม่คิดเงินเพิ่ม</p>
                 </div>
               </div>
+              {/* ตัวเลือก: ลูกค้าไม่ต้องการพับ */}
+              <button
+                onClick={() => setNoFold(!noFold)}
+                className={`w-full rounded-xl p-3 flex items-center gap-2.5 transition border-2 ${noFold ? 'bg-amber-50 border-amber-400' : 'bg-white border-slate-200'}`}
+              >
+                <div className={`w-5 h-5 rounded-md flex items-center justify-center transition flex-shrink-0 ${noFold ? 'bg-amber-500' : 'bg-white border-2 border-slate-300'}`}>
+                  {noFold && <Icon name="check" className="w-3 h-3 text-white" strokeWidth={4} />}
+                </div>
+                <div className="flex-1 text-left">
+                  <span className={`text-sm font-bold ${noFold ? 'text-amber-800' : 'text-slate-600'}`}>🚫 ลูกค้าไม่ต้องการให้พับ</span>
+                  <p className="text-xs text-slate-400">เช่น ผ้าเยอะ ลูกค้าพับเอง</p>
+                </div>
+              </button>
             </div>
           )}
         </Section>
@@ -3625,13 +3641,38 @@ function ReceiptView({ config, order, onBack }) {
               <div style={{ fontSize: '15px', marginBottom: '8px' }}>
                 <div style={{ fontWeight: 800, marginBottom: '4px' }}>บริการ:</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', fontWeight: 600 }}>
-                  <span>{(order.washItems || []).length > 0 ? '☑' : '☐'} ซัก {(order.washItems || []).length > 0 ? `(${order.washItems.length})` : ''}</span>
-                  <span>{(order.dryItems || []).length > 0 ? '☑' : '☐'} อบ {(order.dryItems || []).length > 0 ? `(${order.dryItems.length})` : ''}</span>
+                  <span>{(order.washItems || []).length > 0 ? '☑' : '☐'} ซัก {(order.washItems || []).length > 0 ? `(${order.washItems.reduce((s,it)=>s+(it.qty||1),0)})` : ''}</span>
+                  <span>{(order.dryItems || []).length > 0 ? '☑' : '☐'} อบ {(order.dryItems || []).length > 0 ? `(${order.dryItems.reduce((s,it)=>s+(it.qty||1),0)})` : ''}</span>
                   <span>{(order.detergentQty > 0 || order.softenerQty > 0) ? '☑' : '☐'} น้ำยา{order.detergentQty > 0 ? ` ซัก${order.detergentQty}` : ''}{order.softenerQty > 0 ? ` นุ่ม${order.softenerQty}` : ''}</span>
-                  <span>{order.foldBaskets > 0 ? '☑' : '☐'} พับ{order.foldBaskets > 0 ? ` (${order.foldBaskets})` : ''}</span>
+                  <span>{(() => {
+                    // งานฝาก: freeService + มีซัก/อบ = พับเป็นปกติ ยกเว้นลูกค้าไม่ต้องการ
+                    const isDropoff = (order.washItems || []).length > 0 || (order.dryItems || []).length > 0;
+                    if (config.freeService && isDropoff) {
+                      return order.noFold ? '☒ ไม่พับ (ลูกค้าไม่ต้องการ)' : '☑ พับ';
+                    }
+                    return `${order.foldBaskets > 0 ? '☑' : '☐'} พับ${order.foldBaskets > 0 ? ` (${order.foldBaskets})` : ''}`;
+                  })()}</span>
                   <span>{order.deliveryZone ? '☑' : '☐'} เดลิเวอรี{order.deliveryZone ? ` (${config.deliveryZones?.find(z => z.id === order.deliveryZone)?.label || ''})` : ''}</span>
                 </div>
               </div>
+
+              {/* รายละเอียดเครื่อง (กี่โล/น้ำอะไร/ร้อนเท่าไหร่) */}
+              {((order.washItems || []).length > 0 || (order.dryItems || []).length > 0) && (
+                <div style={{ fontSize: '14px', marginBottom: '8px', background: '#F4F4F4', borderRadius: '8px', padding: '8px 10px' }}>
+                  {(order.washItems || []).map((item, i) => (
+                    <div key={`jw-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                      <span>💧 ซัก <b>{item.size} กก.</b> · {tempLabels[item.temp || 'cold']}</span>
+                      <span style={{ fontWeight: 700 }}>×{item.qty || 1}</span>
+                    </div>
+                  ))}
+                  {(order.dryItems || []).map((item, i) => (
+                    <div key={`jd-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                      <span>🌀 อบ <b>{item.size} กก.</b>{item.topUp ? ` · +${item.topUp}฿` : ''}</span>
+                      <span style={{ fontWeight: 700 }}>×{item.qty || 1}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
 
