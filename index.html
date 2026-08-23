@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v54-2026-08-22';
+  window.APP_VERSION = 'v56-2026-08-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1473,6 +1473,9 @@ function BrandApp({ config, onChangeBrand }) {
         orderWithoutId.staffName = currentStaff.name;
         orderWithoutId.staffAvatar = currentStaff.avatar || null;
       }
+      // เลขคิวรายวัน — เรียงต่อ 1,2,3,... รีเซตทุกวัน (นับจากงานของวันนี้)
+      const qStart = new Date(); qStart.setHours(0, 0, 0, 0);
+      orderWithoutId.queueNo = orders.filter(o => (o.createdAt || 0) >= qStart.getTime()).length + 1;
       const newId = await saveOrderToCloud(config.brand, orderWithoutId);
       const savedOrder = { ...orderWithoutId, id: newId };
       setSelectedOrder(savedOrder);
@@ -3280,17 +3283,99 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 }
 
 
+// ============ พิมพ์ตรงผ่าน Web Bluetooth (ไม่ต้องใช้ RawBT) ============
+const BT_PRINTER_CACHE = { device: null, ch: null };
+
+async function getBtPrinterChar() {
+  // ใช้เครื่องเดิมถ้ายังต่ออยู่ (ไม่ต้องเลือกใหม่ทุกครั้ง)
+  if (BT_PRINTER_CACHE.ch && BT_PRINTER_CACHE.device?.gatt?.connected) return BT_PRINTER_CACHE.ch;
+  let device = BT_PRINTER_CACHE.device;
+  if (!device || !device.gatt) {
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [
+        0x18f0, 0xffe0, 0xff00, 0xae30,
+        '000018f0-0000-1000-8000-00805f9b34fb',
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+      ],
+    });
+  }
+  const server = await device.gatt.connect();
+  const services = await server.getPrimaryServices();
+  let found = null;
+  for (const svc of services) {
+    let chars = [];
+    try { chars = await svc.getCharacteristics(); } catch (e) { continue; }
+    for (const c of chars) {
+      if (c.properties.writeWithoutResponse) { found = c; break; }
+      if (!found && c.properties.write) found = c;
+    }
+    if (found && found.properties.writeWithoutResponse) break;
+  }
+  if (!found) throw new Error('ไม่พบช่องทางส่งข้อมูล (เครื่องอาจไม่รองรับ BLE)');
+  BT_PRINTER_CACHE.device = device;
+  BT_PRINTER_CACHE.ch = found;
+  device.addEventListener('gattserverdisconnected', () => { BT_PRINTER_CACHE.ch = null; });
+  return found;
+}
+
+// แปลง canvas → คำสั่ง ESC/POS (ขาวดำสนิท) → ส่งพิมพ์ + ตัดกระดาษ
+async function printCanvasViaBluetooth(canvas, onProgress) {
+  if (!navigator.bluetooth) throw new Error('เบราว์เซอร์นี้ไม่รองรับ Bluetooth — ใช้ Chrome');
+  if (onProgress) onProgress('เชื่อมต่อเครื่องพิมพ์...');
+  const ch = await getBtPrinterChar();
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width, height = canvas.height;
+  const img = ctx.getImageData(0, 0, width, height).data;
+  const bytesPerRow = Math.ceil(width / 8);
+  const parts = [new Uint8Array([0x1b, 0x40])]; // init
+  const BAND = 240; // แบ่งภาพเป็นช่วง กันบัฟเฟอร์เครื่องเต็ม
+  for (let y0 = 0; y0 < height; y0 += BAND) {
+    const h = Math.min(BAND, height - y0);
+    const data = new Uint8Array(8 + bytesPerRow * h);
+    data.set([0x1d, 0x76, 0x30, 0x00, bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff, h & 0xff, (h >> 8) & 0xff], 0);
+    for (let y = 0; y < h; y++) {
+      const rowOff = 8 + y * bytesPerRow;
+      const sy = y0 + y;
+      for (let x = 0; x < width; x++) {
+        const i = (sy * width + x) * 4;
+        const lum = 0.299 * img[i] + 0.587 * img[i + 1] + 0.114 * img[i + 2];
+        if (img[i + 3] > 128 && lum < 160) data[rowOff + (x >> 3)] |= (0x80 >> (x & 7)); // ขาวดำสนิท
+      }
+    }
+    parts.push(data);
+  }
+  parts.push(new Uint8Array([0x1b, 0x64, 0x04])); // ดันกระดาษ 4 บรรทัด
+  parts.push(new Uint8Array([0x1d, 0x56, 0x42, 0x00])); // ✂️ ตัดกระดาษ
+  const total = parts.reduce((s, p) => s + p.length, 0);
+  let sent = 0;
+  const CHUNK = 180;
+  for (const part of parts) {
+    for (let i = 0; i < part.length; i += CHUNK) {
+      const slice = part.slice(i, i + CHUNK);
+      if (ch.properties.writeWithoutResponse) await ch.writeValueWithoutResponse(slice);
+      else await ch.writeValue(slice);
+      sent += slice.length;
+      if (onProgress) onProgress('กำลังพิมพ์ ' + Math.round(sent / total * 100) + '%');
+      await new Promise(r => setTimeout(r, 12));
+    }
+  }
+  if (onProgress) onProgress('');
+}
+
 function ReceiptView({ config, order, onBack }) {
   const receiptRef = useRef(null);
   const jobTicketRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const [showJobTicket, setShowJobTicket] = useState(false);
   const [ticketPreview, setTicketPreview] = useState(''); // ภาพจริงที่จะพิมพ์ (ใช้แสดงพรีวิว)
+  const [btStatus, setBtStatus] = useState(''); // สถานะพิมพ์ตรง Bluetooth
   const breakdown = calculateBreakdown(order, config);
   const total = breakdown.total;
 
-  // คิว = 4 ตัวท้ายของ id (อ่านง่าย ไม่ซ้ำในวันเดียว)
-  const queueNo = (order.id || '').slice(-4).toUpperCase();
+  // เลขคิวรายวัน (งานเก่าที่ยังไม่มีเลข ใช้ 4 ตัวท้าย id แทน)
+  const queueNo = order.queueNo != null ? String(order.queueNo) : (order.id || '').slice(-4).toUpperCase();
 
   const dataURLtoFile = async (dataUrl, filename) => {
     const res = await fetch(dataUrl);
@@ -3385,6 +3470,25 @@ function ReceiptView({ config, order, onBack }) {
       }
     } catch (e) {
       if (e.name !== 'AbortError') handleSaveJobTicket();
+    }
+    setSaving(false);
+  };
+
+  // พิมพ์ตรงเข้าเครื่อง Bluetooth — ไม่ผ่าน RawBT (ฟรี ไม่มีลายน้ำ ตัดกระดาษเอง)
+  const handleDirectPrint = async () => {
+    setSaving(true);
+    try {
+      const canvas = await captureJobTicket();
+      await printCanvasViaBluetooth(canvas, setBtStatus);
+      setBtStatus('✅ พิมพ์เสร็จ');
+      setTimeout(() => setBtStatus(''), 2000);
+    } catch (e) {
+      setBtStatus('');
+      if (e && e.name === 'NotFoundError') {
+        // ผู้ใช้กดยกเลิกหน้าต่างเลือกเครื่อง — ไม่ต้องแจ้ง
+      } else {
+        alert('พิมพ์ตรงไม่สำเร็จ: ' + (e.message || e) + '\n\nใช้ปุ่ม "แชร์" ส่งเข้า RawBT แทนได้ครับ');
+      }
     }
     setSaving(false);
   };
@@ -3671,7 +3775,7 @@ function ReceiptView({ config, order, onBack }) {
 
               {/* รายละเอียดเครื่อง (กี่โล/น้ำอะไร/ร้อนเท่าไหร่) */}
               {((order.washItems || []).length > 0 || (order.dryItems || []).length > 0) && (
-                <div style={{ fontSize: '21px', marginBottom: '8px', background: '#F4F4F4', borderRadius: '8px', padding: '8px 10px' }}>
+                <div style={{ fontSize: '21px', marginBottom: '8px', background: '#fff', border: '2px solid #000', borderRadius: '8px', padding: '8px 10px' }}>
                   {(order.washItems || []).map((item, i) => (
                     <div key={`jw-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
                       <span>💧 ซัก <b>{item.size} กก.</b> · {tempLabels[item.temp || 'cold']}</span>
@@ -3729,11 +3833,16 @@ function ReceiptView({ config, order, onBack }) {
 
             {/* ปุ่มควบคุม modal */}
             <div className="bg-white rounded-2xl p-3 mt-2">
+              <button onClick={handleDirectPrint} disabled={saving} className="w-full mb-2 py-3 rounded-xl font-bold text-white text-base active:scale-95 transition disabled:opacity-50" style={{ background: config.gradient }}>
+                🖨️ พิมพ์ทันที (Bluetooth)
+              </button>
+              {btStatus && <p className="text-center text-xs font-bold text-teal-600 mb-2">{btStatus}</p>}
               <div className="grid grid-cols-3 gap-2">
                 <button onClick={() => setShowJobTicket(false)} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">ปิด</button>
-                <button onClick={handleSaveJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-800 text-white text-sm active:scale-95 transition disabled:opacity-50">💾 บันทึกรูป</button>
-                <button onClick={handleShareJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold text-white text-sm active:scale-95 transition disabled:opacity-50" style={{ background: config.gradient }}>🖨️ พิมพ์/แชร์</button>
+                <button onClick={handleSaveJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">💾 บันทึก</button>
+                <button onClick={handleShareJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-800 text-white text-sm active:scale-95 transition disabled:opacity-50">📤 แชร์</button>
               </div>
+              <p className="text-center text-[10px] text-slate-400 mt-1.5">พิมพ์ทันที = ตรงเข้าเครื่อง ไม่มีลายน้ำ • แชร์ = ผ่าน RawBT (สำรอง)</p>
             </div>
             <p className="text-center text-white text-opacity-80 text-xs mt-2">แชร์เข้าแอปพิมพ์ Bluetooth เพื่อออกใบงาน 80mm</p>
           </div>
