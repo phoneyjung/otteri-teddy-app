@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v56-2026-08-24';
+  window.APP_VERSION = 'v57-2026-08-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -3731,14 +3731,14 @@ function ReceiptView({ config, order, onBack }) {
             <div ref={jobTicketRef} style={{ width: '576px', background: '#fff', padding: '20px 28px', boxSizing: 'border-box', fontFamily: '"Noto Sans Thai", sans-serif', color: '#000' }}>
               {/* หัว */}
               <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1.1 }}>{config.brand === 'otteri' ? '🦦' : '🐻'} {config.name}</div>
+                <div style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1.1 }}>{config.name}</div>
                 <div style={{ fontSize: '21px', fontWeight: 700 }}>ใบรับฝากซัก-อบ-พับ</div>
               </div>
 
               {/* คิว ตัวใหญ่ */}
-              <div style={{ textAlign: 'center', border: '3px solid #000', borderRadius: '10px', padding: '6px', marginBottom: '10px' }}>
+              <div style={{ textAlign: 'center', border: '3px solid #000', borderRadius: '10px', padding: '8px 6px 14px', marginBottom: '10px' }}>
                 <div style={{ fontSize: '19px', fontWeight: 700 }}>คิวที่</div>
-                <div style={{ fontSize: '60px', fontWeight: 900, lineHeight: 1 }}>{queueNo}</div>
+                <div style={{ fontSize: '56px', fontWeight: 900, lineHeight: 1.2 }}>{queueNo}</div>
               </div>
 
               {/* ข้อมูลลูกค้า */}
@@ -3748,7 +3748,7 @@ function ReceiptView({ config, order, onBack }) {
                   {order.customerPhone && <tr><td style={{ fontWeight: 700, padding: '2px 0' }}>โทร</td><td style={{ padding: '2px 0' }}>{order.customerPhone}</td></tr>}
                   {order.clothCount && <tr><td style={{ fontWeight: 700, padding: '2px 0' }}>จำนวนผ้า</td><td style={{ padding: '2px 0' }}>{order.clothCount}</td></tr>}
                   <tr><td style={{ fontWeight: 700, padding: '2px 0' }}>รับงาน</td><td style={{ padding: '2px 0' }}>{formatDate(order.createdAt)}</td></tr>
-                  {order.pickupTime && <tr><td style={{ fontWeight: 700, padding: '2px 0' }}>⏰ นัดรับ</td><td style={{ padding: '2px 0', fontWeight: 800 }}>{order.pickupTime}</td></tr>}
+                  {order.pickupTime && <tr><td style={{ fontWeight: 700, padding: '2px 0' }}>นัดรับ</td><td style={{ padding: '2px 0', fontWeight: 800 }}>{order.pickupTime}</td></tr>}
                 </tbody>
               </table>
 
@@ -3778,13 +3778,13 @@ function ReceiptView({ config, order, onBack }) {
                 <div style={{ fontSize: '21px', marginBottom: '8px', background: '#fff', border: '2px solid #000', borderRadius: '8px', padding: '8px 10px' }}>
                   {(order.washItems || []).map((item, i) => (
                     <div key={`jw-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-                      <span>💧 ซัก <b>{item.size} กก.</b> · {tempLabels[item.temp || 'cold']}</span>
+                      <span>ซัก <b>{item.size} กก.</b> · {tempLabels[item.temp || 'cold']}</span>
                       <span style={{ fontWeight: 700 }}>×{item.qty || 1}</span>
                     </div>
                   ))}
                   {(order.dryItems || []).map((item, i) => (
                     <div key={`jd-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-                      <span>🌀 อบ <b>{item.size} กก.</b>{item.topUp ? ` · +${item.topUp}฿` : ''}</span>
+                      <span>อบ <b>{item.size} กก.</b>{item.topUp ? ` · +${item.topUp}฿` : ''}</span>
                       <span style={{ fontWeight: 700 }}>×{item.qty || 1}</span>
                     </div>
                   ))}
@@ -3799,14 +3799,16 @@ function ReceiptView({ config, order, onBack }) {
                   <tr>
                     <td style={{ fontWeight: 700, padding: '2px 0', width: '38%' }}>การจ่าย</td>
                     <td style={{ padding: '2px 0', fontWeight: 700 }}>
-                      {order.paymentMethod === 'transfer' ? '💳 โอน' : order.paymentMethod === 'split' ? `🔀 แยกจ่าย (สด ${formatMoney(order.cashAmount || 0)} / โอน ${formatMoney(order.transferAmount || 0)})` : '💵 เงินสด'}
+                      {order.paymentMethod === 'transfer' ? 'โอน' : order.paymentMethod === 'split' ? `แยกจ่าย (สด ${formatMoney(order.cashAmount || 0)} / โอน ${formatMoney(order.transferAmount || 0)})` : 'เงินสด'}
                     </td>
                   </tr>
-                  <tr>
-                    <td style={{ fontWeight: 700, padding: '2px 0' }}>โปร</td>
-                    <td style={{ padding: '2px 0' }}>{breakdown.totalDiscount > 0 ? `✓ ลด ${formatMoney(breakdown.totalDiscount)}${breakdown.promo?.shortLabel ? ` (${breakdown.promo.shortLabel})` : ''}${order.useLinePromo ? ' +แอดไลน์' : ''}` : '— ไม่ใช้ —'}</td>
-                  </tr>
-                  {order.staffName && <tr><td style={{ fontWeight: 700, padding: '2px 0' }}>แม่บ้าน</td><td style={{ padding: '2px 0', fontWeight: 700 }}>🧕 {order.staffName}</td></tr>}
+                  {breakdown.totalDiscount > 0 && (
+                    <tr>
+                      <td style={{ fontWeight: 700, padding: '2px 0' }}>โปร</td>
+                      <td style={{ padding: '2px 0' }}>{`✓ ลด ${formatMoney(breakdown.totalDiscount)}${breakdown.promo?.shortLabel ? ` (${breakdown.promo.shortLabel})` : ''}${order.useLinePromo ? ' +แอดไลน์' : ''}`}</td>
+                    </tr>
+                  )}
+                  {order.staffName && <tr><td style={{ fontWeight: 700, padding: '2px 0' }}>แม่บ้าน</td><td style={{ padding: '2px 0', fontWeight: 700 }}>{order.staffName}</td></tr>}
                 </tbody>
               </table>
 
@@ -3819,7 +3821,7 @@ function ReceiptView({ config, order, onBack }) {
               {order.note && <div style={{ fontSize: '19px', marginBottom: '8px' }}><b>หมายเหตุ:</b> {order.note}</div>}
 
               <div style={{ textAlign: 'center', fontSize: '18px', borderTop: '1px dashed #000', paddingTop: '6px' }}>
-                {config.subtitle}<br/>ขอบคุณที่ใช้บริการ 🙏
+                {config.subtitle}<br/>ขอบคุณที่ใช้บริการ
               </div>
             </div>
             </div>
