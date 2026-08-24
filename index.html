@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v57-2026-08-24';
+  window.APP_VERSION = 'v59-2026-08-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -786,6 +786,27 @@ function subscribeToStaff(brand, callback) {
   );
 }
 
+// ============ คิวพิมพ์ (สำหรับ iPhone ที่พิมพ์ตรงไม่ได้) ============
+// iPhone ส่งงานเข้าคิว → เครื่อง Android ที่เปิดโหมดเครื่องพิมพ์จะพิมพ์ให้อัตโนมัติ
+async function savePrintJob(brand, dataUrl, label) {
+  const docRef = await window.db.collection('printJobs').add({
+    brand, image: dataUrl, label: label || '', createdAt: Date.now(),
+  });
+  return docRef.id;
+}
+
+function subscribeToPrintJobs(brand, callback) {
+  return window.db.collection('printJobs').where('brand', '==', brand).onSnapshot(
+    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
+    error => console.error('subscribe printJobs error:', error)
+  );
+}
+
+async function deletePrintJob(id) {
+  try { await window.db.collection('printJobs').doc(id).delete(); }
+  catch (e) { console.error('deletePrintJob error:', e); }
+}
+
 // Legacy localStorage helpers (ไว้สำหรับ migrate ข้อมูลเก่า)
 function loadOrders(brand) { try { return JSON.parse(localStorage.getItem(getOrdersKey(brand)) || '[]'); } catch { return []; } }
 function saveOrders(brand, orders) { try { localStorage.setItem(getOrdersKey(brand), JSON.stringify(orders)); } catch {} }
@@ -900,21 +921,144 @@ function ensureDemoData(brand) {
 function App() {
   const [brand, setBrand] = useState(null);
   const [showDelivery, setShowDelivery] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   // เปิดหน้าเช็คค่าส่งจากหน้าเลือกร้านได้เลย (ไม่ต้องเข้าร้าน)
   if (showDelivery) {
     return <DeliveryCheckerView onBack={() => setShowDelivery(false)} />;
   }
 
+  // คู่มือช่วยงาน — ทุกคนเปิดดูได้ ไม่ต้อง login
+  if (showGuide) {
+    return <GuideView onBack={() => setShowGuide(false)} />;
+  }
+
   if (!brand) {
-    return <BrandSelector onSelect={setBrand} onOpenDelivery={() => setShowDelivery(true)} />;
+    return <BrandSelector onSelect={setBrand} onOpenDelivery={() => setShowDelivery(true)} onOpenGuide={() => setShowGuide(true)} />;
   }
   
   const config = brand === 'otteri' ? OTTERI_CONFIG : brand === 'trainee' ? TRAINEE_CONFIG : brand === 'teddy2' ? TEDDY2_CONFIG : TEDDY_CONFIG;
   return <BrandApp config={config} onChangeBrand={() => setBrand(null)} />;
 }
 
-function BrandSelector({ onSelect, onOpenDelivery }) {
+// ============ คู่มือ/คลังรูปช่วยงาน ============
+// วิธีเพิ่มรูป: อัปไฟล์ขึ้น GitHub โฟลเดอร์ guide/ แล้วเพิ่มรายการที่นี่
+// ชื่อไฟล์ต้องเป็นภาษาอังกฤษ/ตัวเลขเท่านั้น (ห้ามภาษาไทย)
+const GUIDE_BASE = 'guide/';
+const GUIDE_SECTIONS = [
+  {
+    title: '💰 ลูกค้าถามบ่อย',
+    items: [
+      { label: 'QR โอนเงิน', file: 'qr-payment.jpg' },
+      { label: 'QR LINE (ลด 50)', file: 'qr-line.jpg' },
+      { label: 'ราคาบริการ', file: 'price.jpg' },
+      { label: 'โซนค่าส่ง', file: 'delivery-zone.jpg' },
+      { label: 'เวลาเปิด-ปิด', file: 'open-hours.jpg' },
+    ],
+  },
+  {
+    title: '🧺 เทคนิคซัก-อบ',
+    items: [
+      { label: 'เทคนิคการซัก', file: 'wash-tips.jpg' },
+      { label: 'เทคนิคการอบ', file: 'dry-tips.jpg' },
+      { label: 'เลือกความร้อน', file: 'temperature.jpg' },
+      { label: 'ปริมาณน้ำยา', file: 'detergent.jpg' },
+      { label: 'แยกผ้าก่อนซัก', file: 'sorting.jpg' },
+      { label: 'ผ้าที่ไม่รับซัก', file: 'not-accepted.jpg' },
+    ],
+  },
+  {
+    title: '🔧 เครื่อง/ฉุกเฉิน',
+    items: [
+      { label: 'เครื่องค้าง แก้ยังไง', file: 'machine-stuck.jpg' },
+      { label: 'เบอร์ติดต่อ', file: 'contacts.jpg' },
+      { label: 'เบรกเกอร์/ถังดับเพลิง', file: 'emergency.jpg' },
+    ],
+  },
+];
+
+function GuideView({ onBack }) {
+  const [viewing, setViewing] = useState(null); // { label, file }
+  const [failed, setFailed] = useState({});
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* หัว */}
+      <div className="sticky top-0 z-10 px-4 py-3 shadow-md" style={{ background: 'linear-gradient(135deg, #5BB8E8, #2B8FCB)' }}>
+        <div className="flex items-center gap-3 max-w-md mx-auto">
+          <button onClick={onBack} className="text-white font-bold text-sm bg-white bg-opacity-20 rounded-full px-3 py-1.5 active:scale-95 transition">‹ กลับ</button>
+          <div>
+            <h1 className="text-white font-extrabold text-lg leading-tight">📖 คู่มือช่วยงาน</h1>
+            <p className="text-white text-opacity-80 text-xs">แตะเพื่อดูรูปเต็มจอ</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-md mx-auto p-4 space-y-4">
+        {GUIDE_SECTIONS.map(section => (
+          <div key={section.title} className="bg-white rounded-2xl overflow-hidden shadow-sm">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+              <p className="font-bold text-slate-800 text-sm">{section.title}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-3">
+              {section.items.map(item => (
+                <button
+                  key={item.file}
+                  onClick={() => setViewing(item)}
+                  className="bg-slate-50 border border-slate-100 rounded-xl p-2 flex flex-col items-center gap-1.5 active:scale-95 transition"
+                >
+                  <div className="w-full h-24 rounded-lg bg-white overflow-hidden flex items-center justify-center">
+                    {failed[item.file] ? (
+                      <span className="text-3xl opacity-30">🖼️</span>
+                    ) : (
+                      <img
+                        src={GUIDE_BASE + item.file}
+                        alt={item.label}
+                        className="w-full h-full object-cover"
+                        onError={() => setFailed(f => ({ ...f, [item.file]: true }))}
+                      />
+                    )}
+                  </div>
+                  <span className="text-xs font-bold text-slate-700 text-center leading-tight">{item.label}</span>
+                  {failed[item.file] && <span className="text-[9px] text-slate-400">ยังไม่มีรูป</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <div className="bg-sky-50 border border-sky-100 rounded-2xl p-3">
+          <p className="text-xs text-sky-800 font-bold mb-1">📤 วิธีเพิ่ม/เปลี่ยนรูป</p>
+          <p className="text-xs text-sky-700 leading-relaxed">
+            อัปรูปขึ้น GitHub ที่โฟลเดอร์ <b>guide/</b> โดยตั้งชื่อไฟล์ให้ตรงกับที่กำหนดไว้ (เช่น qr-payment.jpg) รูปจะขึ้นอัตโนมัติ
+          </p>
+        </div>
+      </div>
+
+      {/* ดูรูปเต็มจอ */}
+      {viewing && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex flex-col" onClick={() => setViewing(null)}>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <span className="text-white font-bold">{viewing.label}</span>
+            <button onClick={() => setViewing(null)} className="text-white bg-white bg-opacity-20 rounded-full w-9 h-9 font-bold active:scale-90 transition">✕</button>
+          </div>
+          <div className="flex-1 overflow-auto flex items-center justify-center p-3">
+            <img
+              src={GUIDE_BASE + viewing.file}
+              alt={viewing.label}
+              className="max-w-full rounded-xl"
+              onClick={(e) => e.stopPropagation()}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          </div>
+          <p className="text-center text-white text-opacity-60 text-xs pb-4">แตะพื้นที่ว่างเพื่อปิด</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BrandSelector({ onSelect, onOpenDelivery, onOpenGuide }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #fef3c7 100%)'}}>
       <div className="text-center mb-8">
@@ -948,6 +1092,10 @@ function BrandSelector({ onSelect, onOpenDelivery }) {
             </div>
           </button>
           {/* ปุ่มเช็คค่าส่ง — เล็ก แยกจากการเข้าร้าน */}
+          <button onClick={onOpenGuide} className="flex flex-col items-center justify-center gap-0.5 bg-sky-50 hover:bg-sky-100 border-2 border-sky-200 rounded-2xl px-2.5 py-2 active:scale-90 transition flex-shrink-0 mr-2" title="คู่มือ">
+            <span className="text-3xl leading-none">📖</span>
+            <span className="text-[9px] font-bold text-sky-700 leading-none">คู่มือ</span>
+          </button>
           <button onClick={onOpenDelivery} className="flex flex-col items-center justify-center gap-0.5 bg-green-50 hover:bg-green-100 border-2 border-green-200 rounded-2xl px-2.5 py-2 active:scale-90 transition flex-shrink-0" title="เช็คค่าส่ง">
             <img src={DELIVERY_ICON} className="w-9 h-9" alt="เช็คค่าส่ง" />
             <span className="text-[9px] font-bold text-green-700 leading-none">เช็คค่าส่ง</span>
@@ -965,6 +1113,10 @@ function BrandSelector({ onSelect, onOpenDelivery }) {
               <p className="text-sm text-slate-500">Wash & Dry • ม.ศิลปากร</p>
               <p className="text-xs mt-1 font-bold" style={{ color: '#00A19A' }}>🐻 ซัก 12/17kg + อบ 12/17kg</p>
             </div>
+          </button>
+          <button onClick={onOpenGuide} className="flex flex-col items-center justify-center gap-0.5 bg-sky-50 hover:bg-sky-100 border-2 border-sky-200 rounded-2xl px-2.5 py-2 active:scale-90 transition flex-shrink-0 mr-2" title="คู่มือ">
+            <span className="text-3xl leading-none">📖</span>
+            <span className="text-[9px] font-bold text-sky-700 leading-none">คู่มือ</span>
           </button>
           <button onClick={onOpenDelivery} className="flex flex-col items-center justify-center gap-0.5 bg-green-50 hover:bg-green-100 border-2 border-green-200 rounded-2xl px-2.5 py-2 active:scale-90 transition flex-shrink-0" title="เช็คค่าส่ง">
             <img src={DELIVERY_ICON} className="w-9 h-9" alt="เช็คค่าส่ง" />
@@ -988,6 +1140,14 @@ function BrandSelector({ onSelect, onOpenDelivery }) {
         </button>
         )}
       </div>
+
+      <button onClick={onOpenGuide} className="w-full max-w-md mt-4 bg-white rounded-2xl p-3.5 shadow-lg border-2 border-sky-100 flex items-center justify-center gap-2 active:scale-95 transition">
+        <span className="text-2xl">📖</span>
+        <div className="text-left">
+          <p className="font-extrabold text-slate-800 text-sm leading-tight">คู่มือช่วยงาน</p>
+          <p className="text-[11px] text-slate-500 leading-tight">QR โอนเงิน • ราคา • เทคนิคซัก-อบ • เบอร์ติดต่อ</p>
+        </div>
+      </button>
 
       <p className="mt-8 text-xs text-slate-400">เลือกได้ตลอดเวลา • สลับร้านในแอป</p>
     </div>
@@ -1419,6 +1579,11 @@ function BrandApp({ config, onChangeBrand }) {
     try { return JSON.parse(localStorage.getItem('staff-' + config.brand) || 'null'); } catch { return null; }
   });
   const [staffList, setStaffList] = useState([]);
+  // โหมดเครื่องพิมพ์ — เครื่องนี้จะรับงานจากคิวมาพิมพ์ให้เครื่องอื่น (Android เท่านั้น)
+  const [printServer, setPrintServer] = useState(() => {
+    try { return localStorage.getItem('printServer-' + config.brand) === '1'; } catch { return false; }
+  });
+  const [printServerStatus, setPrintServerStatus] = useState('');
 
   // Real-time subscription to Firestore
   useEffect(() => {
@@ -1448,6 +1613,46 @@ function BrandApp({ config, onChangeBrand }) {
   }, [config.brand]);
 
   // เฟส 1 — login/logout แม่บ้าน
+  // โหมดเครื่องพิมพ์ — เฝ้าคิว แล้วพิมพ์ทีละงาน (กันพิมพ์ซ้ำด้วย ref)
+  const printingRef = useRef(false);
+  useEffect(() => {
+    if (!printServer) { setPrintServerStatus(''); return; }
+    if (!navigator.bluetooth) { setPrintServerStatus('เครื่องนี้พิมพ์ตรงไม่ได้'); return; }
+    setPrintServerStatus('รอรับงาน...');
+    const unsub = subscribeToPrintJobs(config.brand, async (jobs) => {
+      if (printingRef.current || jobs.length === 0) return;
+      printingRef.current = true;
+      const job = jobs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
+      try {
+        setPrintServerStatus('กำลังพิมพ์ ' + (job.label || ''));
+        await printImageDataUrl(job.image, (s) => setPrintServerStatus(s || 'กำลังพิมพ์...'));
+        await deletePrintJob(job.id);
+        setPrintServerStatus('รอรับงาน...');
+      } catch (e) {
+        console.error('print server error', e);
+        setPrintServerStatus('พิมพ์ไม่สำเร็จ — แตะเพื่อลองใหม่');
+      }
+      printingRef.current = false;
+    });
+    return () => unsub && unsub();
+  }, [printServer, config.brand]);
+
+  const handleTogglePrintServer = async () => {
+    const next = !printServer;
+    if (next) {
+      if (!navigator.bluetooth) { alert('เครื่องนี้พิมพ์ตรงไม่ได้ (iPhone/iPad)\n\nโหมดนี้ใช้กับ Android + Chrome เท่านั้น'); return; }
+      try {
+        await getBtPrinterChar(); // จับคู่เครื่องพิมพ์ล่วงหน้า
+      } catch (e) {
+        if (e && e.name === 'NotFoundError') return;
+        alert('เชื่อมต่อเครื่องพิมพ์ไม่สำเร็จ: ' + (e.message || e));
+        return;
+      }
+    }
+    setPrintServer(next);
+    try { localStorage.setItem('printServer-' + config.brand, next ? '1' : '0'); } catch {}
+  };
+
   const handleStaffLogin = (staff) => {
     try { localStorage.setItem('staff-' + config.brand, JSON.stringify(staff)); } catch {}
     setCurrentStaff(staff);
@@ -1727,7 +1932,7 @@ function BrandApp({ config, onChangeBrand }) {
           🔄 กำลังเชื่อมต่อ cloud...
         </div>
       )}
-      {view === 'home' && <HomeView config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} />}
+      {view === 'home' && <HomeView config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
@@ -1997,7 +2202,7 @@ function DeliveryCheckerView({ onBack }) {
   );
 }
 
-function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff }) {
+function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [tokenAmount, setTokenAmount] = useState('');
   const [tokenPayment, setTokenPayment] = useState('cash'); // cash | transfer
@@ -2257,6 +2462,12 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
               <span className="text-white text-opacity-70 text-[10px]">• สลับ</span>
             </button>
           )}
+          {/* โหมดเครื่องพิมพ์ — เครื่องนี้พิมพ์ให้เครื่องอื่นที่ส่งงานมา */}
+          <button onClick={onTogglePrintServer} className={`mb-1 ml-2 inline-flex items-center gap-1.5 backdrop-blur-sm rounded-full px-3 py-1 border active:scale-95 transition ${printServer ? 'bg-green-400 bg-opacity-90 border-green-200' : 'bg-white bg-opacity-20 border-white border-opacity-30'}`}>
+            <span className="text-sm">🖨️</span>
+            <span className="text-white text-xs font-bold">{printServer ? 'รับงานพิมพ์' : 'โหมดเครื่องพิมพ์'}</span>
+            {printServer && printServerStatus && <span className="text-white text-opacity-80 text-[9px]">• {printServerStatus}</span>}
+          </button>
           <div className="grid grid-cols-2 gap-3 mt-6">
             <div className="bg-white bg-opacity-15 backdrop-blur-sm rounded-2xl p-3 border border-white border-opacity-20">
               <p className="text-white text-xs opacity-90">วันนี้</p>
@@ -3364,6 +3575,22 @@ async function printCanvasViaBluetooth(canvas, onProgress) {
   if (onProgress) onProgress('');
 }
 
+// พิมพ์จากรูป (dataURL) — ใช้ตอนดึงงานจากคิวมาพิมพ์
+async function printImageDataUrl(dataUrl, onProgress) {
+  const img = await new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = reject;
+    im.src = dataUrl;
+  });
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height);
+  cx.drawImage(img, 0, 0);
+  await printCanvasViaBluetooth(c, onProgress);
+}
+
 function ReceiptView({ config, order, onBack }) {
   const receiptRef = useRef(null);
   const jobTicketRef = useRef(null);
@@ -3474,11 +3701,20 @@ function ReceiptView({ config, order, onBack }) {
     setSaving(false);
   };
 
-  // พิมพ์ตรงเข้าเครื่อง Bluetooth — ไม่ผ่าน RawBT (ฟรี ไม่มีลายน้ำ ตัดกระดาษเอง)
+  // พิมพ์ตรงเข้าเครื่อง Bluetooth — ถ้าเครื่องไม่รองรับ (iPhone) ส่งเข้าคิวให้ Android พิมพ์แทน
   const handleDirectPrint = async () => {
     setSaving(true);
     try {
       const canvas = await captureJobTicket();
+      if (!navigator.bluetooth) {
+        // iPhone/iPad — ส่งงานเข้าคิว
+        setBtStatus('ส่งเข้าคิวพิมพ์...');
+        await savePrintJob(config.brand, canvas.toDataURL('image/png'), 'คิว ' + queueNo);
+        setBtStatus('');
+        alert('📤 ส่งเข้าคิวพิมพ์แล้ว\n\nเครื่อง Android ที่หน้าร้าน (เปิดโหมดเครื่องพิมพ์ไว้) จะพิมพ์ให้อัตโนมัติภายในไม่กี่วินาที');
+        setSaving(false);
+        return;
+      }
       await printCanvasViaBluetooth(canvas, setBtStatus);
       setBtStatus('✅ พิมพ์เสร็จ');
       setTimeout(() => setBtStatus(''), 2000);
@@ -3487,7 +3723,7 @@ function ReceiptView({ config, order, onBack }) {
       if (e && e.name === 'NotFoundError') {
         // ผู้ใช้กดยกเลิกหน้าต่างเลือกเครื่อง — ไม่ต้องแจ้ง
       } else {
-        alert('พิมพ์ตรงไม่สำเร็จ: ' + (e.message || e) + '\n\nใช้ปุ่ม "แชร์" ส่งเข้า RawBT แทนได้ครับ');
+        alert('พิมพ์ไม่สำเร็จ: ' + (e.message || e));
       }
     }
     setSaving(false);
