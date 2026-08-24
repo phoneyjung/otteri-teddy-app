@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v60-2026-08-24';
+  window.APP_VERSION = 'v61-2026-08-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1589,6 +1589,7 @@ function BrandApp({ config, onChangeBrand }) {
     try { return localStorage.getItem('printServer-' + config.brand) === '1'; } catch { return false; }
   });
   const [printServerStatus, setPrintServerStatus] = useState('');
+  const [autoOpenTicket, setAutoOpenTicket] = useState(false); // เปิดใบงานอัตโนมัติหลังรับงานใหม่
 
   // Real-time subscription to Firestore
   useEffect(() => {
@@ -1689,6 +1690,7 @@ function BrandApp({ config, onChangeBrand }) {
       const newId = await saveOrderToCloud(config.brand, orderWithoutId);
       const savedOrder = { ...orderWithoutId, id: newId };
       setSelectedOrder(savedOrder);
+      setAutoOpenTicket(true); // เปิดใบงานให้เลย ไม่ต้องหาปุ่ม
       setView('receipt');
     } catch (e) {
       alert('บันทึกล้มเหลว: ' + e.message + '\n\nกรุณาเช็คอินเทอร์เน็ตแล้วลองใหม่');
@@ -1940,7 +1942,7 @@ function BrandApp({ config, onChangeBrand }) {
       {view === 'home' && <HomeView config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
-      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
+      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
@@ -3596,7 +3598,7 @@ async function printImageDataUrl(dataUrl, onProgress) {
   await printCanvasViaBluetooth(c, onProgress);
 }
 
-function ReceiptView({ config, order, onBack }) {
+function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) {
   const receiptRef = useRef(null);
   const jobTicketRef = useRef(null);
   const [saving, setSaving] = useState(false);
@@ -3663,6 +3665,17 @@ function ReceiptView({ config, order, onBack }) {
     return canvas;
   };
 
+  // เปิดใบงานอัตโนมัติหลังรับงานใหม่ (แม่บ้านไม่ต้องหาปุ่ม)
+  useEffect(() => {
+    if (autoOpenTicket) {
+      setShowJobTicket(true);
+      onTicketOpened && onTicketOpened();
+    }
+  }, [autoOpenTicket]);
+
+  // เครื่องที่พิมพ์ตรงไม่ได้ (iPhone/iPad) ใช้ปุ่มส่งเข้าแอปเครื่องพิมพ์แทน
+  const canPrintDirect = typeof navigator !== 'undefined' && !!navigator.bluetooth;
+
   // สร้างภาพพรีวิวเมื่อเปิดใบงาน — พรีวิวนี้คือภาพเดียวกับที่ส่งพิมพ์ 100%
   useEffect(() => {
     if (!showJobTicket) { setTicketPreview(''); return; }
@@ -3688,23 +3701,32 @@ function ReceiptView({ config, order, onBack }) {
     setSaving(false);
   };
 
-  const handleShareJobTicket = async () => {
-    setSaving(true);
-    try {
-      const canvas = await captureJobTicket();
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-      const file = new File([blob], `ใบงาน-${queueNo}.png`, { type: 'image/png' });
-      const files = [file];
-      if (navigator.share && navigator.canShare?.({ files })) {
-        await navigator.share({ files, title: `ใบงาน ${queueNo}` });
-      } else {
-        handleSaveJobTicket();
-      }
-    } catch (e) {
-      if (e.name !== 'AbortError') handleSaveJobTicket();
-    }
-    setSaving(false);
+  // แปลง dataURL เป็นไฟล์แบบทันที (ไม่ async) — จำเป็นสำหรับ iOS ที่ต้องเรียกหน้าแชร์ทันทีที่กด
+  const dataUrlToFile = (dataUrl, filename) => {
+    const [head, b64] = dataUrl.split(',');
+    const mime = (head.match(/:(.*?);/) || [])[1] || 'image/png';
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new File([arr], filename, { type: mime });
   };
+
+  const handleShareJobTicket = async () => {
+    // ใช้รูปที่สร้างไว้ตอนเปิดใบงาน — เรียกหน้าแชร์ได้ทันที iOS จึงยอมเปิดให้
+    if (ticketPreview && navigator.share) {
+      try {
+        const file = dataUrlToFile(ticketPreview, `jobticket-${queueNo}.png`);
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: `ใบงาน ${queueNo}` });
+          return;
+        }
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // ผู้ใช้กดยกเลิกเอง
+      }
+    }
+    handleSaveJobTicket();
+  };
+
 
   // พิมพ์ตรงเข้าเครื่อง Bluetooth — ถ้าเครื่องไม่รองรับ (iPhone) ส่งเข้าคิวให้ Android พิมพ์แทน
   const handleDirectPrint = async () => {
@@ -4076,16 +4098,21 @@ function ReceiptView({ config, order, onBack }) {
 
             {/* ปุ่มควบคุม modal */}
             <div className="bg-white rounded-2xl p-3 mt-2">
-              <button onClick={handleDirectPrint} disabled={saving} className="w-full mb-2 py-3 rounded-xl font-bold text-white text-base active:scale-95 transition disabled:opacity-50" style={{ background: config.gradient }}>
-                🖨️ พิมพ์ทันที (Bluetooth)
-              </button>
+              {canPrintDirect ? (
+                <button onClick={handleDirectPrint} disabled={saving} className="w-full mb-2 py-3.5 rounded-xl font-bold text-white text-lg active:scale-95 transition disabled:opacity-50" style={{ background: config.gradient }}>
+                  🖨️ พิมพ์ใบงาน
+                </button>
+              ) : (
+                <button onClick={handleShareJobTicket} disabled={saving || !ticketPreview} className="w-full mb-2 py-3.5 rounded-xl font-bold text-white text-lg active:scale-95 transition disabled:opacity-50" style={{ background: config.gradient }}>
+                  🖨️ พิมพ์ใบงาน
+                </button>
+              )}
               {btStatus && <p className="text-center text-xs font-bold text-teal-600 mb-2">{btStatus}</p>}
-              <div className="grid grid-cols-3 gap-2">
+              {!canPrintDirect && <p className="text-center text-[11px] text-slate-500 mb-2">กดแล้วเลือก <b>POS Printer</b> เพื่อพิมพ์</p>}
+              <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => setShowJobTicket(false)} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">ปิด</button>
-                <button onClick={handleSaveJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">💾 บันทึก</button>
-                <button onClick={handleShareJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-800 text-white text-sm active:scale-95 transition disabled:opacity-50">📤 แชร์</button>
+                <button onClick={handleSaveJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">💾 บันทึกรูป</button>
               </div>
-              <p className="text-center text-[10px] text-slate-400 mt-1.5">พิมพ์ทันที = ตรงเข้าเครื่อง ไม่มีลายน้ำ • แชร์ = ผ่าน RawBT (สำรอง)</p>
             </div>
             <p className="text-center text-white text-opacity-80 text-xs mt-2">แชร์เข้าแอปพิมพ์ Bluetooth เพื่อออกใบงาน 80mm</p>
           </div>
