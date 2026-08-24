@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v61-2026-08-24';
+  window.APP_VERSION = 'v62-2026-08-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -398,6 +398,7 @@ const TEDDY2_CONFIG = {
   subtitle: 'Wash & Dry • ม.ศิลปากร',
   logo: TEDDY2_LOGO,
   hasStaffLogin: true, // เฟส 1 — ต้อง login แม่บ้านก่อนใช้งาน (เฉพาะ Teddy 2)
+  hasPrinter: true, // มีเครื่องพิมพ์ใบงานที่สาขานี้ (สาขาอื่นตั้ง true เมื่อมีเครื่องแล้ว)
   primaryColor: '#00A19A', // เขียวเวอร์ริเดียน — สีประจำ ม.ศิลปากร
   gradient: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)',
   linePromoDiscount: 50, // Teddy 2 ลดแอดไลน์ 50 (มากกว่า Teddy 1)
@@ -1690,7 +1691,7 @@ function BrandApp({ config, onChangeBrand }) {
       const newId = await saveOrderToCloud(config.brand, orderWithoutId);
       const savedOrder = { ...orderWithoutId, id: newId };
       setSelectedOrder(savedOrder);
-      setAutoOpenTicket(true); // เปิดใบงานให้เลย ไม่ต้องหาปุ่ม
+      if (config.hasPrinter) setAutoOpenTicket(true); // เปิดใบงานให้เลย (เฉพาะสาขาที่มีเครื่องพิมพ์)
       setView('receipt');
     } catch (e) {
       alert('บันทึกล้มเหลว: ' + e.message + '\n\nกรุณาเช็คอินเทอร์เน็ตแล้วลองใหม่');
@@ -2469,12 +2470,12 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
               <span className="text-white text-opacity-70 text-[10px]">• สลับ</span>
             </button>
           )}
-          {/* โหมดเครื่องพิมพ์ — เครื่องนี้พิมพ์ให้เครื่องอื่นที่ส่งงานมา */}
-          <button onClick={onTogglePrintServer} className={`mb-1 ml-2 inline-flex items-center gap-1.5 backdrop-blur-sm rounded-full px-3 py-1 border active:scale-95 transition ${printServer ? 'bg-green-400 bg-opacity-90 border-green-200' : 'bg-white bg-opacity-20 border-white border-opacity-30'}`}>
+          {/* โหมดเครื่องพิมพ์ — เครื่องนี้พิมพ์ให้เครื่องอื่นที่ส่งงานมา (เฉพาะสาขาที่มีเครื่องพิมพ์) */}
+          {config.hasPrinter && <button onClick={onTogglePrintServer} className={`mb-1 ml-2 inline-flex items-center gap-1.5 backdrop-blur-sm rounded-full px-3 py-1 border active:scale-95 transition ${printServer ? 'bg-green-400 bg-opacity-90 border-green-200' : 'bg-white bg-opacity-20 border-white border-opacity-30'}`}>
             <span className="text-sm">🖨️</span>
             <span className="text-white text-xs font-bold">{printServer ? 'รับงานพิมพ์' : 'โหมดเครื่องพิมพ์'}</span>
             {printServer && printServerStatus && <span className="text-white text-opacity-80 text-[9px]">• {printServerStatus}</span>}
-          </button>
+          </button>}
           <div className="grid grid-cols-2 gap-3 mt-6">
             <div className="bg-white bg-opacity-15 backdrop-blur-sm rounded-2xl p-3 border border-white border-opacity-20">
               <p className="text-white text-xs opacity-90">วันนี้</p>
@@ -4120,21 +4121,25 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
       )}
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 shadow-2xl">
-        <div className="max-w-md mx-auto grid grid-cols-3 gap-2">
-          <button onClick={() => setShowJobTicket(true)} disabled={saving} className="py-3 rounded-xl font-bold bg-slate-800 text-white flex flex-col items-center justify-center gap-0.5 active:scale-95 transition disabled:opacity-50">
-            <span className="text-base leading-none">🖨️</span>
-            <span className="text-xs">ใบงาน</span>
-          </button>
+        <div className={`max-w-md mx-auto grid gap-2 ${config.hasPrinter ? 'grid-cols-3' : 'grid-cols-3'}`}>
+          {config.hasPrinter && (
+            <button onClick={() => setShowJobTicket(true)} disabled={saving} className="py-3 rounded-xl font-bold bg-slate-800 text-white flex flex-col items-center justify-center gap-0.5 active:scale-95 transition disabled:opacity-50">
+              <span className="text-base leading-none">🖨️</span>
+              <span className="text-xs">ใบงาน</span>
+            </button>
+          )}
           <button onClick={handleSaveImage} disabled={saving} className="py-3 rounded-xl font-bold bg-slate-100 text-slate-700 flex flex-col items-center justify-center gap-0.5 active:scale-95 transition disabled:opacity-50">
             <Icon name="download" className="w-4 h-4" />
             <span className="text-xs">บันทึก</span>
           </button>
-          <button onClick={handleShare} disabled={saving} className="py-3 rounded-xl font-bold text-white flex items-center justify-center gap-1.5 active:scale-95 transition disabled:opacity-50" style={{background: 'linear-gradient(135deg, #06C755, #00B900)'}}>
+          <button onClick={handleShare} disabled={saving} className={`py-3 rounded-xl font-bold text-white flex items-center justify-center gap-1.5 active:scale-95 transition disabled:opacity-50 ${config.hasPrinter ? '' : 'col-span-2'}`} style={{background: 'linear-gradient(135deg, #06C755, #00B900)'}}>
             <span className="text-lg">📤</span>
-            <span className="text-sm">Line</span>
+            <span className="text-sm">ส่งเข้า Line</span>
           </button>
         </div>
-        <p className="text-center text-xs text-slate-400 mt-1.5">🖨️ ใบงานให้แม่บ้าน • บันทึก/ส่ง Line ใบเสร็จลูกค้า</p>
+        <p className="text-center text-xs text-slate-400 mt-1.5">
+          {config.hasPrinter ? '🖨️ ใบงานให้แม่บ้าน • บันทึก/ส่ง Line ใบเสร็จลูกค้า' : 'บันทึก / ส่ง Line ใบเสร็จให้ลูกค้า'}
+        </p>
       </div>
     </div>
   );
