@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v59-2026-08-24';
+  window.APP_VERSION = 'v60-2026-08-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1068,10 +1068,10 @@ function BrandSelector({ onSelect, onOpenDelivery, onOpenGuide }) {
 
       <div className="w-full max-w-md space-y-4">
         <button onClick={() => onSelect('otteri')} className="w-full bg-white rounded-3xl p-5 shadow-xl active:scale-95 transition flex items-center gap-4 border-2 border-sky-100">
-          <div className="bg-gradient-to-br from-sky-400 to-sky-600 p-2 rounded-2xl">
-            <img src={OTTERI_LOGO} className="w-20 h-20 rounded-2xl" alt="Otteri" />
+          <div className="bg-gradient-to-br from-sky-400 to-sky-600 p-2 rounded-2xl flex-shrink-0">
+            <img src={OTTERI_LOGO} className="w-20 h-20 rounded-2xl object-cover" alt="Otteri" />
           </div>
-          <div className="text-left flex-1">
+          <div className="text-left flex-1 min-w-0">
             <p className="text-2xl font-extrabold text-slate-900">Otteri</p>
             <p className="text-sm text-slate-500">Wash & Dry Service</p>
             <p className="text-xs text-sky-600 mt-1 font-bold">🦦 มี: Otteri 1 สาขา</p>
@@ -1080,48 +1080,53 @@ function BrandSelector({ onSelect, onOpenDelivery, onOpenGuide }) {
         </button>
 
         {/* การ์ด Teddy — มีปุ่มเช็คค่าส่งเล็กมุมขวา */}
-        <div className="w-full bg-white rounded-3xl p-5 shadow-xl flex items-center gap-4 border-2 border-blue-100 relative">
-          <button onClick={() => onSelect('teddy')} className="flex items-center gap-4 flex-1 active:scale-95 transition text-left">
-            <div className="bg-gradient-to-br from-blue-300 to-blue-500 p-2 rounded-2xl">
-              <img src={TEDDY_LOGO} className="w-20 h-20 rounded-2xl" alt="Teddy" />
+        <div className="w-full bg-white rounded-3xl p-5 shadow-xl border-2 border-blue-100">
+          <button onClick={() => onSelect('teddy')} className="w-full flex items-center gap-4 active:scale-95 transition text-left">
+            <div className="bg-gradient-to-br from-blue-300 to-blue-500 p-2 rounded-2xl flex-shrink-0">
+              <img src={TEDDY_LOGO} className="w-20 h-20 rounded-2xl object-cover" alt="Teddy" />
             </div>
-            <div className="flex-1">
-              <p className="text-2xl font-extrabold text-slate-900">Teddy</p>
-              <p className="text-sm text-slate-500">Wash & Dry + Delivery</p>
-              <p className="text-xs text-blue-600 mt-1 font-bold">🐻 ฝากซัก-อบ-พับ ฟรี + Delivery</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-2xl font-extrabold text-slate-900 leading-tight">Teddy</p>
+              <p className="text-sm text-slate-500 leading-snug">Wash &amp; Dry + Delivery</p>
+              <p className="text-xs text-blue-600 mt-1 font-bold leading-snug">🐻 ฝากซัก-อบ-พับ ฟรี + Delivery</p>
             </div>
+            <Icon name="chevron-right" className="w-6 h-6 text-slate-400 flex-shrink-0" />
           </button>
-          {/* ปุ่มเช็คค่าส่ง — เล็ก แยกจากการเข้าร้าน */}
-          <button onClick={onOpenGuide} className="flex flex-col items-center justify-center gap-0.5 bg-sky-50 hover:bg-sky-100 border-2 border-sky-200 rounded-2xl px-2.5 py-2 active:scale-90 transition flex-shrink-0 mr-2" title="คู่มือ">
-            <span className="text-3xl leading-none">📖</span>
-            <span className="text-[9px] font-bold text-sky-700 leading-none">คู่มือ</span>
-          </button>
-          <button onClick={onOpenDelivery} className="flex flex-col items-center justify-center gap-0.5 bg-green-50 hover:bg-green-100 border-2 border-green-200 rounded-2xl px-2.5 py-2 active:scale-90 transition flex-shrink-0" title="เช็คค่าส่ง">
-            <img src={DELIVERY_ICON} className="w-9 h-9" alt="เช็คค่าส่ง" />
-            <span className="text-[9px] font-bold text-green-700 leading-none">เช็คค่าส่ง</span>
-          </button>
+          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
+            <button onClick={onOpenGuide} className="flex items-center justify-center gap-1.5 bg-sky-50 hover:bg-sky-100 border-2 border-sky-200 rounded-xl py-2 active:scale-95 transition">
+              <span className="text-xl leading-none">📖</span>
+              <span className="text-xs font-bold text-sky-700">คู่มือ</span>
+            </button>
+            <button onClick={onOpenDelivery} className="flex items-center justify-center gap-1.5 bg-green-50 hover:bg-green-100 border-2 border-green-200 rounded-xl py-2 active:scale-95 transition">
+              <img src={DELIVERY_ICON} className="w-6 h-6" alt="" />
+              <span className="text-xs font-bold text-green-700">เช็คค่าส่ง</span>
+            </button>
+          </div>
         </div>
 
         {/* การ์ด Teddy 2 — ม.ศิลปากร (สีเขียวเวอร์ริเดียน) */}
-        <div className="w-full bg-white rounded-3xl p-5 shadow-xl flex items-center gap-4 relative" style={{ border: '2px solid #4FD1C5' }}>
-          <button onClick={() => onSelect('teddy2')} className="flex items-center gap-4 flex-1 active:scale-95 transition text-left">
-            <div className="p-2 rounded-2xl" style={{ background: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)' }}>
-              <img src={TEDDY2_LOGO} className="w-20 h-20 rounded-2xl" alt="Teddy 2" />
+        <div className="w-full bg-white rounded-3xl p-5 shadow-xl" style={{ border: '2px solid #4FD1C5' }}>
+          <button onClick={() => onSelect('teddy2')} className="w-full flex items-center gap-4 active:scale-95 transition text-left">
+            <div className="p-2 rounded-2xl flex-shrink-0" style={{ background: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)' }}>
+              <img src={TEDDY2_LOGO} className="w-20 h-20 rounded-2xl object-cover" alt="Teddy 2" />
             </div>
-            <div className="flex-1">
-              <p className="text-2xl font-extrabold text-slate-900">Teddy 2</p>
-              <p className="text-sm text-slate-500">Wash & Dry • ม.ศิลปากร</p>
-              <p className="text-xs mt-1 font-bold" style={{ color: '#00A19A' }}>🐻 ซัก 12/17kg + อบ 12/17kg</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-2xl font-extrabold text-slate-900 leading-tight">Teddy 2</p>
+              <p className="text-sm text-slate-500 leading-snug">Wash &amp; Dry • ม.ศิลปากร</p>
+              <p className="text-xs mt-1 font-bold leading-snug" style={{ color: '#00A19A' }}>🐻 ซัก 12/17kg + อบ 12/17kg</p>
             </div>
+            <Icon name="chevron-right" className="w-6 h-6 text-slate-400 flex-shrink-0" />
           </button>
-          <button onClick={onOpenGuide} className="flex flex-col items-center justify-center gap-0.5 bg-sky-50 hover:bg-sky-100 border-2 border-sky-200 rounded-2xl px-2.5 py-2 active:scale-90 transition flex-shrink-0 mr-2" title="คู่มือ">
-            <span className="text-3xl leading-none">📖</span>
-            <span className="text-[9px] font-bold text-sky-700 leading-none">คู่มือ</span>
-          </button>
-          <button onClick={onOpenDelivery} className="flex flex-col items-center justify-center gap-0.5 bg-green-50 hover:bg-green-100 border-2 border-green-200 rounded-2xl px-2.5 py-2 active:scale-90 transition flex-shrink-0" title="เช็คค่าส่ง">
-            <img src={DELIVERY_ICON} className="w-9 h-9" alt="เช็คค่าส่ง" />
-            <span className="text-[9px] font-bold text-green-700 leading-none">เช็คค่าส่ง</span>
-          </button>
+          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
+            <button onClick={onOpenGuide} className="flex items-center justify-center gap-1.5 bg-sky-50 hover:bg-sky-100 border-2 border-sky-200 rounded-xl py-2 active:scale-95 transition">
+              <span className="text-xl leading-none">📖</span>
+              <span className="text-xs font-bold text-sky-700">คู่มือ</span>
+            </button>
+            <button onClick={onOpenDelivery} className="flex items-center justify-center gap-1.5 bg-green-50 hover:bg-green-100 border-2 border-green-200 rounded-xl py-2 active:scale-95 transition">
+              <img src={DELIVERY_ICON} className="w-6 h-6" alt="" />
+              <span className="text-xs font-bold text-green-700">เช็คค่าส่ง</span>
+            </button>
+          </div>
         </div>
 
         {/* แบรนด์ที่ 3: โหมดฝึกสำหรับแม่บ้านใหม่ — ซ่อนไว้ก่อน (เปลี่ยน false เป็น true เพื่อเปิดใช้) */}
