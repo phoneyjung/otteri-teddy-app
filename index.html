@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v62-2026-08-24';
+  window.APP_VERSION = 'v63-2026-08-25';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -399,6 +399,7 @@ const TEDDY2_CONFIG = {
   logo: TEDDY2_LOGO,
   hasStaffLogin: true, // เฟส 1 — ต้อง login แม่บ้านก่อนใช้งาน (เฉพาะ Teddy 2)
   hasPrinter: true, // มีเครื่องพิมพ์ใบงานที่สาขานี้ (สาขาอื่นตั้ง true เมื่อมีเครื่องแล้ว)
+  requirePhone: true, // บังคับใส่เบอร์ลูกค้าตอนรับงาน
   primaryColor: '#00A19A', // เขียวเวอร์ริเดียน — สีประจำ ม.ศิลปากร
   gradient: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)',
   linePromoDiscount: 50, // Teddy 2 ลดแอดไลน์ 50 (มากกว่า Teddy 1)
@@ -2899,7 +2900,17 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   const breakdown = calculateBreakdown(tempOrder, config);
   const total = breakdown.total;
   const hasAnyItem = washItems.length > 0 || dryItems.length > 0 || (detergentQty > 0) || (softenerQty > 0) || (foldBaskets > 0);
-  const canSubmit = hasAnyItem && (!useLinePromo || linePromoPhoto);
+  // Teddy 2 บังคับใส่เบอร์ลูกค้า (ใช้ติดต่อกลับ/ตามงาน)
+  const needPhone = !!config.requirePhone;
+  const phoneOk = !needPhone || phone.trim().length >= 9;
+  const canSubmit = hasAnyItem && phoneOk && (!useLinePromo || linePromoPhoto);
+
+  // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
+  const missingList = [];
+  if (!hasAnyItem) missingList.push('เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)');
+  if (needPhone && !phone.trim()) missingList.push('ใส่เบอร์โทรลูกค้า');
+  else if (needPhone && phone.trim().length < 9) missingList.push('เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)');
+  if (useLinePromo && !linePromoPhoto) missingList.push('ถ่ายรูปคูปองแอดไลน์');
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
 
@@ -3134,8 +3145,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           <Field label="ชื่อลูกค้า">
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
           </Field>
-          <Field label="เบอร์โทร">
-            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
+          <Field label={needPhone ? 'เบอร์โทร *' : 'เบอร์โทร'}>
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needPhone && !phoneOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
+            {needPhone && !phoneOk && <p className="text-xs text-amber-700 mt-1 font-medium">จำเป็นต้องกรอก — ใช้ติดต่อลูกค้าตอนงานเสร็จ</p>}
           </Field>
         </Section>
 
@@ -3486,6 +3498,15 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <p className="text-xl font-extrabold text-slate-900">฿{formatMoney(total)}</p>
             </div>
           </div>
+          {/* บอกให้ชัดว่าขาดอะไรถึงกดบันทึกไม่ได้ */}
+          {missingList.length > 0 && (
+            <div className="mb-2 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2">
+              <p className="text-xs font-bold text-amber-800 mb-0.5">⚠️ ยังกดบันทึกไม่ได้ — ต้องกรอกก่อน:</p>
+              {missingList.map((m, i) => (
+                <p key={i} className="text-xs text-amber-700 leading-snug">• {m}</p>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <button onClick={onCancel} className="px-4 py-3 rounded-xl font-bold bg-slate-100 text-slate-700 active:scale-95 transition flex items-center gap-1">
               <Icon name="x" className="w-4 h-4" />
