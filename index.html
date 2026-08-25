@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v63-2026-08-25';
+  window.APP_VERSION = 'v64-2026-08-25';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -2901,13 +2901,16 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   const total = breakdown.total;
   const hasAnyItem = washItems.length > 0 || dryItems.length > 0 || (detergentQty > 0) || (softenerQty > 0) || (foldBaskets > 0);
   // Teddy 2 บังคับใส่เบอร์ลูกค้า (ใช้ติดต่อกลับ/ตามงาน)
-  const needPhone = !!config.requirePhone;
+  const needCustomerInfo = !!config.requirePhone; // บังคับชื่อ + เบอร์ (Teddy 2)
+  const needPhone = needCustomerInfo;
   const phoneOk = !needPhone || phone.trim().length >= 9;
-  const canSubmit = hasAnyItem && phoneOk && (!useLinePromo || linePromoPhoto);
+  const nameOk = !needCustomerInfo || name.trim().length > 0;
+  const canSubmit = hasAnyItem && nameOk && phoneOk && (!useLinePromo || linePromoPhoto);
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
   if (!hasAnyItem) missingList.push('เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)');
+  if (needCustomerInfo && !name.trim()) missingList.push('ใส่ชื่อลูกค้า');
   if (needPhone && !phone.trim()) missingList.push('ใส่เบอร์โทรลูกค้า');
   else if (needPhone && phone.trim().length < 9) missingList.push('เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)');
   if (useLinePromo && !linePromoPhoto) missingList.push('ถ่ายรูปคูปองแอดไลน์');
@@ -3142,8 +3145,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
 
         <Section iconName="user" title="ข้อมูลลูกค้า">
-          <Field label="ชื่อลูกค้า">
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
+          <Field label={needCustomerInfo ? 'ชื่อลูกค้า *' : 'ชื่อลูกค้า'}>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needCustomerInfo && !nameOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
+            {needCustomerInfo && !nameOk && <p className="text-xs text-amber-700 mt-1 font-medium">จำเป็นต้องกรอก — ใช้เรียกลูกค้าตอนมารับผ้า</p>}
           </Field>
           <Field label={needPhone ? 'เบอร์โทร *' : 'เบอร์โทร'}>
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needPhone && !phoneOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
