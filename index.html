@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v64-2026-08-25';
+  window.APP_VERSION = 'v65-2026-08-25';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -2901,7 +2901,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   const total = breakdown.total;
   const hasAnyItem = washItems.length > 0 || dryItems.length > 0 || (detergentQty > 0) || (softenerQty > 0) || (foldBaskets > 0);
   // Teddy 2 บังคับใส่เบอร์ลูกค้า (ใช้ติดต่อกลับ/ตามงาน)
-  const needCustomerInfo = !!config.requirePhone; // บังคับชื่อ + เบอร์ (Teddy 2)
+  // บังคับชื่อ + เบอร์ เฉพาะลูกค้าหน้าร้าน (งาน LINE / เคฟ ไม่บังคับ)
+  const isWalkIn = !fromKev && !fromLine;
+  const needCustomerInfo = !!config.requirePhone && isWalkIn;
   const needPhone = needCustomerInfo;
   const phoneOk = !needPhone || phone.trim().length >= 9;
   const nameOk = !needCustomerInfo || name.trim().length > 0;
