@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v65-2026-08-25';
+  window.APP_VERSION = 'v66-2026-08-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -422,6 +422,73 @@ const TRAINEE_CONFIG = {
   gradient: 'linear-gradient(135deg, #6EE7B7 0%, #10B981 100%)',
 };
 
+// ============ 💰 จุดเก็บเงิน (นับเหรียญ/กระทบยอด) — รหัสเครื่องตรงกับแอปอ้างอิง ============
+const COIN_POINTS = {
+  otteri: {
+    tokenMode: false, unitName: 'เหรียญ',
+    machines: [
+      { id: 'W1', label: 'ซัก W1', size: '9kg' },
+      { id: 'W2', label: 'ซัก W2', size: '9kg' },
+      { id: 'W3', label: 'ซัก W3', size: '14kg' },
+      { id: 'W4', label: 'ซัก W4', size: '14kg' },
+      { id: 'W6', label: 'ซัก W6', size: '18kg' },
+      { id: 'W7', label: 'ซัก W7', size: '18kg' },
+      { id: 'W8', label: 'ซัก W8', size: '28kg' },
+      { id: 'D1', label: 'อบ D1', size: '25kg' },
+      { id: 'D4', label: 'อบ D4', size: '15kg' },
+      { id: 'D5', label: 'อบ D5', size: '15kg' },
+      { id: 'D6', label: 'อบ D6', size: '15kg' },
+      { id: 'D7', label: 'อบ D7', size: '15kg' },
+    ],
+    changers: [
+      { id: 'CH1', label: 'ตู้แลกเหรียญ 1' },
+      { id: 'CH2', label: 'ตู้แลกเหรียญ 2' },
+    ],
+    vending: [{ id: 'VD1', label: 'ตู้น้ำยา' }],
+  },
+  teddy: {
+    tokenMode: true, tokenValue: 10, unitName: 'โทเคน',
+    machines: [
+      { id: 'w1', label: 'ซัก 1', size: '17kg' },
+      { id: 'w2', label: 'ซัก 2', size: '10kg' },
+      { id: 'w3', label: 'ซัก 3', size: '10kg' },
+      { id: 'w4', label: 'ซัก 4', size: '10kg' },
+      { id: 'w5', label: 'ซัก 5', size: '10kg' },
+      { id: 'w6', label: 'ซัก 6', size: '13kg' },
+      { id: 'd1', label: 'อบ 1', size: '15kg' },
+      { id: 'd2', label: 'อบ 2', size: '15kg' },
+      { id: 'd3', label: 'อบ 3', size: '15kg' },
+      { id: 'd4', label: 'อบ 4', size: '15kg' },
+    ],
+    changers: [{ id: 'CH1', label: 'ตู้แลกโทเคน' }],
+    vending: [{ id: 'VD1', label: 'ตู้น้ำยา' }],
+  },
+  teddy2: {
+    tokenMode: false, unitName: 'เหรียญ',
+    machines: [
+      { id: 'w1', label: 'ซัก 1', size: '17kg' },
+      { id: 'w2', label: 'ซัก 2', size: '17kg' },
+      { id: 'w3', label: 'ซัก 3', size: '17kg' },
+      { id: 'w4', label: 'ซัก 4', size: '17kg' },
+      { id: 'w5', label: 'ซัก 5', size: '17kg' },
+      { id: 'w6', label: 'ซัก 6', size: '12kg' },
+      { id: 'w7', label: 'ซัก 7', size: '12kg' },
+      { id: 'w8', label: 'ซัก 8', size: '12kg' },
+      { id: 'd1', label: 'อบ 1', size: '17kg' },
+      { id: 'd2', label: 'อบ 2', size: '17kg' },
+      { id: 'd3', label: 'อบ 3', size: '17kg' },
+      { id: 'd4', label: 'อบ 4', size: '17kg' },
+      { id: 'd5', label: 'อบ 5', size: '17kg' },
+      { id: 'd6', label: 'อบ 6', size: '12kg' },
+      { id: 'd7', label: 'อบ 7', size: '12kg' },
+      { id: 'd8', label: 'อบ 8', size: '12kg' },
+    ],
+    changers: [{ id: 'CH1', label: 'ตู้แลกเหรียญ' }],
+    vending: [{ id: 'VD1', label: 'ตู้น้ำยา' }],
+  },
+};
+COIN_POINTS.trainee = COIN_POINTS.teddy;
+
 const OWNER_PASSWORD = '1303';
 
 // ============ DELIVERY ZONE CHECKER ============
@@ -807,6 +874,26 @@ function subscribeToPrintJobs(brand, callback) {
 async function deletePrintJob(id) {
   try { await window.db.collection('printJobs').doc(id).delete(); }
   catch (e) { console.error('deletePrintJob error:', e); }
+}
+
+// ============ 💰 นับเหรียญ (coinCounts) — กระทบยอดเจ้าของ ============
+async function saveCoinCount(brand, entry) {
+  let data = cleanUndefined({ ...entry, brand, createdAt: Date.now() });
+  data = JSON.parse(JSON.stringify(data));
+  const docRef = await window.db.collection('coinCounts').add(data);
+  return docRef.id;
+}
+
+function subscribeToCoinCounts(brand, callback) {
+  return window.db.collection('coinCounts').where('brand', '==', brand).onSnapshot(
+    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
+    error => console.error('subscribe coinCounts error:', error)
+  );
+}
+
+async function deleteCoinCount(id) {
+  try { await window.db.collection('coinCounts').doc(id).delete(); }
+  catch (e) { console.error('deleteCoinCount error:', e); }
 }
 
 // Legacy localStorage helpers (ไว้สำหรับ migrate ข้อมูลเก่า)
@@ -4372,6 +4459,340 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
 }
 
 
+// ============ 💰 นับเหรียญ / กระทบยอด (เจ้าของ) ============
+function CoinCountView({ config }) {
+  const cp = COIN_POINTS[config.brand] || COIN_POINTS.teddy2;
+  const unitVal = cp.tokenMode ? (cp.tokenValue || 10) : 10;
+
+  // hooks ทั้งหมดก่อน logic อื่น (กติกาข้อ 3)
+  const [records, setRecords] = useState([]);
+  const [sub, setSub] = useState('points');
+  const [sel, setSel] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [coins, setCoins] = useState('');
+  const [meter, setMeter] = useState('');
+  const [notes, setNotes] = useState({ b20: '', b50: '', b100: '', b500: '', b1000: '' });
+  const [extraCoins, setExtraCoins] = useState('');
+  const [remain, setRemain] = useState('');
+  const [vend, setVend] = useState({ c1: '', c2: '', c5: '', c10: '' });
+  const [noteText, setNoteText] = useState('');
+
+  useEffect(() => {
+    if (!window.db) return;
+    const unsub = subscribeToCoinCounts(config.brand, list => {
+      setRecords([...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+    });
+    return () => { if (unsub) unsub(); };
+  }, [config.brand]);
+
+  const n = v => { const x = parseInt(v, 10); return isNaN(x) ? 0 : x; };
+  const fm = v => (v || 0).toLocaleString();
+  const lastOf = (pointId, action) => records.find(r => r.pointId === pointId && r.action === action);
+  const diffBadge = (diff) => diff == null ? null : (
+    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${diff === 0 ? 'bg-emerald-100 text-emerald-700' : diff > 0 ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'}`}>
+      {diff === 0 ? '✓ ตรง' : (diff > 0 ? '+' : '') + fm(diff) + '฿'}
+    </span>
+  );
+
+  const resetForm = () => {
+    setCoins(''); setMeter('');
+    setNotes({ b20: '', b50: '', b100: '', b500: '', b1000: '' });
+    setExtraCoins(''); setRemain('');
+    setVend({ c1: '', c2: '', c5: '', c10: '' });
+    setNoteText('');
+  };
+  const openForm = (point, type, action) => { resetForm(); setSel({ point, type, action }); };
+
+  // ==== คำนวณสดตามฟอร์ม ====
+  let calc = null;
+  if (sel && sel.type === 'machine') {
+    const amount = n(coins) * unitVal;
+    const prev = lastOf(sel.point.id, 'count');
+    let expected = null, diff = null;
+    if (meter !== '' && prev && prev.meter != null) {
+      expected = n(meter) - prev.meter;
+      diff = amount - expected;
+    }
+    calc = { amount, expected, diff, prevMeter: prev && prev.meter != null ? prev.meter : null };
+  } else if (sel && sel.type === 'changer' && sel.action === 'refill') {
+    calc = { amount: n(coins) * unitVal };
+  } else if (sel && sel.type === 'changer') {
+    const notesTotal = n(notes.b20) * 20 + n(notes.b50) * 50 + n(notes.b100) * 100 + n(notes.b500) * 500 + n(notes.b1000) * 1000;
+    const cash = notesTotal + n(extraCoins) * 10;
+    const lastCollect = lastOf(sel.point.id, 'collect');
+    const since = lastCollect ? lastCollect.createdAt : 0;
+    const refillsSince = records
+      .filter(r => r.pointId === sel.point.id && r.action === 'refill' && (r.createdAt || 0) > since)
+      .reduce((s, r) => s + (r.coins || 0), 0);
+    let expected = null, diff = null;
+    if (remain !== '' && lastCollect && lastCollect.remain != null) {
+      const dispensed = (lastCollect.remain + refillsSince) - n(remain);
+      expected = dispensed * unitVal;
+      diff = cash - expected;
+    }
+    calc = { amount: cash, expected, diff, refillsSince, prevRemain: lastCollect && lastCollect.remain != null ? lastCollect.remain : null };
+  } else if (sel && sel.type === 'vending') {
+    calc = { amount: n(vend.c1) * 1 + n(vend.c2) * 2 + n(vend.c5) * 5 + n(vend.c10) * 10 };
+  }
+
+  const handleSave = async () => {
+    if (!sel || !calc || saving) return;
+    setSaving(true);
+    try {
+      const base = {
+        pointId: sel.point.id, pointLabel: sel.point.label, pointType: sel.type, action: sel.action,
+        amount: calc.amount, note: noteText.trim(),
+        dateKey: new Date().toISOString().slice(0, 10),
+      };
+      if (sel.type === 'machine') {
+        base.coins = n(coins);
+        base.meter = meter !== '' ? n(meter) : null;
+        base.expected = calc.expected; base.diff = calc.diff;
+      } else if (sel.type === 'changer' && sel.action === 'refill') {
+        base.coins = n(coins);
+      } else if (sel.type === 'changer') {
+        base.denoms = { b20: n(notes.b20), b50: n(notes.b50), b100: n(notes.b100), b500: n(notes.b500), b1000: n(notes.b1000) };
+        base.extraCoins = n(extraCoins);
+        base.remain = remain !== '' ? n(remain) : null;
+        base.expected = calc.expected; base.diff = calc.diff;
+      } else if (sel.type === 'vending') {
+        base.vendCoins = { c1: n(vend.c1), c2: n(vend.c2), c5: n(vend.c5), c10: n(vend.c10) };
+      }
+      await saveCoinCount(config.brand, base);
+      setSel(null); resetForm();
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e) + '\nตรวจว่า Firestore Rules เพิ่ม coinCounts แล้วหรือยัง');
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (r) => {
+    if (!window.confirm(`ลบรายการ ${r.pointLabel} ${fm(r.amount)}฿ ?`)) return;
+    await deleteCoinCount(r.id);
+  };
+
+  // ==== สรุปเดือนนี้ ====
+  const mk = new Date().toISOString().slice(0, 7);
+  const monthRecs = records.filter(r => (r.dateKey || '').startsWith(mk));
+  const sumMachine = monthRecs.filter(r => r.pointType === 'machine').reduce((s, r) => s + (r.amount || 0), 0);
+  const sumChanger = monthRecs.filter(r => r.pointType === 'changer' && r.action === 'collect').reduce((s, r) => s + (r.amount || 0), 0);
+  const sumVend = monthRecs.filter(r => r.pointType === 'vending').reduce((s, r) => s + (r.amount || 0), 0);
+  const diffRecs = monthRecs.filter(r => r.diff != null);
+  const sumDiff = diffRecs.reduce((s, r) => s + r.diff, 0);
+
+  const actionLabel = (r) => r.action === 'refill' ? `เติม${cp.unitName}` : r.action === 'collect' ? 'เก็บเงิน' : `นับ${cp.unitName}`;
+
+  const pointCard = (p, type) => {
+    const last = type === 'changer' ? lastOf(p.id, 'collect') : lastOf(p.id, 'count');
+    return (
+      <button key={p.id} onClick={() => openForm(p, type, type === 'changer' ? 'collect' : 'count')}
+        className="bg-white rounded-xl p-3 text-left border border-slate-200 active:scale-95 transition">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold text-slate-800">{p.label}</p>
+          {p.size && <span className="text-[10px] text-slate-400">{p.size}</span>}
+        </div>
+        {last ? (
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            <span className="text-[11px] text-slate-500">{new Date(last.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} · {fm(last.amount)}฿</span>
+            {diffBadge(last.diff)}
+          </div>
+        ) : (
+          <p className="text-[11px] text-slate-400 mt-1">ยังไม่เคยนับ</p>
+        )}
+      </button>
+    );
+  };
+
+  const numInput = (value, onChange, placeholder) => (
+    <input type="number" inputMode="numeric" value={value} placeholder={placeholder || '0'}
+      onChange={e => onChange(e.target.value)} onFocus={e => e.target.select()}
+      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base font-bold text-slate-800 text-right" />
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* สรุปเดือนนี้ */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200">
+        <p className="text-xs font-bold text-slate-500 mb-2">💰 สรุปนับได้เดือนนี้</p>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p className="text-[11px] text-slate-500">{cp.tokenMode ? 'โทเคนในเครื่อง' : 'เครื่องซัก/อบ'}</p>
+            <p className="text-base font-bold text-slate-800">{fm(sumMachine)}฿</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-slate-500">{cp.tokenMode ? 'เงินสดตู้แลก ⭐' : 'ตู้แลกเหรียญ'}</p>
+            <p className="text-base font-bold text-slate-800">{fm(sumChanger)}฿</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-slate-500">ตู้น้ำยา</p>
+            <p className="text-base font-bold text-slate-800">{fm(sumVend)}฿</p>
+          </div>
+        </div>
+        {diffRecs.length > 0 && (
+          <div className={`mt-2 rounded-xl px-3 py-2 text-center text-sm font-bold ${sumDiff === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+            ส่วนต่างรวมเดือนนี้: {(sumDiff > 0 ? '+' : '') + fm(sumDiff)}฿ ({diffRecs.length} รอบที่เทียบได้)
+          </div>
+        )}
+        {cp.tokenMode && <p className="text-[10px] text-slate-400 mt-2">⭐ รายได้จริง Teddy 1 = เงินสดจากตู้แลกโทเคน · โทเคนในเครื่องใช้ตรวจสอบเท่านั้น</p>}
+      </div>
+
+      {/* แท็บย่อย */}
+      <div className="flex gap-2">
+        <button onClick={() => setSub('points')} className={`flex-1 py-2 rounded-xl text-sm font-bold ${sub === 'points' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>จุดเก็บเงิน</button>
+        <button onClick={() => setSub('history')} className={`flex-1 py-2 rounded-xl text-sm font-bold ${sub === 'history' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>ประวัติ ({records.length})</button>
+      </div>
+
+      {sub === 'points' && (
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs font-bold text-slate-500 mb-1.5">🧺 เครื่องซัก/อบ (นับ{cp.unitName}ในกล่อง)</p>
+            <div className="grid grid-cols-2 gap-2">{cp.machines.map(p => pointCard(p, 'machine'))}</div>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-500 mb-1.5">🏧 {cp.tokenMode ? 'ตู้แลกโทเคน (จุดรับเงินสดจริง)' : 'ตู้แลกเหรียญ'}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {cp.changers.map(p => (
+                <React.Fragment key={p.id}>
+                  {pointCard(p, 'changer')}
+                  <button onClick={() => openForm(p, 'changer', 'refill')}
+                    className="bg-amber-50 rounded-xl p-3 text-left border border-amber-200 active:scale-95 transition">
+                    <p className="text-sm font-bold text-amber-800">➕ เติม{cp.unitName}</p>
+                    <p className="text-[11px] text-amber-600 mt-1">{p.label}</p>
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-500 mb-1.5">🧴 ตู้น้ำยา (รับเหรียญ 1/2/5/10)</p>
+            <div className="grid grid-cols-2 gap-2">{cp.vending.map(p => pointCard(p, 'vending'))}</div>
+          </div>
+        </div>
+      )}
+
+      {sub === 'history' && (
+        <div className="space-y-2">
+          {records.length === 0 && <div className="bg-white rounded-2xl p-6 text-center text-sm text-slate-500">ยังไม่มีรายการ</div>}
+          {records.slice(0, 60).map(r => (
+            <div key={r.id} className="bg-white rounded-xl p-3 border border-slate-200 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-800">{r.pointLabel} · {actionLabel(r)}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-[11px] text-slate-500">{new Date(r.createdAt).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                  {diffBadge(r.diff)}
+                </div>
+                {r.note && <p className="text-[11px] text-slate-400 truncate">📝 {r.note}</p>}
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-base font-bold text-slate-800">{fm(r.amount)}฿</p>
+                <button onClick={() => handleDelete(r)} className="text-[11px] text-rose-500">ลบ</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ฟอร์มกรอก */}
+      {sel && calc && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center" onClick={() => setSel(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-lg font-bold text-slate-800">
+                {sel.action === 'refill' ? `➕ เติม${cp.unitName}` : sel.type === 'changer' ? '💵 เก็บเงินจากตู้' : sel.type === 'vending' ? '🧴 นับตู้น้ำยา' : `🪙 นับ${cp.unitName}`}
+              </p>
+              <button onClick={() => setSel(null)} className="text-slate-400 text-xl leading-none px-2">✕</button>
+            </div>
+            <p className="text-sm text-slate-500 mb-3">{sel.point.label}{sel.point.size ? ` · ${sel.point.size}` : ''}</p>
+
+            {sel.type === 'machine' && (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-bold text-slate-600 mb-1">จำนวน{cp.unitName}ที่นับได้ (×{unitVal}฿)</p>
+                  {numInput(coins, setCoins)}
+                  <p className="text-right text-sm font-bold text-slate-700 mt-1">= {fm(calc.amount)}฿</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-600 mb-1">เลขยอดสะสมจากแอปอ้างอิง (บาท){calc.prevMeter != null ? ` · รอบก่อน ${fm(calc.prevMeter)}` : ' · รอบแรก = ตั้งฐาน'}</p>
+                  {numInput(meter, setMeter, 'ไม่กรอกได้')}
+                </div>
+                {calc.expected != null && (
+                  <div className={`rounded-xl px-3 py-2.5 text-sm font-bold text-center ${calc.diff === 0 ? 'bg-emerald-50 text-emerald-700' : calc.diff > 0 ? 'bg-sky-50 text-sky-700' : 'bg-rose-50 text-rose-700'}`}>
+                    ควรได้ {fm(calc.expected)}฿ · นับได้ {fm(calc.amount)}฿ · ส่วนต่าง {(calc.diff > 0 ? '+' : '') + fm(calc.diff)}฿
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sel.type === 'changer' && sel.action === 'refill' && (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-bold text-slate-600 mb-1">จำนวน{cp.unitName}ที่เติมเข้าตู้ (×{unitVal}฿)</p>
+                  {numInput(coins, setCoins)}
+                  <p className="text-right text-sm font-bold text-slate-700 mt-1">= {fm(calc.amount)}฿</p>
+                </div>
+              </div>
+            )}
+
+            {sel.type === 'changer' && sel.action === 'collect' && (
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-slate-600">นับแบงก์ในตู้ (จำนวนใบ)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[['b20', '20฿'], ['b50', '50฿'], ['b100', '100฿'], ['b500', '500฿'], ['b1000', '1000฿']].map(([k, lb]) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-600 w-12">{lb}</span>
+                      {numInput(notes[k], v => setNotes({ ...notes, [k]: v }))}
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-slate-600 w-12">฿10</span>
+                    {numInput(extraCoins, setExtraCoins, 'เหรียญจริง')}
+                  </div>
+                </div>
+                <p className="text-right text-sm font-bold text-slate-700">รวมเงินสด = {fm(calc.amount)}฿</p>
+                <div>
+                  <p className="text-xs font-bold text-slate-600 mb-1">{cp.unitName}คงเหลือในตู้ (เหรียญ){calc.prevRemain != null ? ` · รอบก่อนเหลือ ${fm(calc.prevRemain)} + เติมระหว่างรอบ ${fm(calc.refillsSince)}` : ' · รอบแรก = ตั้งฐาน'}</p>
+                  {numInput(remain, setRemain, 'ไม่กรอกได้')}
+                </div>
+                {calc.expected != null && (
+                  <div className={`rounded-xl px-3 py-2.5 text-sm font-bold text-center ${calc.diff === 0 ? 'bg-emerald-50 text-emerald-700' : calc.diff > 0 ? 'bg-sky-50 text-sky-700' : 'bg-rose-50 text-rose-700'}`}>
+                    จ่ายออก {fm(calc.expected / unitVal)} {cp.unitName} = ควรมีเงิน {fm(calc.expected)}฿ · ส่วนต่าง {(calc.diff > 0 ? '+' : '') + fm(calc.diff)}฿
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sel.type === 'vending' && (
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-slate-600">นับเหรียญในตู้ (จำนวนเหรียญ)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[['c1', '1฿'], ['c2', '2฿'], ['c5', '5฿'], ['c10', '10฿']].map(([k, lb]) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-600 w-12">{lb}</span>
+                      {numInput(vend[k], v => setVend({ ...vend, [k]: v }))}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-right text-sm font-bold text-slate-700">รวม = {fm(calc.amount)}฿</p>
+              </div>
+            )}
+
+            <div className="mt-3">
+              <p className="text-xs font-bold text-slate-600 mb-1">หมายเหตุ</p>
+              <input type="text" value={noteText} onChange={e => setNoteText(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="เช่น เหรียญติดช่อง / เครื่องค้าง" />
+            </div>
+
+            <button onClick={handleSave} disabled={saving || calc.amount === 0 && sel.action !== 'collect'}
+              className="w-full mt-4 py-3.5 rounded-2xl bg-slate-800 text-white font-bold text-base active:scale-95 transition disabled:opacity-40">
+              {saving ? 'กำลังบันทึก…' : `บันทึก ${fm(calc.amount)}฿`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLogout, onSelectOrder, onCollect, onPayFees, onDeleteToken, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
   const [tab, setTab] = useState('cash');
   
@@ -4614,6 +5035,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
           <TabBtn active={tab === 'discount'} onClick={() => setTab('discount')}>🎫 ส่วนลด</TabBtn>
+          <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
           <TabBtn active={tab === 'topup'} onClick={() => setTab('topup')}>⏱️ หยอดเพิ่ม</TabBtn>
           {config.hasKev && <TabBtn active={tab === 'kev'} onClick={() => setTab('kev')}>👨‍💼 เคฟ</TabBtn>}
           <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>ประวัติ</TabBtn>
@@ -4646,6 +5068,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
           <StatsView stats={stats} config={config} onResetAll={onResetAll} />
         ) : tab === 'discount' ? (
           <DiscountReportView orders={orders} config={config} />
+        ) : tab === 'coins' ? (
+          <CoinCountView config={config} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'token' ? (
