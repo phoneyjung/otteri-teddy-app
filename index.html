@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v67-2026-08-28';
+  window.APP_VERSION = 'v68-2026-08-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4282,7 +4282,7 @@ function OwnerLoginView({ config, onBack, onSuccess }) {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #0c4a6e 0%, #075985 50%, #0369a1 100%)' }}>
-      <div className="px-5 py-3 flex items-center">
+      <div className="px-5 py-3 flex items-center relative z-10">
         <button onClick={onBack} className="flex items-center gap-1 px-3 py-2 -ml-2 rounded-xl active:scale-95 active:bg-white active:bg-opacity-20 transition">
           <Icon name="chevron-left" className="w-6 h-6 text-white" />
           <span className="text-sm font-bold text-white">กลับ</span>
@@ -5080,12 +5080,12 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
           <TabBtn active={tab === 'cash'} onClick={() => setTab('cash')}>💵 สด ({cashCount})</TabBtn>
           <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({transferCount})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
+          <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
           <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 แลก Token ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
           <TabBtn active={tab === 'discount'} onClick={() => setTab('discount')}>🎫 ส่วนลด</TabBtn>
-          <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
           <TabBtn active={tab === 'topup'} onClick={() => setTab('topup')}>⏱️ หยอดเพิ่ม</TabBtn>
           {config.hasKev && <TabBtn active={tab === 'kev'} onClick={() => setTab('kev')}>👨‍💼 เคฟ</TabBtn>}
           <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>ประวัติ</TabBtn>
