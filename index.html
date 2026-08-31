@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v71-2026-08-31';
+  window.APP_VERSION = 'v74-2026-08-31';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -384,7 +384,7 @@ const TEDDY_CONFIG = {
   // Riders ที่ให้บริการ Delivery (แยกเงินตอบแทน)
   riders: [
     { id: 'dad', label: 'พ่อ', emoji: '👨‍🦳', color: '#0891B2' },
-    { id: 'kao', label: 'พี่เก้า', emoji: '🧑', color: '#7C3AED' },
+    { id: 'kao', label: 'พี่เก้า', emoji: '🧑', color: '#7C3AED', active: false }, // ออกแล้ว — เก็บไว้ให้ประวัติเก่าอ้างอิงชื่อได้
   ],
 };
 
@@ -925,6 +925,40 @@ async function updateCreditEntry(id, updates) {
   let data = cleanUndefined({ ...updates, updatedAt: Date.now() });
   data = JSON.parse(JSON.stringify(data));
   await window.db.collection('creditLedger').doc(id).update(data);
+}
+
+// ============ 🛵 ไรเดอร์ (riders) — เพิ่ม/ปิดใช้งานจากในแอป ============
+async function saveRider(brand, rider) {
+  let data = cleanUndefined({ ...rider, brand, cloud: true, active: true, createdAt: Date.now() });
+  data = JSON.parse(JSON.stringify(data));
+  const docRef = await window.db.collection('riders').add(data);
+  return docRef.id;
+}
+
+function subscribeToRiders(brand, callback) {
+  return window.db.collection('riders').where('brand', '==', brand).onSnapshot(
+    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data(), cloud: true }))),
+    error => console.error('subscribe riders error:', error)
+  );
+}
+
+async function setRiderActive(id, active) {
+  try { await window.db.collection('riders').doc(id).update({ active }); }
+  catch (e) { console.error('setRiderActive error:', e); }
+}
+
+// ============ ⚙️ ตั้งค่าร้าน (settings) — doc id = brand, ซิงก์ทุกเครื่อง ============
+async function saveShopSettings(brand, partial) {
+  let data = cleanUndefined({ ...partial, brand, updatedAt: Date.now() });
+  data = JSON.parse(JSON.stringify(data));
+  await window.db.collection('settings').doc(brand).set(data, { merge: true });
+}
+
+function subscribeToShopSettings(brand, callback) {
+  return window.db.collection('settings').doc(brand).onSnapshot(
+    doc => callback(doc.exists ? doc.data() : {}),
+    error => console.error('subscribe settings error:', error)
+  );
 }
 
 // เครดิตที่แม่บ้านต้องสแกนให้ 1 ออเดอร์ = ราคาเครื่องล้วน (ซัก + อบ + หยอดเพิ่ม)
@@ -1648,9 +1682,6 @@ function StaffLoginView({ config, staffList, onLogin }) {
             )}
 
             <div className="flex gap-2 pt-3 border-t border-slate-100">
-              <button onClick={handleOpenManage} className="flex-1 py-2 text-xs font-bold text-slate-500 bg-slate-50 rounded-xl active:scale-95 transition">
-                ⚙️ จัดการรายชื่อ
-              </button>
               <button onClick={handleOwnerLogin} className="flex-1 py-2 text-xs font-bold text-slate-500 bg-slate-50 rounded-xl active:scale-95 transition">
                 👔 เข้าแบบเจ้าของ
               </button>
@@ -1698,7 +1729,23 @@ function StaffLoginView({ config, staffList, onLogin }) {
   );
 }
 
-function BrandApp({ config, onChangeBrand }) {
+function BrandApp({ config: baseConfig, onChangeBrand }) {
+  // 🛵 ไรเดอร์ที่เพิ่มเองจาก Firestore — merge เข้า config เพื่อให้ทุกหน้าที่ใช้ config.riders เห็นอัตโนมัติ
+  const [cloudRiders, setCloudRiders] = useState([]);
+  const [shopSettings, setShopSettings] = useState({});
+  useEffect(() => {
+    if (!window.db) return;
+    const unsub = subscribeToRiders(baseConfig.brand, setCloudRiders);
+    const unsub2 = subscribeToShopSettings(baseConfig.brand, setShopSettings);
+    return () => { if (unsub) unsub(); if (unsub2) unsub2(); };
+  }, [baseConfig.brand]);
+  const config = useMemo(() => {
+    const base = baseConfig.riders || [];
+    const extra = cloudRiders.filter(cr => !base.some(b => b.id === cr.id));
+    // tokenEnabled: ค่าเริ่มต้น = เปิด (ต้องตั้งปิดเองในหน้าเจ้าของ)
+    return { ...baseConfig, riders: [...base, ...extra], settings: shopSettings, tokenEnabled: shopSettings.tokenEnabled !== false };
+  }, [baseConfig, cloudRiders, shopSettings]);
+
   const [view, setView] = useState('home');
   const [orders, setOrders] = useState([]);
   const [collections, setCollections] = useState([]);
@@ -2817,7 +2864,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
 
       {/* ปุ่มแลก token (กรณีตู้แลกเหรียญเสีย) */}
       <div className="px-5 mt-3">
-        {!showTokenForm ? (
+        {config.tokenEnabled === false ? null : !showTokenForm ? (
           <button 
             onClick={() => setShowTokenForm(true)}
             className="w-full bg-amber-50 rounded-2xl p-3 border-2 border-amber-200 active:scale-95 transition flex items-center gap-3"
@@ -3260,7 +3307,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       alert('กรุณาถ่ายรูปคูปองส่วนลดแอดไลน์ก่อน');
       return;
     }
-    if (deliveryZone && config.riders && config.riders.length > 0 && !riderId) {
+    if (deliveryZone && config.riders && config.riders.filter(r => r.active !== false).length > 0 && !riderId) {
       alert('กรุณาเลือกไลเดอร์ที่จะส่ง Delivery');
       return;
     }
@@ -3594,11 +3641,11 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             </div>
 
             {/* เลือกไลเดอร์ — แสดงเฉพาะเมื่อมี delivery zone */}
-            {deliveryZone && config.riders && config.riders.length > 0 && (
+            {deliveryZone && config.riders && (
               <div className="mt-3 pt-3 border-t border-slate-200">
                 <p className="text-xs font-bold text-slate-700 mb-2">🛵 ใครเป็นไลเดอร์?</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {config.riders.map(r => (
+                  {config.riders.filter(r => r.active !== false).map(r => (
                     <button 
                       key={r.id}
                       onClick={() => setRiderId(r.id)}
@@ -5019,6 +5066,178 @@ function CoinCountView({ config }) {
   );
 }
 
+// ============ ⚙️ ตั้งค่าเจ้าของ — Token / แม่บ้าน / ไรเดอร์ (เจ้าของเท่านั้น) ============
+function SettingsView({ config, staffList }) {
+  const [showAddStaff, setShowAddStaff] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [newAvatar, setNewAvatar] = useState({ skin: 0, hair: 0, hairColor: 0, sex: 'f' });
+  const [editStaff, setEditStaff] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editPin, setEditPin] = useState('');
+  const [editAvatar, setEditAvatar] = useState({ skin: 0, hair: 0, hairColor: 0, sex: 'f' });
+  const [newRiderName, setNewRiderName] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const handleToggleToken = async () => {
+    const next = !(config.tokenEnabled !== false);
+    try { await saveShopSettings(config.brand, { tokenEnabled: next }); }
+    catch (err) { alert('บันทึกไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจว่า Firestore Rules เพิ่ม settings แล้วหรือยัง'); }
+  };
+
+  const handleAddStaff = async () => {
+    const name = newName.trim();
+    if (!name) { alert('กรุณาใส่ชื่อ'); return; }
+    if (!/^\d{4}$/.test(newPin)) { alert('PIN ต้องเป็นตัวเลข 4 หลัก'); return; }
+    setBusy(true);
+    try {
+      await saveStaffToCloud(config.brand, { name, pin: newPin, avatar: newAvatar, active: true, createdAt: Date.now() });
+      setNewName(''); setNewPin('');
+      setNewAvatar({ skin: 0, hair: 0, hairColor: 0, sex: 'f' });
+      setShowAddStaff(false);
+    } catch (e) { alert('เพิ่มไม่สำเร็จ: ' + e.message); }
+    setBusy(false);
+  };
+
+  const handleToggleStaff = async (s) => {
+    try { await updateStaffInCloud(s.id, { active: s.active === false }); }
+    catch (e) { alert('อัปเดตไม่สำเร็จ: ' + e.message); }
+  };
+
+  const openEditStaff = (s) => {
+    setEditStaff(s);
+    setEditName(s.name || '');
+    setEditPin(s.pin || '');
+    setEditAvatar(s.avatar || { skin: 0, hair: 0, hairColor: 0, sex: 'f' });
+  };
+
+  const handleSaveStaff = async () => {
+    const name = editName.trim();
+    if (!name) { alert('กรุณาใส่ชื่อ'); return; }
+    if (!/^\d{4}$/.test(editPin)) { alert('PIN ต้องเป็นตัวเลข 4 หลัก'); return; }
+    setBusy(true);
+    try {
+      await updateStaffInCloud(editStaff.id, { name, pin: editPin, avatar: editAvatar });
+      setEditStaff(null);
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message); }
+    setBusy(false);
+  };
+
+  const handleAddRider = async () => {
+    const nm = newRiderName.trim();
+    if (!nm) { alert('ใส่ชื่อไรเดอร์'); return; }
+    setBusy(true);
+    try {
+      const palette = ['#0891B2', '#7C3AED', '#DC2626', '#059669', '#D97706', '#DB2777'];
+      const color = palette[(config.riders || []).length % palette.length];
+      await saveRider(config.brand, { label: nm, emoji: '🛵', color });
+      setNewRiderName('');
+    } catch (err) { alert('เพิ่มไรเดอร์ไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจว่า Firestore Rules เพิ่ม riders แล้วหรือยัง'); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* ระบบ Token */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200">
+        <p className="text-sm font-bold text-slate-800 mb-2">🪙 ระบบแลก Token</p>
+        <button onClick={handleToggleToken}
+          className={`w-full py-2.5 rounded-xl text-sm font-bold border-2 flex items-center justify-between px-3 active:scale-95 transition ${config.tokenEnabled !== false ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
+          <span>{config.tokenEnabled !== false ? '✅ เปิดอยู่' : '⛔ ปิดอยู่'}</span>
+          <span>แตะเพื่อ{config.tokenEnabled !== false ? 'ปิด' : 'เปิด'}</span>
+        </button>
+        <p className="text-[11px] text-slate-400 mt-1.5">ปิดแล้วซ่อนการ์ดแลก Token หน้าแม่บ้าน + แท็บแลก Token (ข้อมูลเก่าไม่หาย)</p>
+      </div>
+
+      {/* จัดการแม่บ้าน */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-bold text-slate-800">🧕 แม่บ้าน ({(staffList || []).filter(s => s.active !== false).length} คนใช้งาน)</p>
+          <button onClick={() => setShowAddStaff(!showAddStaff)} className="text-xs font-bold text-white bg-emerald-500 rounded-lg px-3 py-1.5 active:scale-95 transition">➕ เพิ่ม</button>
+        </div>
+
+        {showAddStaff && (
+          <div className="bg-slate-50 rounded-2xl p-3 mb-3 space-y-2">
+            <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="ชื่อ เช่น พี่แอม" />
+            <input type="tel" inputMode="numeric" maxLength={4} value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))}
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="PIN 4 หลัก" />
+            <AvatarPicker value={newAvatar} onChange={setNewAvatar} />
+            <button onClick={handleAddStaff} disabled={busy}
+              className="w-full py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold active:scale-95 transition disabled:opacity-50">บันทึกแม่บ้านใหม่</button>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {(staffList || []).length === 0 && <p className="text-xs text-slate-400 text-center py-2">ยังไม่มีแม่บ้าน</p>}
+          {(staffList || []).map(s => (
+            <div key={s.id} className={`flex items-center gap-2 rounded-xl border p-2 ${s.active === false ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-slate-200'}`}>
+              <StaffAvatar avatar={s.avatar} size={36} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-800 truncate">{s.name}{s.active === false && <span className="text-[10px] text-slate-400 font-normal"> · ปิดใช้งาน</span>}</p>
+                <p className="text-[11px] text-slate-400">PIN ****</p>
+              </div>
+              <button onClick={() => openEditStaff(s)} className="text-[11px] font-bold text-sky-600 px-2 py-1">แก้ไข</button>
+              <button onClick={() => handleToggleStaff(s)} className={`text-[11px] font-bold px-2 py-1 ${s.active === false ? 'text-emerald-600' : 'text-rose-500'}`}>
+                {s.active === false ? 'เปิดใช้' : 'ปิดใช้'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* จัดการไรเดอร์ */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200">
+        <p className="text-sm font-bold text-slate-800 mb-2">🛵 ไรเดอร์ ({(config.riders || []).filter(r => r.active !== false).length} คนใช้งาน)</p>
+        <div className="flex gap-2 mb-3">
+          <input type="text" value={newRiderName} onChange={e => setNewRiderName(e.target.value)}
+            className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm" placeholder="ชื่อไรเดอร์ใหม่ เช่น พี่โจ้" />
+          <button onClick={handleAddRider} disabled={busy} className="px-4 py-2 rounded-xl bg-emerald-500 text-white text-sm font-bold active:scale-95 transition disabled:opacity-50">➕ เพิ่ม</button>
+        </div>
+        <div className="space-y-2">
+          {(config.riders || []).map(r => (
+            <div key={r.id} className={`flex items-center gap-2 rounded-xl border p-2 ${r.active === false ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-slate-200'}`}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ background: (r.color || '#64748B') + '25' }}>{r.emoji}</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-800 truncate">{r.label}{r.active === false && <span className="text-[10px] text-slate-400 font-normal"> · ปิดใช้งาน</span>}</p>
+                {!r.cloud && <p className="text-[10px] text-slate-400">ค่าเริ่มต้นของระบบ</p>}
+              </div>
+              {r.cloud && (
+                <button onClick={() => setRiderActive(r.id, r.active === false)}
+                  className={`text-[11px] font-bold px-2 py-1 ${r.active === false ? 'text-emerald-600' : 'text-rose-500'}`}>
+                  {r.active === false ? 'เปิดใช้' : 'ปิดใช้'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-slate-400 mt-2">ปิดใช้งาน = ไม่โผล่ให้เลือกตอนรับงาน แต่ประวัติ/ค่าส่งเก่ายังอยู่ครบ</p>
+      </div>
+
+      {/* ชีทแก้ไขแม่บ้าน */}
+      {editStaff && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center" onClick={() => setEditStaff(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-lg font-bold text-slate-800">✏️ แก้ไขแม่บ้าน</p>
+              <button onClick={() => setEditStaff(null)} className="text-slate-400 text-xl leading-none px-2">✕</button>
+            </div>
+            <div className="space-y-2">
+              <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="ชื่อ" />
+              <input type="tel" inputMode="numeric" maxLength={4} value={editPin} onChange={e => setEditPin(e.target.value.replace(/\D/g, ''))}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="PIN 4 หลัก" />
+              <AvatarPicker value={editAvatar} onChange={setEditAvatar} />
+              <button onClick={handleSaveStaff} disabled={busy}
+                className="w-full py-3 rounded-2xl bg-slate-800 text-white font-bold active:scale-95 transition disabled:opacity-50">บันทึก</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============ 🎟️ เครดิตแม่บ้าน / กระทบยอด (เจ้าของ) — เฟส 3 ============
 function CreditView({ config, orders, staffList }) {
   // hooks ทั้งหมดก่อน (กติกาข้อ 3)
@@ -5555,6 +5774,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
               <div className="bg-white rounded-3xl w-full max-w-xs p-5 text-center" onClick={e => e.stopPropagation()}>
                 <p className="text-lg font-extrabold text-slate-800">📱 แชร์แอป</p>
                 <p className="text-xs text-slate-500 mb-3">สแกน QR หรือส่งลิงก์ให้แม่บ้าน/เครื่องใหม่</p>
+
                 <img src={APP_SHARE_QR} alt="QR" className="w-52 h-52 mx-auto rounded-xl border border-slate-200" />
                 <p className="text-[11px] text-slate-500 mt-2 break-all">{APP_SHARE_URL}</p>
                 <div className="flex gap-2 mt-4">
@@ -5677,7 +5897,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
           <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
           <TabBtn active={tab === 'credit'} onClick={() => setTab('credit')}>🎟️ เครดิต</TabBtn>
-          <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 แลก Token ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>
+          {config.tokenEnabled !== false && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 แลก Token ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
@@ -5685,6 +5905,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <TabBtn active={tab === 'topup'} onClick={() => setTab('topup')}>⏱️ หยอดเพิ่ม</TabBtn>
           {config.hasKev && <TabBtn active={tab === 'kev'} onClick={() => setTab('kev')}>👨‍💼 เคฟ</TabBtn>}
           <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>ประวัติ</TabBtn>
+          <TabBtn active={tab === 'settings'} onClick={() => setTab('settings')}>⚙️ ตั้งค่า</TabBtn>
         </div>
         
         {/* กรองรายวัน/รายเดือน สด-โอน */}
@@ -5748,6 +5969,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <CoinCountView config={config} />
         ) : tab === 'credit' ? (
           <CreditView config={config} orders={orders} staffList={staffList} />
+        ) : tab === 'settings' ? (
+          <SettingsView config={config} staffList={staffList} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'token' ? (
@@ -6489,7 +6712,7 @@ function DeliveryReportView({ orders, config, onPay }) {
       }
     });
     
-    return Array.from(map.values()).filter(e => e.totalCount > 0 || (config.riders || []).some(r => r.id === e.rider.id));
+    return Array.from(map.values()).filter(e => e.totalCount > 0 || (config.riders || []).some(r => r.id === e.rider.id && r.active !== false));
   }, [orders, period, config]);
 
   const grandUnpaid = riderStats.reduce((s, r) => s + r.unpaidTotal, 0);
@@ -6552,6 +6775,14 @@ function DeliveryReportView({ orders, config, onPay }) {
             <div className="text-right">
               <p className="text-xs text-slate-500">ยังไม่จ่าย</p>
               <p className="text-lg font-extrabold" style={{color: r.rider.color}}>฿{formatMoney(r.unpaidTotal)}</p>
+              {r.rider.cloud && r.rider.active !== false && (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm(`ปิดใช้งานไรเดอร์ ${r.rider.label}? (ประวัติเก่ายังอยู่ครบ)`)) return;
+                    await setRiderActive(r.rider.id, false);
+                  }}
+                  className="text-[10px] text-rose-500 mt-0.5">ปิดใช้งาน</button>
+              )}
             </div>
           </div>
 
