@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v70-2026-08-31';
+  window.APP_VERSION = 'v71-2026-08-31';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -5367,6 +5367,8 @@ function CreditView({ config, orders, staffList }) {
 function OwnerDashboardView({ config, orders, collections, tokenExchanges, staffList, onLogout, onSelectOrder, onCollect, onPayFees, onDeleteToken, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
   const [tab, setTab] = useState('cash');
   const [showShare, setShowShare] = useState(false);
+  const [listMode, setListMode] = useState('all');
+  const [listDate, setListDate] = useState(() => new Date());
   
   // Selection mode: ติ๊กเลือกหลายรายการเพื่อลบ
   const [selectionMode, setSelectionMode] = useState(false);
@@ -5495,6 +5497,32 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
   if (tab === 'cash') listToShow = [...uncollectedCash, ...uncollectedSplitCash];
   else if (tab === 'transfer') listToShow = [...uncollectedTransfer, ...uncollectedSplitTransfer];
   else if (tab === 'all') listToShow = orders;
+
+  // ==== กรองรายวัน/รายเดือน (สด/โอน/ทั้งหมด) ====
+  const lTs = v => typeof v === 'number' ? v : (new Date(v).getTime() || 0);
+  const lDayStart = new Date(listDate.getFullYear(), listDate.getMonth(), listDate.getDate()).getTime();
+  const lMonStart = new Date(listDate.getFullYear(), listDate.getMonth(), 1).getTime();
+  const lMonEnd = new Date(listDate.getFullYear(), listDate.getMonth() + 1, 1).getTime();
+  const inListRange = (o) => {
+    const t = lTs(o.createdAt);
+    if (listMode === 'day') return t >= lDayStart && t < lDayStart + 86400000;
+    if (listMode === 'month') return t >= lMonStart && t < lMonEnd;
+    return true;
+  };
+  if (listMode !== 'all' && ['cash', 'transfer', 'all'].includes(tab)) {
+    if (tab === 'cash') listToShow = orders.filter(o => inListRange(o) && (o.paymentMethod === 'cash' || (o.paymentMethod === 'split' && (o.cashAmount || 0) > 0)));
+    else if (tab === 'transfer') listToShow = orders.filter(o => inListRange(o) && (o.paymentMethod === 'transfer' || (o.paymentMethod === 'split' && (o.transferAmount || 0) > 0)));
+    else listToShow = orders.filter(inListRange);
+  }
+  const cashPartOf = (o) => o.paymentMethod === 'cash' ? calculateTotal(o, config) : o.paymentMethod === 'split' ? (o.cashAmount || 0) : 0;
+  const transferPartOf = (o) => o.paymentMethod === 'transfer' ? calculateTotal(o, config) : o.paymentMethod === 'split' ? (o.transferAmount || 0) : 0;
+  const listCashSum = listToShow.reduce((s, o) => s + cashPartOf(o), 0);
+  const listTransferSum = listToShow.reduce((s, o) => s + transferPartOf(o), 0);
+  const shiftListDate = (dir) => {
+    const d = new Date(listDate);
+    if (listMode === 'month') d.setMonth(d.getMonth() + dir); else d.setDate(d.getDate() + dir);
+    setListDate(d);
+  };
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -5659,6 +5687,36 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>ประวัติ</TabBtn>
         </div>
         
+        {/* กรองรายวัน/รายเดือน สด-โอน */}
+        {['cash', 'transfer', 'all'].includes(tab) && (
+          <div className="mt-2 space-y-2">
+            <div className="flex gap-1.5">
+              {[['all', tab === 'all' ? 'ทั้งหมด' : 'รอเก็บ'], ['day', 'รายวัน'], ['month', 'รายเดือน']].map(([m, lb]) => (
+                <button key={m} onClick={() => { setListMode(m); setListDate(new Date()); }}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold ${listMode === m ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>{lb}</button>
+              ))}
+            </div>
+            {listMode !== 'all' && (
+              <React.Fragment>
+                <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-2 py-1.5">
+                  <button onClick={() => shiftListDate(-1)} className="px-4 py-1 text-lg font-bold text-slate-600">‹</button>
+                  <p className="text-sm font-bold text-slate-800">
+                    {listMode === 'day'
+                      ? listDate.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' })
+                      : listDate.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
+                  </p>
+                  <button onClick={() => shiftListDate(1)} className="px-4 py-1 text-lg font-bold text-slate-600">›</button>
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 px-3 py-2 flex justify-between items-center text-[11px] font-bold flex-wrap gap-1">
+                  <span className="text-emerald-600">💵 สด {formatMoney(listCashSum)}฿</span>
+                  <span className="text-violet-600">💳 โอน {formatMoney(listTransferSum)}฿</span>
+                  <span className="text-slate-600">{listToShow.length} งาน · รวม {formatMoney(listCashSum + listTransferSum)}฿</span>
+                </div>
+              </React.Fragment>
+            )}
+          </div>
+        )}
+
         {/* ปุ่มสลับโหมดเลือก — เฉพาะ tab ที่แสดง list */}
         {(['cash', 'transfer', 'all'].includes(tab) && listToShow.length > 0) && (
           <div className="mt-2 flex justify-end">
