@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v68-2026-08-28';
+  window.APP_VERSION = 'v69-2026-08-31';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -898,6 +898,34 @@ function subscribeToCoinCounts(brand, callback) {
 async function deleteCoinCount(id) {
   try { await window.db.collection('coinCounts').doc(id).delete(); }
   catch (e) { console.error('deleteCoinCount error:', e); }
+}
+
+// ============ 🎟️ เครดิตแม่บ้าน (creditLedger) — เฟส 3 ============
+// type: 'baseline' ตั้งยอดต้น | 'topup' เจ้าของเติม | 'promo' ลูกค้าใช้โปรซักเอง | 'check' เจ้าของตรวจยอดจริง
+async function saveCreditEntry(brand, entry) {
+  let data = cleanUndefined({ ...entry, brand, createdAt: Date.now() });
+  data = JSON.parse(JSON.stringify(data));
+  const docRef = await window.db.collection('creditLedger').add(data);
+  return docRef.id;
+}
+
+function subscribeToCreditLedger(brand, callback) {
+  return window.db.collection('creditLedger').where('brand', '==', brand).onSnapshot(
+    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
+    error => console.error('subscribe creditLedger error:', error)
+  );
+}
+
+async function deleteCreditEntry(id) {
+  try { await window.db.collection('creditLedger').doc(id).delete(); }
+  catch (e) { console.error('deleteCreditEntry error:', e); }
+}
+
+// เครดิตที่แม่บ้านต้องสแกนให้ 1 ออเดอร์ = ราคาเครื่องล้วน (ซัก + อบ + หยอดเพิ่ม)
+// ไม่รวมน้ำยา/พับ/ค่าส่ง เพราะไม่ได้จ่ายผ่านเครื่อง
+function creditForOrder(order, config) {
+  const b = calculateBreakdown(order, config);
+  return (b.washSubtotal || 0) + (b.drySubtotal || 0) + (b.dryTopUpTotal || 0);
 }
 
 // Legacy localStorage helpers (ไว้สำหรับ migrate ข้อมูลเก่า)
@@ -2037,7 +2065,7 @@ function BrandApp({ config, onChangeBrand }) {
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
-      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
@@ -2311,6 +2339,17 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
   
   // หลังบันทึก token แสดง popup สรุป + ปุ่มแชร์
   const [savedToken, setSavedToken] = useState(null);
+
+  // 🎟️ ลูกค้าใช้โปร (ซักเอง ไม่ฝาก) — ตัดเครดิตแม่บ้าน (เฟส 3)
+  const [showPromoForm, setShowPromoForm] = useState(false);
+  const [promoAmount, setPromoAmount] = useState('');
+  const [promoName, setPromoName] = useState('');
+  const [promoPhoto, setPromoPhoto] = useState('');
+  const [promoNote, setPromoNote] = useState('');
+  const [promoStaffName, setPromoStaffName] = useState('');
+  const [savingPromo, setSavingPromo] = useState(false);
+  const [savedPromo, setSavedPromo] = useState(null);
+  const promoCameraRef = useRef(null);
   
   // จำนวน token ของร้าน (เฉพาะ Teddy) + จำนวนเหรียญ 10 จริง (ทั้ง 2 แบรนด์)
   // คำนวณ default จากจำนวนเงิน: 1 token / 1 เหรียญ = 10 บาท
@@ -2340,6 +2379,82 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
     ? (config.hasToken ? 0 : autoCount)
     : (parseInt(coinCount) || 0);
   const totalCoinValue = (displayedTokenCount + displayedCoinCount) * 10;
+
+  // ==== 🎟️ ลูกค้าใช้โปร (ซักเอง) ====
+  const promoNow = checkPromotion(Date.now());
+  const promoStaff = currentStaff ? currentStaff.name : promoStaffName.trim();
+
+  const handlePromoPhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 600;
+        const ratio = Math.min(1, maxW / img.width);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setPromoPhoto(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleSubmitPromo = async () => {
+    const amount = parseInt(promoAmount, 10) || 0;
+    if (amount <= 0) { alert('ใส่ยอดเครดิตที่สแกนให้ลูกค้า'); return; }
+    if (!promoPhoto) { alert('ถ่ายรูปหลักฐานก่อนบันทึก'); return; }
+    if (!promoStaff) { alert('ใส่ชื่อแม่บ้าน'); return; }
+    setSavingPromo(true);
+    try {
+      const entry = {
+        type: 'promo', staffId: currentStaff ? currentStaff.id : null, staffName: promoStaff,
+        amount, promoName: promoName || 'ส่วนลด', photo: promoPhoto, note: promoNote.trim(),
+        dateKey: new Date().toISOString().slice(0, 10),
+      };
+      const id = await saveCreditEntry(config.brand, entry);
+      setSavedPromo({ ...entry, id, createdAt: Date.now() });
+      setShowPromoForm(false);
+      setPromoAmount(''); setPromoName(''); setPromoPhoto(''); setPromoNote('');
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e) + '\nตรวจว่า Firestore Rules เพิ่ม creditLedger แล้วหรือยัง');
+    }
+    setSavingPromo(false);
+  };
+
+  const handleSharePromo = async () => {
+    if (!savedPromo) return;
+    const d = new Date(savedPromo.createdAt);
+    const text = [
+      '🎟️ ลูกค้าใช้โปร (ซักเอง)',
+      `🏪 ${config.name}`,
+      `🎁 ${savedPromo.promoName}`,
+      `💳 เครดิตที่สแกน: ${savedPromo.amount}฿`,
+      `🧕 แม่บ้าน: ${savedPromo.staffName}`,
+      `🕐 ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`,
+      savedPromo.note ? `📝 ${savedPromo.note}` : '',
+    ].filter(Boolean).join('\n');
+    try {
+      const b64 = savedPromo.photo.split(',')[1];
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], `promo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], text, title: 'ลูกค้าใช้โปร' });
+      } else if (navigator.share) {
+        await navigator.share({ text, title: 'ลูกค้าใช้โปร' });
+      } else {
+        await navigator.clipboard.writeText(text);
+        alert('คัดลอกข้อความแล้ว (เครื่องนี้ไม่รองรับปุ่มแชร์)');
+      }
+    } catch (e) { /* ผู้ใช้ยกเลิกแชร์ */ }
+  };
 
   // Photo handler
   const handleTokenPhotoUpload = (e) => {
@@ -2592,6 +2707,107 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
           </div>
         </button>
       </div>
+
+      {/* 🎟️ ลูกค้าใช้โปร (ซักเอง ไม่ฝาก) — ตัดเครดิตแม่บ้าน */}
+      <div className="px-5 mt-3">
+        {!showPromoForm ? (
+          <button onClick={() => setShowPromoForm(true)}
+            className="w-full bg-rose-50 rounded-2xl p-3 border-2 border-rose-200 active:scale-95 transition flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-400 to-rose-600 flex items-center justify-center text-xl shadow">🎟️</div>
+            <div className="text-left flex-1">
+              <p className="font-bold text-rose-900 text-sm">ลูกค้าใช้โปร (ซักเอง ไม่ฝาก)</p>
+              <p className="text-xs text-rose-700">สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม</p>
+            </div>
+            <Icon name="chevron-right" className="w-5 h-5 text-rose-600" />
+          </button>
+        ) : (
+          <div className="bg-white rounded-2xl p-4 border-2 border-rose-300 shadow-lg space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🎟️</span>
+              <p className="font-extrabold text-slate-900 flex-1">บันทึกลูกค้าใช้โปร</p>
+              <button onClick={() => setShowPromoForm(false)} className="text-slate-400 text-xl leading-none px-2">✕</button>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-slate-600 mb-1.5">โปรที่ใช้</p>
+              <div className="flex flex-wrap gap-2">
+                {config.hasLinePromo && (
+                  <button onClick={() => { setPromoName(`LINE ลด ${config.linePromoDiscount}฿`); setPromoAmount(String(config.linePromoDiscount)); }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-bold border ${promoName.startsWith('LINE') ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-700 border-slate-300'}`}>
+                    💬 LINE ลด {config.linePromoDiscount}฿
+                  </button>
+                )}
+                {promoNow.active && (
+                  <button onClick={() => { setPromoName(promoNow.label); setPromoAmount(String(promoNow.discountPerWash)); }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-bold border ${promoName === promoNow.label ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-700 border-slate-300'}`}>
+                    {promoNow.label} {promoNow.discountPerWash}฿/ถัง
+                  </button>
+                )}
+                <button onClick={() => { setPromoName('อื่นๆ'); setPromoAmount(''); }}
+                  className={`px-3 py-1.5 rounded-full text-sm font-bold border ${promoName === 'อื่นๆ' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-700 border-slate-300'}`}>
+                  อื่นๆ
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-slate-600 mb-1">ยอดเครดิตที่สแกนให้ลูกค้า (บาท)</p>
+              <input type="number" inputMode="numeric" value={promoAmount} onChange={e => setPromoAmount(e.target.value)} onFocus={e => e.target.select()}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-lg font-bold text-right" placeholder="0" />
+              {promoNow.active && promoName === promoNow.label && (
+                <p className="text-[11px] text-slate-400 mt-1">ซัก 2 ถัง = {promoNow.discountPerWash * 2}฿ — แก้ตัวเลขตามจำนวนถังได้</p>
+              )}
+            </div>
+
+            {!currentStaff && (
+              <div>
+                <p className="text-xs font-bold text-slate-600 mb-1">ชื่อแม่บ้าน</p>
+                <input type="text" value={promoStaffName} onChange={e => setPromoStaffName(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="เช่น พี่วิ" />
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs font-bold text-slate-600 mb-1">📷 รูปหลักฐาน (จำเป็น)</p>
+              <input ref={promoCameraRef} type="file" accept="image/*" capture="environment" onChange={handlePromoPhotoUpload} className="hidden" />
+              {promoPhoto ? (
+                <div className="relative">
+                  <img src={promoPhoto} className="w-full h-40 object-cover rounded-xl border border-slate-200" alt="หลักฐาน" />
+                  <button onClick={() => promoCameraRef.current && promoCameraRef.current.click()}
+                    className="absolute bottom-2 right-2 bg-white bg-opacity-90 rounded-lg px-2 py-1 text-xs font-bold text-slate-700">ถ่ายใหม่</button>
+                </div>
+              ) : (
+                <button onClick={() => promoCameraRef.current && promoCameraRef.current.click()}
+                  className="w-full py-6 rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 text-rose-700 font-bold text-sm">
+                  📷 ถ่ายรูป (หน้าจอลูกค้า / เครื่องที่สแกน)
+                </button>
+              )}
+            </div>
+
+            <input type="text" value={promoNote} onChange={e => setPromoNote(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="หมายเหตุ เช่น เครื่อง 3 / ชื่อลูกค้า" />
+
+            <button onClick={handleSubmitPromo} disabled={savingPromo}
+              className="w-full py-3.5 rounded-2xl bg-rose-500 text-white font-bold text-base active:scale-95 transition disabled:opacity-50">
+              {savingPromo ? 'กำลังบันทึก…' : `บันทึกตัดเครดิต ${parseInt(promoAmount, 10) || 0}฿`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {savedPromo && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6" onClick={() => setSavedPromo(null)}>
+          <div className="bg-white rounded-3xl w-full max-w-xs p-5 text-center" onClick={e => e.stopPropagation()}>
+            <p className="text-4xl mb-1">✅</p>
+            <p className="text-lg font-extrabold text-slate-800">บันทึกตัดเครดิตแล้ว</p>
+            <p className="text-sm text-slate-600 mt-1">{savedPromo.promoName} · <b>{savedPromo.amount}฿</b></p>
+            <p className="text-xs text-slate-500">🧕 {savedPromo.staffName}</p>
+            <img src={savedPromo.photo} className="w-full h-32 object-cover rounded-xl mt-3 border border-slate-200" alt="" />
+            <button onClick={handleSharePromo} className="w-full mt-4 py-3 rounded-2xl bg-emerald-500 text-white font-bold active:scale-95 transition">💬 ส่งเข้ากลุ่ม LINE</button>
+            <button onClick={() => setSavedPromo(null)} className="mt-2 text-xs text-slate-400">ปิด</button>
+          </div>
+        </div>
+      )}
 
       {/* ปุ่มแลก token (กรณีตู้แลกเหรียญเสีย) */}
       <div className="px-5 mt-3">
@@ -4797,7 +5013,234 @@ function CoinCountView({ config }) {
   );
 }
 
-function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLogout, onSelectOrder, onCollect, onPayFees, onDeleteToken, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
+// ============ 🎟️ เครดิตแม่บ้าน / กระทบยอด (เจ้าของ) — เฟส 3 ============
+function CreditView({ config, orders, staffList }) {
+  // hooks ทั้งหมดก่อน (กติกาข้อ 3)
+  const [ledger, setLedger] = useState([]);
+  const [sel, setSel] = useState(null);
+  const [amount, setAmount] = useState('');
+  const [noteText, setNoteText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [viewPhoto, setViewPhoto] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [newStaffName, setNewStaffName] = useState('');
+
+  useEffect(() => {
+    if (!window.db) return;
+    const unsub = subscribeToCreditLedger(config.brand, list => {
+      setLedger([...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+    });
+    return () => { if (unsub) unsub(); };
+  }, [config.brand]);
+
+  const n = v => { const x = parseInt(v, 10); return isNaN(x) ? 0 : x; };
+  const fm = v => (v || 0).toLocaleString();
+  const ts = v => typeof v === 'number' ? v : (new Date(v).getTime() || 0);
+
+  // รวมรายชื่อแม่บ้าน: staffList + ที่พบใน ledger + ที่พบในออเดอร์ (key = ชื่อ)
+  const staffMap = {};
+  (staffList || []).forEach(s => { if (s.name) staffMap[s.name] = { id: s.id || null, name: s.name }; });
+  ledger.forEach(e => { if (e.staffName && !staffMap[e.staffName]) staffMap[e.staffName] = { id: e.staffId || null, name: e.staffName }; });
+  (orders || []).forEach(o => { if (o.staffName && !staffMap[o.staffName]) staffMap[o.staffName] = { id: o.staffId || null, name: o.staffName }; });
+  const staffs = Object.values(staffMap);
+
+  // ==== สถิติต่อแม่บ้าน (นับหลังยอดตั้งต้นล่าสุด) ====
+  const statFor = (name) => {
+    const mine = ledger.filter(e => e.staffName === name);
+    const baseline = mine.find(e => e.type === 'baseline');
+    const t0 = baseline ? ts(baseline.createdAt) : 0;
+    const base = baseline ? (baseline.amount || 0) : 0;
+    const after = mine.filter(e => ts(e.createdAt) > t0);
+    const topup = after.filter(e => e.type === 'topup').reduce((s, e) => s + (e.amount || 0), 0);
+    const promoList = after.filter(e => e.type === 'promo');
+    const promo = promoList.reduce((s, e) => s + (e.amount || 0), 0);
+    const myOrders = (orders || []).filter(o => o.staffName === name && ts(o.createdAt) > t0);
+    let dropUse = 0, deliveryUse = 0;
+    myOrders.forEach(o => { const c = creditForOrder(o, config); if (o.deliveryZone) deliveryUse += c; else dropUse += c; });
+    const orderUse = dropUse + deliveryUse;
+    const expected = base + topup - promo - orderUse;
+    const lastCheck = after.find(e => e.type === 'check');
+    return { baseline, base, topup, promo, promoCount: promoList.length, dropUse, deliveryUse, orderUse, orderCount: myOrders.length, expected, lastCheck };
+  };
+
+  const openForm = (staff, action) => { setAmount(''); setNoteText(''); setSel({ staff, action }); };
+
+  const handleSave = async () => {
+    if (!sel || saving) return;
+    const amt = n(amount);
+    if (sel.action !== 'check' && sel.action !== 'baseline' && amt <= 0) { alert('ใส่จำนวนเงิน'); return; }
+    if (amount === '') { alert('ใส่ยอด'); return; }
+    setSaving(true);
+    try {
+      const st = statFor(sel.staff.name);
+      const entry = {
+        type: sel.action, staffId: sel.staff.id || null, staffName: sel.staff.name,
+        amount: amt, note: noteText.trim(), byOwner: true,
+        dateKey: new Date().toISOString().slice(0, 10),
+      };
+      if (sel.action === 'check') { entry.expected = st.expected; entry.diff = amt - st.expected; }
+      await saveCreditEntry(config.brand, entry);
+      setSel(null); setAmount(''); setNoteText('');
+    } catch (e) {
+      alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e) + '\nตรวจว่า Firestore Rules เพิ่ม creditLedger แล้วหรือยัง');
+    }
+    setSaving(false);
+  };
+
+  const typeLabel = (t) => t === 'topup' ? '➕ เติมเครดิต' : t === 'promo' ? '🎟️ ลูกค้าใช้โปร' : t === 'check' ? '🔍 ตรวจยอด' : t === 'baseline' ? '🎯 ตั้งยอดต้น' : t;
+  const handleDelete = async (e) => {
+    if (!window.confirm(`ลบรายการ ${typeLabel(e.type)} ${e.staffName} ${fm(e.amount)}฿ ?`)) return;
+    await deleteCreditEntry(e.id);
+  };
+
+  const diffBadge = (diff) => diff == null ? null : (
+    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${diff === 0 ? 'bg-emerald-100 text-emerald-700' : diff > 0 ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'}`}>
+      {diff === 0 ? '✓ ตรง' : (diff > 0 ? '+' : '') + fm(diff) + '฿'}
+    </span>
+  );
+
+  // คำนวณสดในฟอร์มตรวจยอด
+  const selStat = sel ? statFor(sel.staff.name) : null;
+  const liveDiff = sel && sel.action === 'check' && amount !== '' ? n(amount) - selStat.expected : null;
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200">
+        <p className="text-sm font-bold text-slate-800">🎟️ เครดิตแม่บ้าน</p>
+        <p className="text-[11px] text-slate-500 mt-1">คงเหลือควรเป็น = ยอดต้น + เติม − ราคาเครื่องงานฝาก/ส่ง − โปรซักเอง · กด 🔍 กรอกยอดจริงจากระบบเครื่องเพื่อเทียบ · <b className="text-rose-600">ติดลบ = เครดิตหายเกินที่แอปรู้</b></p>
+      </div>
+
+      {staffs.length === 0 && (
+        <div className="bg-white rounded-2xl p-6 text-center text-sm text-slate-500">ยังไม่มีแม่บ้านในระบบ — เพิ่มชื่อด้านล่างแล้วกดเติมเครดิต</div>
+      )}
+
+      {staffs.map(s => {
+        const st = statFor(s.name);
+        return (
+          <div key={s.name} className="bg-white rounded-2xl p-4 border border-slate-200">
+            <div className="flex items-center justify-between">
+              <p className="text-base font-extrabold text-slate-800">🧕 {s.name}</p>
+              {st.lastCheck && diffBadge(st.lastCheck.diff)}
+            </div>
+
+            {!st.baseline && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">⚠️ ยังไม่ตั้งยอดต้น — กด 🎯 ใส่ยอดเครดิตปัจจุบันจากระบบเครื่อง แล้วแอปจะเริ่มนับจากตรงนั้น</p>
+            )}
+
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-xs">
+              <p className="text-slate-500">ยอดต้น</p><p className="text-right font-bold text-slate-700">{fm(st.base)}฿</p>
+              <p className="text-slate-500">เติมเพิ่ม</p><p className="text-right font-bold text-emerald-600">+{fm(st.topup)}฿</p>
+              <p className="text-slate-500">งานฝาก ({st.orderCount} งาน)</p><p className="text-right font-bold text-rose-600">−{fm(st.dropUse)}฿</p>
+              <p className="text-slate-500">เดลิเวอรี่</p><p className="text-right font-bold text-rose-600">−{fm(st.deliveryUse)}฿</p>
+              <p className="text-slate-500">โปรซักเอง ({st.promoCount} ครั้ง)</p><p className="text-right font-bold text-rose-600">−{fm(st.promo)}฿</p>
+            </div>
+
+            <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 flex items-center justify-between">
+              <p className="text-xs font-bold text-slate-600">คงเหลือควรเป็น</p>
+              <p className="text-lg font-extrabold text-slate-800">{fm(st.expected)}฿</p>
+            </div>
+
+            {st.lastCheck && (
+              <div className={`mt-1.5 rounded-xl px-3 py-2 text-xs ${st.lastCheck.diff === 0 ? 'bg-emerald-50 text-emerald-700' : st.lastCheck.diff < 0 ? 'bg-rose-50 text-rose-700' : 'bg-sky-50 text-sky-700'}`}>
+                ตรวจล่าสุด {new Date(st.lastCheck.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}: ระบบเครื่อง <b>{fm(st.lastCheck.amount)}฿</b> · แอปคิด <b>{fm(st.lastCheck.expected)}฿</b>
+                {st.lastCheck.diff < 0 ? ' 🚨 เครดิตหายเกินที่บันทึก' : st.lastCheck.diff > 0 ? ' · ใช้น้อยกว่าที่คิด (อาจยังไม่ได้สแกน)' : ' · ตรงกัน'}
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-2 mt-3">
+              <button onClick={() => openForm(s, 'topup')} className="py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold active:scale-95 transition">➕ เติม</button>
+              <button onClick={() => openForm(s, 'check')} className="py-2 rounded-xl bg-slate-800 text-white text-xs font-bold active:scale-95 transition">🔍 ตรวจยอด</button>
+              <button onClick={() => openForm(s, 'baseline')} className="py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-bold active:scale-95 transition">🎯 ตั้งต้น</button>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* เพิ่มแม่บ้านใหม่ (ร้านที่ไม่มี login แม่บ้าน) */}
+      <div className="bg-white rounded-2xl p-3 border border-dashed border-slate-300 flex gap-2">
+        <input type="text" value={newStaffName} onChange={e => setNewStaffName(e.target.value)}
+          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm" placeholder="เพิ่มชื่อแม่บ้าน เช่น พี่แอม" />
+        <button onClick={() => { const nm = newStaffName.trim(); if (!nm) return; setNewStaffName(''); openForm({ id: null, name: nm }, 'baseline'); }}
+          className="px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-bold">เพิ่ม</button>
+      </div>
+
+      <button onClick={() => setShowHistory(!showHistory)} className="w-full py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-600">
+        {showHistory ? '▲ ซ่อนประวัติ' : `▼ ประวัติทั้งหมด (${ledger.length})`}
+      </button>
+
+      {showHistory && (
+        <div className="space-y-2">
+          {ledger.slice(0, 80).map(e => (
+            <div key={e.id} className="bg-white rounded-xl p-3 border border-slate-200 flex items-center gap-2">
+              {e.photo ? (
+                <img src={e.photo} onClick={() => setViewPhoto(e.photo)} className="w-12 h-12 rounded-lg object-cover border border-slate-200 flex-shrink-0" alt="" />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-xl flex-shrink-0">{e.type === 'topup' ? '➕' : e.type === 'check' ? '🔍' : e.type === 'baseline' ? '🎯' : '🎟️'}</div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-slate-800 truncate">{typeLabel(e.type)} · {e.staffName}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-[11px] text-slate-500">{new Date(e.createdAt).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                  {e.promoName && <span className="text-[10px] text-slate-500">· {e.promoName}</span>}
+                  {diffBadge(e.diff)}
+                </div>
+                {e.note && <p className="text-[11px] text-slate-400 truncate">📝 {e.note}</p>}
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className={`text-base font-bold ${e.type === 'topup' ? 'text-emerald-600' : e.type === 'promo' ? 'text-rose-600' : 'text-slate-800'}`}>{e.type === 'topup' ? '+' : e.type === 'promo' ? '−' : ''}{fm(e.amount)}฿</p>
+                <button onClick={() => handleDelete(e)} className="text-[11px] text-rose-500">ลบ</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {viewPhoto && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center p-4" onClick={() => setViewPhoto(null)}>
+          <img src={viewPhoto} className="max-w-full max-h-full rounded-xl" alt="" />
+        </div>
+      )}
+
+      {sel && selStat && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center" onClick={() => setSel(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-lg font-bold text-slate-800">{typeLabel(sel.action)}</p>
+              <button onClick={() => setSel(null)} className="text-slate-400 text-xl leading-none px-2">✕</button>
+            </div>
+            <p className="text-sm text-slate-500 mb-3">🧕 {sel.staff.name}</p>
+
+            <p className="text-xs font-bold text-slate-600 mb-1">
+              {sel.action === 'topup' ? 'จำนวนเครดิตที่เติมให้ (บาท)' : sel.action === 'check' ? 'ยอดเครดิตคงเหลือจริง จากระบบเครื่อง (บาท)' : 'ยอดเครดิตปัจจุบันจากระบบเครื่อง (ใช้เป็นจุดเริ่มนับ)'}
+            </p>
+            <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)} onFocus={e => e.target.select()}
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-lg font-bold text-right" placeholder="0" />
+
+            {sel.action === 'check' && (
+              <div className={`mt-2 rounded-xl px-3 py-2.5 text-sm font-bold text-center ${liveDiff == null ? 'bg-slate-50 text-slate-500' : liveDiff === 0 ? 'bg-emerald-50 text-emerald-700' : liveDiff < 0 ? 'bg-rose-50 text-rose-700' : 'bg-sky-50 text-sky-700'}`}>
+                แอปคิดว่าควรเหลือ {fm(selStat.expected)}฿{liveDiff != null ? ` · ส่วนต่าง ${(liveDiff > 0 ? '+' : '') + fm(liveDiff)}฿` : ''}
+                {liveDiff != null && liveDiff < 0 && <span className="block text-xs font-normal mt-0.5">🚨 เครดิตถูกใช้มากกว่าที่แอปบันทึก — ลืมส่งยอด หรือทุจริต</span>}
+              </div>
+            )}
+            {sel.action === 'baseline' && selStat.baseline && (
+              <p className="text-[11px] text-amber-700 mt-2">⚠️ ตั้งต้นใหม่จะเริ่มนับใหม่จากตอนนี้ (ประวัติเก่ายังอยู่ แต่ไม่ถูกนำมาคิด)</p>
+            )}
+
+            <input type="text" value={noteText} onChange={e => setNoteText(e.target.value)}
+              className="w-full mt-3 px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="หมายเหตุ (ไม่บังคับ)" />
+
+            <button onClick={handleSave} disabled={saving}
+              className="w-full mt-4 py-3.5 rounded-2xl bg-slate-800 text-white font-bold text-base active:scale-95 transition disabled:opacity-40">
+              {saving ? 'กำลังบันทึก…' : 'บันทึก'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OwnerDashboardView({ config, orders, collections, tokenExchanges, staffList, onLogout, onSelectOrder, onCollect, onPayFees, onDeleteToken, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
   const [tab, setTab] = useState('cash');
   const [showShare, setShowShare] = useState(false);
   
@@ -5081,6 +5524,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
           <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({transferCount})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
           <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
+          <TabBtn active={tab === 'credit'} onClick={() => setTab('credit')}>🎟️ เครดิต</TabBtn>
           <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 แลก Token ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
@@ -5120,6 +5564,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, onLog
           <DiscountReportView orders={orders} config={config} />
         ) : tab === 'coins' ? (
           <CoinCountView config={config} />
+        ) : tab === 'credit' ? (
+          <CreditView config={config} orders={orders} staffList={staffList} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'token' ? (
