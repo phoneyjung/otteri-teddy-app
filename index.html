@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v74-2026-08-31';
+  window.APP_VERSION = 'v75-2026-09-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -5066,6 +5066,103 @@ function CoinCountView({ config }) {
   );
 }
 
+// ============ 🧺 รายงานฝากพับ — งานพับต่อแม่บ้าน (เจ้าของ) ============
+function FoldReportView({ config, orders }) {
+  const [period, setPeriod] = useState('today');
+
+  const ts = v => typeof v === 'number' ? v : (new Date(v).getTime() || 0);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const d7Start = todayStart - 6 * 86400000;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const inPeriod = (o) => {
+    const t = ts(o.createdAt);
+    if (period === 'today') return t >= todayStart;
+    if (period === '7d') return t >= d7Start;
+    if (period === 'month') return t >= monthStart;
+    return true;
+  };
+  // งานพับ = สั่งพับเป็นตะกร้า (Otteri) หรือร้านพับฟรีทุกงานที่ไม่ได้ติ๊ก "ไม่พับ" (Teddy)
+  const isFoldOrder = (o) => (o.foldBaskets || 0) > 0 || (config.freeService && !o.noFold);
+  const foldOrders = orders.filter(o => inPeriod(o) && isFoldOrder(o));
+  const totalBaskets = foldOrders.reduce((s, o) => s + (o.foldBaskets || 0), 0);
+  const totalFee = foldOrders.reduce((s, o) => s + (calculateBreakdown(o, config).foldTotal || 0), 0);
+
+  const map = {};
+  foldOrders.forEach(o => {
+    const key = o.staffName || 'ไม่ระบุแม่บ้าน';
+    if (!map[key]) map[key] = { name: key, count: 0, baskets: 0, fee: 0, delivery: 0 };
+    map[key].count += 1;
+    map[key].baskets += (o.foldBaskets || 0);
+    map[key].fee += (calculateBreakdown(o, config).foldTotal || 0);
+    if (o.deliveryZone) map[key].delivery += 1;
+  });
+  const rows = Object.values(map).sort((a, b) => b.count - a.count);
+  const maxCount = rows.length ? rows[0].count : 1;
+  const periodLabel = period === 'today' ? 'วันนี้' : period === '7d' ? '7 วัน' : period === 'month' ? 'เดือนนี้' : 'ทั้งหมด';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1.5">
+        {[['today', 'วันนี้'], ['7d', '7 วัน'], ['month', 'เดือนนี้'], ['all', 'ทั้งหมด']].map(([p, lb]) => (
+          <button key={p} onClick={() => setPeriod(p)}
+            className={`flex-1 py-2 rounded-xl text-xs font-bold ${period === p ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>{lb}</button>
+        ))}
+      </div>
+
+      <div className="rounded-2xl p-4 text-white" style={{ background: 'linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)' }}>
+        <p className="text-xs font-bold text-white text-opacity-90">🧺 งานฝากพับ • {periodLabel}</p>
+        <div className="flex items-end gap-5 mt-1 flex-wrap">
+          <div>
+            <p className="text-[11px] text-white text-opacity-80">จำนวนงาน</p>
+            <p className="text-2xl font-extrabold">{formatMoney(foldOrders.length)} งาน</p>
+          </div>
+          {totalBaskets > 0 && (
+            <div>
+              <p className="text-[11px] text-white text-opacity-80">ตะกร้า</p>
+              <p className="text-2xl font-extrabold">{formatMoney(totalBaskets)}</p>
+            </div>
+          )}
+          {totalFee > 0 && (
+            <div>
+              <p className="text-[11px] text-white text-opacity-80">ค่าพับ</p>
+              <p className="text-2xl font-extrabold">฿{formatMoney(totalFee)}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="bg-white rounded-2xl p-8 text-center">
+          <p className="text-3xl mb-2">🧺</p>
+          <p className="text-sm text-slate-400">ยังไม่มีงานพับในช่วงนี้</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map(r => (
+            <div key={r.name} className="bg-white rounded-2xl p-3 border border-slate-200">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-extrabold text-slate-800">🧕 {r.name}</p>
+                <p className="text-base font-extrabold text-teal-600">{formatMoney(r.count)} งาน</p>
+              </div>
+              <div className="mt-1.5 h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full bg-teal-400" style={{ width: Math.max(6, Math.round(r.count / maxCount * 100)) + '%' }} />
+              </div>
+              <div className="flex gap-3 mt-1.5 text-[11px] text-slate-500 flex-wrap">
+                <span>หน้าร้าน {formatMoney(r.count - r.delivery)}</span>
+                <span>เดลิเวอรี่ {formatMoney(r.delivery)}</span>
+                {r.baskets > 0 && <span>ตะกร้า {formatMoney(r.baskets)}</span>}
+                {r.fee > 0 && <span>ค่าพับ ฿{formatMoney(r.fee)}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] text-slate-400 text-center">นับงานที่มีพับ: สั่งพับเป็นตะกร้า หรือร้านพับฟรี (ไม่นับงานที่ติ๊ก "ไม่พับ")</p>
+    </div>
+  );
+}
+
 // ============ ⚙️ ตั้งค่าเจ้าของ — Token / แม่บ้าน / ไรเดอร์ (เจ้าของเท่านั้น) ============
 function SettingsView({ config, staffList }) {
   const [showAddStaff, setShowAddStaff] = useState(false);
@@ -5900,6 +5997,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           {config.tokenEnabled !== false && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 แลก Token ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
+          <TabBtn active={tab === 'fold'} onClick={() => setTab('fold')}>🧺 ฝากพับ</TabBtn>
           <TabBtn active={tab === 'stats'} onClick={() => setTab('stats')}>📊 สถิติ</TabBtn>
           <TabBtn active={tab === 'discount'} onClick={() => setTab('discount')}>🎫 ส่วนลด</TabBtn>
           <TabBtn active={tab === 'topup'} onClick={() => setTab('topup')}>⏱️ หยอดเพิ่ม</TabBtn>
@@ -5971,6 +6069,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <CreditView config={config} orders={orders} staffList={staffList} />
         ) : tab === 'settings' ? (
           <SettingsView config={config} staffList={staffList} />
+        ) : tab === 'fold' ? (
+          <FoldReportView config={config} orders={orders} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'token' ? (
