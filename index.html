@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v77-2026-09-01';
+  window.APP_VERSION = 'v78-2026-09-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -2430,6 +2430,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
   const [savingPromo, setSavingPromo] = useState(false);
   const [savedPromo, setSavedPromo] = useState(null);
   const promoCameraRef = useRef(null);
+  const promoGalleryRef = useRef(null); // เลือกรูปจากอัลบั้ม (ไม่บังคับกล้อง)
   
   // จำนวน token ของร้าน (เฉพาะ Teddy) + จำนวนเหรียญ 10 จริง (ทั้ง 2 แบรนด์)
   // คำนวณ default จากจำนวนเงิน: 1 token / 1 เหรียญ = 10 บาท
@@ -2850,17 +2851,28 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
             <div>
               <p className="text-xs font-bold text-slate-600 mb-1">📷 รูปหลักฐาน (จำเป็น)</p>
               <input ref={promoCameraRef} type="file" accept="image/*" capture="environment" onChange={handlePromoPhotoUpload} className="hidden" />
+              <input ref={promoGalleryRef} type="file" accept="image/*" onChange={handlePromoPhotoUpload} className="hidden" />
               {promoPhoto ? (
                 <div className="relative">
                   <img src={promoPhoto} className="w-full h-40 object-cover rounded-xl border border-slate-200" alt="หลักฐาน" />
-                  <button onClick={() => promoCameraRef.current && promoCameraRef.current.click()}
-                    className="absolute bottom-2 right-2 bg-white bg-opacity-90 rounded-lg px-2 py-1 text-xs font-bold text-slate-700">ถ่ายใหม่</button>
+                  <div className="absolute bottom-2 right-2 flex gap-1">
+                    <button onClick={() => promoCameraRef.current && promoCameraRef.current.click()}
+                      className="bg-white bg-opacity-90 rounded-lg px-2 py-1 text-xs font-bold text-slate-700">📷 ถ่ายใหม่</button>
+                    <button onClick={() => promoGalleryRef.current && promoGalleryRef.current.click()}
+                      className="bg-white bg-opacity-90 rounded-lg px-2 py-1 text-xs font-bold text-slate-700">🖼️ เลือกรูป</button>
+                  </div>
                 </div>
               ) : (
-                <button onClick={() => promoCameraRef.current && promoCameraRef.current.click()}
-                  className="w-full py-6 rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 text-rose-700 font-bold text-sm">
-                  📷 ถ่ายรูป (หน้าจอลูกค้า / เครื่องที่สแกน)
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => promoCameraRef.current && promoCameraRef.current.click()}
+                    className="py-5 rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 text-rose-700 font-bold text-sm">
+                    📷 ถ่ายรูป
+                  </button>
+                  <button onClick={() => promoGalleryRef.current && promoGalleryRef.current.click()}
+                    className="py-5 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-700 font-bold text-sm">
+                    🖼️ เลือกจากอัลบั้ม
+                  </button>
+                </div>
               )}
             </div>
 
