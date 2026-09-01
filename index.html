@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v76-2026-09-01';
+  window.APP_VERSION = 'v77-2026-09-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -794,6 +794,33 @@ function subscribeToCollections(brand, callback) {
 }
 
 // ============ TOKEN EXCHANGES (เก็บกรณีตู้แลกเหรียญเสีย) ============
+// ชื่อฟีเจอร์ตามร้าน: Teddy 1 = แลก Token / Otteri, Teddy 2 = แลกเหรียญ (10฿)
+function exchangeName(config) {
+  const cp = COIN_POINTS[config.brand];
+  return cp && cp.tokenMode ? 'แลก Token' : 'แลกเหรียญ';
+}
+function exchangeUnit(config) {
+  const cp = COIN_POINTS[config.brand];
+  return cp && cp.tokenMode ? 'Token' : 'เหรียญ';
+}
+
+// เหรียญ/Token ตั้งต้นที่ทิ้งไว้ให้แม่บ้าน (settings.coinFloat นับตั้งแต่ coinFloatAt)
+function coinFloatStatus(config, tokenExchanges) {
+  const s = config.settings || {};
+  if (s.coinFloat == null) return null;
+  const since = s.coinFloatAt || 0;
+  const used = (tokenExchanges || [])
+    .filter(t => (t.createdAt || 0) > since)
+    .reduce((sum, t) => sum + (t.tokenCount || 0) + (t.coinCount || 0), 0);
+  return { float: s.coinFloat, used, remain: s.coinFloat - used, since };
+}
+
+async function updateTokenExchange(id, updates) {
+  let data = cleanUndefined({ ...updates, updatedAt: Date.now() });
+  data = JSON.parse(JSON.stringify(data));
+  await window.db.collection('tokenExchanges').doc(id).update(data);
+}
+
 async function saveTokenExchangeToCloud(brand, item) {
   try {
     let data = { ...item, brand };
@@ -2579,7 +2606,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
     } else if (t.coinCount > 0) {
       breakdown = `\n🪙 เหรียญ 10: ${t.coinCount} เหรียญ`;
     }
-    return `🪙 ${config.name} - แลก Token\n━━━━━━━━━━━\n💵 จำนวนเงิน: ${formatMoney(t.amount)} บาท\n${payLabel}${breakdown}\n⏰ ${dateStr}`;
+    return `🪙 ${config.name} - ${exchangeName(config)}\n━━━━━━━━━━━\n💵 จำนวนเงิน: ${formatMoney(t.amount)} บาท\n${payLabel}${breakdown}\n⏰ ${dateStr}`;
   };
 
   // แชร์ผ่าน Line / Web Share API
@@ -2589,7 +2616,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
     
     try {
       if (navigator.share) {
-        await navigator.share({ text, title: `${config.name} - แลก Token` });
+        await navigator.share({ text, title: `${config.name} - ${exchangeName(config)}` });
       } else {
         // Fallback: copy clipboard + open Line
         await navigator.clipboard.writeText(text);
@@ -2873,12 +2900,17 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
               🪙
             </div>
             <div className="text-left flex-1">
-              <p className="font-bold text-amber-900 text-sm">แลก Token (ตู้แลกเหรียญเสีย)</p>
+              <p className="font-bold text-amber-900 text-sm">{exchangeName(config)} (ตู้แลกเหรียญเสีย)</p>
               {activeTokenSum > 0 ? (
                 <p className="text-xs text-amber-700">รอเคลีย: ฿{formatMoney(activeTokenSum)} • {activeTokens.length} ครั้ง</p>
               ) : (
-                <p className="text-xs text-amber-700">ลูกค้าเอาเงินสดมาแลก token</p>
+                <p className="text-xs text-amber-700">ลูกค้า{exchangeName(config)}กับแม่บ้าน (สด/โอน)</p>
               )}
+              {(() => { const fs = coinFloatStatus(config, tokenExchanges); return fs ? (
+                <p className={`text-[11px] font-bold mt-0.5 ${fs.remain <= 10 ? 'text-rose-600' : 'text-amber-800'}`}>
+                  {exchangeUnit(config)}ในมือแม่บ้าน ~{formatMoney(fs.remain)} {fs.remain <= 10 ? '⚠️ ใกล้หมด แจ้งเจ้าของ' : ''}
+                </p>
+              ) : null; })()}
             </div>
             <Icon name="chevron-right" className="w-5 h-5 text-amber-600" />
           </button>
@@ -5258,13 +5290,13 @@ function SettingsView({ config, staffList }) {
     <div className="space-y-3">
       {/* ระบบ Token */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200">
-        <p className="text-sm font-bold text-slate-800 mb-2">🪙 ระบบแลก Token</p>
+        <p className="text-sm font-bold text-slate-800 mb-2">🪙 ระบบ{exchangeName(config)}กับแม่บ้าน (ตู้แลกเหรียญเสีย)</p>
         <button onClick={handleToggleToken}
           className={`w-full py-2.5 rounded-xl text-sm font-bold border-2 flex items-center justify-between px-3 active:scale-95 transition ${config.tokenEnabled !== false ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
           <span>{config.tokenEnabled !== false ? '✅ เปิดอยู่' : '⛔ ปิดอยู่'}</span>
           <span>แตะเพื่อ{config.tokenEnabled !== false ? 'ปิด' : 'เปิด'}</span>
         </button>
-        <p className="text-[11px] text-slate-400 mt-1.5">ปิดแล้วซ่อนการ์ดแลก Token หน้าแม่บ้าน + แท็บแลก Token (ข้อมูลเก่าไม่หาย)</p>
+        <p className="text-[11px] text-slate-400 mt-1.5">ปิดแล้วซ่อนการ์ด{exchangeName(config)}หน้าแม่บ้าน + แท็บในหน้าเจ้าของ (ข้อมูลเก่าไม่หาย)</p>
       </div>
 
       {/* จัดการแม่บ้าน */}
@@ -6015,7 +6047,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
           <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
           <TabBtn active={tab === 'credit'} onClick={() => setTab('credit')}>🎟️ เครดิต</TabBtn>
-          {config.tokenEnabled !== false && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 แลก Token ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
+          {config.tokenEnabled !== false && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 {exchangeName(config)} ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
           {config.hasDelivery && <TabBtn active={tab === 'delivery'} onClick={() => setTab('delivery')}>🚚 ค่าส่ง ({unpaidDeliveryOrders.length})</TabBtn>}
           <TabBtn active={tab === 'fold'} onClick={() => setTab('fold')}>🧺 ฝากพับ</TabBtn>
@@ -6095,7 +6127,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'token' ? (
-          <TokenExchangeReportView tokenExchanges={tokenExchanges || []} onDelete={onDeleteToken} />
+          <TokenExchangeReportView config={config} tokenExchanges={tokenExchanges || []} onDelete={onDeleteToken} />
         ) : tab === 'service' && config.foldPricePerBasket > 0 ? (
           <FeeView 
             type="service"
@@ -6626,9 +6658,51 @@ function FeeView({ type, title, emoji, color, unpaidOrders, totalAmount, paidOrd
   );
 }
 
-function TokenExchangeReportView({ tokenExchanges, onDelete }) {
+function TokenExchangeReportView({ config, tokenExchanges, onDelete }) {
   const [period, setPeriod] = useState('today');
   const [showCleared, setShowCleared] = useState(false);
+  const [editT, setEditT] = useState(null);
+  const [eAmount, setEAmount] = useState('');
+  const [eTokens, setETokens] = useState('');
+  const [eCoins, setECoins] = useState('');
+  const [ePay, setEPay] = useState('cash');
+  const [eSaving, setESaving] = useState(false);
+  const tokenMode = !!(COIN_POINTS[config.brand] && COIN_POINTS[config.brand].tokenMode);
+  const unit = exchangeUnit(config);
+  const floatStatus = coinFloatStatus(config, tokenExchanges);
+
+  const openEditT = (t) => {
+    setEditT(t);
+    setEAmount(String(t.amount || 0));
+    setETokens(String(t.tokenCount || 0));
+    setECoins(String(t.coinCount || 0));
+    setEPay(t.paymentMethod || 'cash');
+  };
+  const handleSaveEditT = async () => {
+    if (!editT || eSaving) return;
+    const amount = parseFloat(eAmount) || 0;
+    if (amount <= 0) { alert('ใส่จำนวนเงิน'); return; }
+    setESaving(true);
+    try {
+      await updateTokenExchange(editT.id, {
+        amount,
+        tokenCount: tokenMode ? (parseInt(eTokens, 10) || 0) : 0,
+        coinCount: parseInt(eCoins, 10) || 0,
+        paymentMethod: ePay,
+      });
+      setEditT(null);
+    } catch (err) { alert('แก้ไขไม่สำเร็จ: ' + (err && err.message ? err.message : err)); }
+    setESaving(false);
+  };
+  const handleSetFloat = async () => {
+    const cur = floatStatus ? floatStatus.remain : 0;
+    const v = window.prompt(`นับ${unit}ที่อยู่ในมือแม่บ้านตอนนี้ (จำนวน${unit})` + (floatStatus ? `\nแอปคิดว่าควรเหลือ ${cur}` : ''), floatStatus ? String(Math.max(0, cur)) : '');
+    if (v == null) return;
+    const n = parseInt(v, 10);
+    if (isNaN(n) || n < 0) { alert('ใส่ตัวเลข'); return; }
+    try { await saveShopSettings(config.brand, { coinFloat: n, coinFloatAt: Date.now() }); }
+    catch (err) { alert('บันทึกไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจ Firestore Rules: settings'); }
+  };
 
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -6678,11 +6752,32 @@ function TokenExchangeReportView({ tokenExchanges, onDelete }) {
         <TabBtn active={period === 'all'} onClick={() => setPeriod('all')}>ทั้งหมด</TabBtn>
       </div>
 
+      {/* เหรียญ/Token ตั้งต้นในมือแม่บ้าน */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold text-slate-800">🧺 {unit}ที่ทิ้งไว้ให้แม่บ้าน</p>
+          <button onClick={handleSetFloat} className="text-xs font-bold text-white bg-slate-800 rounded-lg px-3 py-1.5 active:scale-95 transition">🎯 นับ/ตั้งใหม่</button>
+        </div>
+        {floatStatus ? (
+          <React.Fragment>
+            <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+              <div><p className="text-[11px] text-slate-500">ตั้งต้น</p><p className="text-base font-bold text-slate-800">{formatMoney(floatStatus.float)}</p></div>
+              <div><p className="text-[11px] text-slate-500">จ่ายให้ลูกค้าแล้ว</p><p className="text-base font-bold text-rose-600">−{formatMoney(floatStatus.used)}</p></div>
+              <div><p className="text-[11px] text-slate-500">ควรเหลือ</p><p className={`text-base font-bold ${floatStatus.remain <= 10 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatMoney(floatStatus.remain)}</p></div>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">= ฿{formatMoney(floatStatus.remain * 10)} · ตั้งเมื่อ {new Date(floatStatus.since).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} · นับจริงไม่ตรง = {unit}หาย</p>
+            {floatStatus.remain <= 10 && <p className="text-[11px] font-bold text-rose-600 mt-1">⚠️ ใกล้หมด — เติม{unit}แล้วกด นับ/ตั้งใหม่</p>}
+          </React.Fragment>
+        ) : (
+          <p className="text-[11px] text-slate-500 mt-1">ยังไม่ตั้งค่า — กด 🎯 ใส่จำนวน{unit}ที่ทิ้งไว้ให้แม่บ้าน แอปจะหักทุกครั้งที่ลูกค้ามาแลก</p>
+        )}
+      </div>
+
       {/* Summary card */}
       <div className="bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl p-5 text-white shadow-lg">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-2xl">🪙</span>
-          <p className="text-amber-50 text-sm font-bold">เงินแลก Token • {periodLabels[period]}</p>
+          <p className="text-amber-50 text-sm font-bold">เงิน{exchangeName(config)} • {periodLabels[period]}</p>
         </div>
         <div className="flex items-end gap-4">
           <div>
@@ -6753,9 +6848,12 @@ function TokenExchangeReportView({ tokenExchanges, onDelete }) {
                             )}
                           </div>
                           {!t.cleared && (
-                            <button onClick={() => onDelete(t.id)} className="ml-2 p-1 rounded-md text-rose-500 active:bg-rose-100">
-                              <Icon name="trash-2" className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center gap-1 ml-2">
+                              <button onClick={() => openEditT(t)} className="p-1 rounded-md text-sky-600 active:bg-sky-100 text-[11px] font-bold">แก้ไข</button>
+                              <button onClick={() => onDelete(t.id)} className="p-1 rounded-md text-rose-500 active:bg-rose-100">
+                                <Icon name="trash-2" className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -6764,6 +6862,47 @@ function TokenExchangeReportView({ tokenExchanges, onDelete }) {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ชีทแก้ไขรายการแลก */}
+      {editT && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center" onClick={() => setEditT(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-lg font-bold text-slate-800">✏️ แก้ไขรายการ{exchangeName(config)}</p>
+              <button onClick={() => setEditT(null)} className="text-slate-400 text-xl leading-none px-2">✕</button>
+            </div>
+            <p className="text-sm text-slate-500 mb-3">{new Date(editT.createdAt).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+            <p className="text-xs font-bold text-slate-600 mb-1">จำนวนเงินที่ลูกค้าจ่าย (บาท)</p>
+            <input type="number" inputMode="numeric" value={eAmount} onChange={e => setEAmount(e.target.value)} onFocus={e => e.target.select()}
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-lg font-bold text-right" />
+            <div className={`grid ${tokenMode ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mt-3`}>
+              {tokenMode && (
+                <div>
+                  <p className="text-xs font-bold text-slate-600 mb-1">Token ที่ให้</p>
+                  <input type="number" inputMode="numeric" value={eTokens} onChange={e => setETokens(e.target.value)} onFocus={e => e.target.select()}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base font-bold text-right" />
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-bold text-slate-600 mb-1">เหรียญ 10฿ ที่ให้</p>
+                <input type="number" inputMode="numeric" value={eCoins} onChange={e => setECoins(e.target.value)} onFocus={e => e.target.select()}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base font-bold text-right" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setEPay('cash')} className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 ${ePay === 'cash' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-slate-600'}`}>💵 เงินสด</button>
+              <button onClick={() => setEPay('transfer')} className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 ${ePay === 'transfer' ? 'bg-violet-500 border-violet-500 text-white' : 'bg-white border-slate-300 text-slate-600'}`}>💳 โอน</button>
+            </div>
+            {(() => { const give = (tokenMode ? (parseInt(eTokens, 10) || 0) : 0) * 10 + (parseInt(eCoins, 10) || 0) * 10; const amt = parseFloat(eAmount) || 0; return give !== amt ? (
+              <p className="text-[11px] text-amber-700 mt-2">⚠️ ที่ให้ลูกค้ารวม ฿{formatMoney(give)} ไม่เท่ากับเงิน ฿{formatMoney(amt)}</p>
+            ) : null; })()}
+            <button onClick={handleSaveEditT} disabled={eSaving}
+              className="w-full mt-4 py-3.5 rounded-2xl bg-slate-800 text-white font-bold text-base active:scale-95 transition disabled:opacity-40">
+              {eSaving ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}
+            </button>
           </div>
         </div>
       )}
