@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v79-2026-09-01';
+  window.APP_VERSION = 'v80-2026-09-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -2435,6 +2435,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
   const [savedPromo, setSavedPromo] = useState(null);
   const promoCameraRef = useRef(null);
   const promoGalleryRef = useRef(null); // เลือกรูปจากอัลบั้ม (ไม่บังคับกล้อง)
+  const [promoMachine, setPromoMachine] = useState('');
   
   // จำนวน token ของร้าน (เฉพาะ Teddy) + จำนวนเหรียญ 10 จริง (ทั้ง 2 แบรนด์)
   // คำนวณ default จากจำนวนเงิน: 1 token / 1 เหรียญ = 10 บาท
@@ -2500,17 +2501,52 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
       const entry = {
         type: 'promo', staffId: currentStaff ? currentStaff.id : null, staffName: promoStaff,
         amount, promoName: promoName || 'ส่วนลด', photo: promoPhoto, note: promoNote.trim(),
+        machine: promoMachine || '',
         dateKey: new Date().toISOString().slice(0, 10),
       };
       const id = await saveCreditEntry(config.brand, entry);
       setSavedPromo({ ...entry, id, createdAt: Date.now() });
       setShowPromoForm(false);
-      setPromoAmount(''); setPromoName(''); setPromoPhoto(''); setPromoNote('');
+      setPromoAmount(''); setPromoName(''); setPromoPhoto(''); setPromoNote(''); setPromoMachine('');
     } catch (e) {
       alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e) + '\nตรวจว่า Firestore Rules เพิ่ม creditLedger แล้วหรือยัง');
     }
     setSavingPromo(false);
   };
+
+  // ฝังข้อมูลลงบนรูป: รูปหลักฐานด้านบน + แผงข้อความด้านล่าง เป็นไฟล์เดียว
+  const buildPromoShareImage = (p) => new Promise((resolve) => {
+    const d = new Date(p.createdAt);
+    const img = new Image();
+    img.onload = () => {
+      const W = img.width;
+      const lines = [
+        '🎟️ ลูกค้าใช้โปร (ซักเอง)',
+        `🏪 ${config.name}${p.machine ? ` · 🧺 ${p.machine}` : ''}`,
+        `🎁 ${p.promoName} · เครดิต ${p.amount}฿`,
+        `🧕 ${p.staffName} · 🕐 ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`,
+      ];
+      if (p.note) lines.push(`📝 ${p.note}`);
+      const lineH = Math.round(W * 0.062);
+      const pad = Math.round(W * 0.045);
+      const panelH = pad * 2 + lineH * lines.length;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = img.height + panelH;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, img.height, W, panelH);
+      ctx.fillStyle = '#0F172A';
+      lines.forEach((ln, i) => {
+        ctx.font = (i === 0 ? 'bold ' : '') + Math.round(lineH * 0.68) + 'px sans-serif';
+        ctx.fillText(ln, pad, img.height + pad + lineH * i + Math.round(lineH * 0.72));
+      });
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(p.photo);
+    img.src = p.photo;
+  });
 
   const handleSharePromo = async () => {
     if (!savedPromo) return;
@@ -2518,6 +2554,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
     const text = [
       '🎟️ ลูกค้าใช้โปร (ซักเอง)',
       `🏪 ${config.name}`,
+      savedPromo.machine ? `🧺 เครื่อง: ${savedPromo.machine}` : '',
       `🎁 ${savedPromo.promoName}`,
       `💳 เครดิตที่สแกน: ${savedPromo.amount}฿`,
       `🧕 แม่บ้าน: ${savedPromo.staffName}`,
@@ -2525,7 +2562,8 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
       savedPromo.note ? `📝 ${savedPromo.note}` : '',
     ].filter(Boolean).join('\n');
     try {
-      const b64 = savedPromo.photo.split(',')[1];
+      const composite = await buildPromoShareImage(savedPromo);
+      const b64 = composite.split(',')[1];
       const bin = atob(b64);
       const arr = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -2844,6 +2882,18 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
               )}
             </div>
 
+            <div>
+              <p className="text-xs font-bold text-slate-600 mb-1.5">เครื่องที่ลูกค้าใช้</p>
+              <div className="flex flex-wrap gap-1.5">
+                {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => (
+                  <button key={m.id} onClick={() => setPromoMachine(promoMachine === m.label ? '' : m.label)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border ${promoMachine === m.label ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-slate-600 border-slate-300'}`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {!currentStaff && (
               <div>
                 <p className="text-xs font-bold text-slate-600 mb-1">ชื่อแม่บ้าน</p>
@@ -2897,7 +2947,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
             <p className="text-4xl mb-1">✅</p>
             <p className="text-lg font-extrabold text-slate-800">บันทึกตัดเครดิตแล้ว</p>
             <p className="text-sm text-slate-600 mt-1">{savedPromo.promoName} · <b>{savedPromo.amount}฿</b></p>
-            <p className="text-xs text-slate-500">🧕 {savedPromo.staffName}</p>
+            <p className="text-xs text-slate-500">🧕 {savedPromo.staffName}{savedPromo.machine ? ` · 🧺 ${savedPromo.machine}` : ''}</p>
             <img src={savedPromo.photo} className="w-full h-32 object-cover rounded-xl mt-3 border border-slate-200" alt="" />
             <button onClick={handleSharePromo} className="w-full mt-4 py-3 rounded-2xl bg-emerald-500 text-white font-bold active:scale-95 transition">💬 ส่งเข้ากลุ่ม LINE</button>
             <button onClick={() => setSavedPromo(null)} className="mt-2 text-xs text-slate-400">ปิด</button>
@@ -5440,6 +5490,7 @@ function CreditView({ config, orders, staffList }) {
   const [editAmount, setEditAmount] = useState('');
   const [editPromoName, setEditPromoName] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [editMachine, setEditMachine] = useState('');
 
   useEffect(() => {
     if (!window.db) return;
@@ -5534,6 +5585,7 @@ function CreditView({ config, orders, staffList }) {
     setEditAmount(String(e.amount || 0));
     setEditPromoName(e.promoName || '');
     setEditNote(e.note || '');
+    setEditMachine(e.machine || '');
   };
   const handleSaveEdit = async () => {
     if (!editEntry || saving) return;
@@ -5542,7 +5594,7 @@ function CreditView({ config, orders, staffList }) {
     setSaving(true);
     try {
       const updates = { amount: amt, note: editNote.trim() };
-      if (editEntry.type === 'promo') updates.promoName = editPromoName.trim() || 'ส่วนลด';
+      if (editEntry.type === 'promo') { updates.promoName = editPromoName.trim() || 'ส่วนลด'; updates.machine = editMachine.trim(); }
       if (editEntry.type === 'check') updates.diff = amt - (editEntry.expected || 0);
       await updateCreditEntry(editEntry.id, updates);
       setEditEntry(null);
@@ -5674,6 +5726,7 @@ function CreditView({ config, orders, staffList }) {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <p className="text-[11px] text-slate-500">{new Date(e.createdAt).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
                   {e.promoName && <span className="text-[10px] text-slate-500">· {e.promoName}</span>}
+                  {e.machine && <span className="text-[10px] text-sky-600 font-bold">· 🧺 {e.machine}</span>}
                   {e.updatedAt && <span className="text-[10px] text-amber-600">✏️ แก้แล้ว</span>}
                   {diffBadge(e.diff)}
                 </div>
@@ -5703,10 +5756,17 @@ function CreditView({ config, orders, staffList }) {
               <img src={editEntry.photo} onClick={() => setViewPhoto(editEntry.photo)} className="w-full h-32 object-cover rounded-xl border border-slate-200 mb-3" alt="" />
             )}
             {editEntry.type === 'promo' && (
-              <div className="mb-3">
-                <p className="text-xs font-bold text-slate-600 mb-1">ชื่อโปร</p>
-                <input type="text" value={editPromoName} onChange={e => setEditPromoName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" />
+              <div className="mb-3 space-y-2">
+                <div>
+                  <p className="text-xs font-bold text-slate-600 mb-1">ชื่อโปร</p>
+                  <input type="text" value={editPromoName} onChange={e => setEditPromoName(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-600 mb-1">เครื่องที่ลูกค้าใช้</p>
+                  <input type="text" value={editMachine} onChange={e => setEditMachine(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="เช่น ซัก 3" />
+                </div>
               </div>
             )}
             <p className="text-xs font-bold text-slate-600 mb-1">จำนวนเงิน (บาท)</p>
