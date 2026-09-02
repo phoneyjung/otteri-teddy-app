@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v80-2026-09-01';
+  window.APP_VERSION = 'v81-2026-09-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -2885,7 +2885,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
             <div>
               <p className="text-xs font-bold text-slate-600 mb-1.5">เครื่องที่ลูกค้าใช้</p>
               <div className="flex flex-wrap gap-1.5">
-                {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => (
+                {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).filter(m => m.label.startsWith('ซัก')).map(m => (
                   <button key={m.id} onClick={() => setPromoMachine(promoMachine === m.label ? '' : m.label)}
                     className={`px-2.5 py-1 rounded-full text-xs font-bold border ${promoMachine === m.label ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-slate-600 border-slate-300'}`}>
                     {m.label}
