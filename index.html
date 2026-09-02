@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v80-2026-09-01';
+  window.APP_VERSION = 'v79-2026-09-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -394,6 +394,7 @@ const TEDDY2_LOGO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYE
 const TEDDY2_CONFIG = {
   ...TEDDY_CONFIG,
   brand: 'teddy2',
+  hasDayPromo: false, // ❌ Teddy 2 ไม่มีโปรวันพุธ/ดึก (สลับได้ในตั้งค่า)
   name: 'Teddy 2',
   subtitle: 'Wash & Dry • ม.ศิลปากร',
   logo: TEDDY2_LOGO,
@@ -1035,7 +1036,8 @@ function checkPromotion(timestamp) {
 
 // ============ CALCULATE BREAKDOWN ============
 function calculateBreakdown(order, config) {
-  const promo = checkPromotion(order.createdAt || Date.now());
+  // noDayPromo = ออเดอร์ที่สร้างตอนโปรวันพุธ/ดึกถูกปิด — ไม่ให้ส่วนลด (ออเดอร์เก่าไม่มีธงนี้ คิดแบบเดิม)
+  const promo = order.noDayPromo ? { active: false, type: null, label: '', discountPerWash: 0 } : checkPromotion(order.createdAt || Date.now());
   
   let washSubtotal = 0;
   let washCount = 0;
@@ -1770,7 +1772,9 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
     const base = baseConfig.riders || [];
     const extra = cloudRiders.filter(cr => !base.some(b => b.id === cr.id));
     // tokenEnabled: ค่าเริ่มต้น = เปิด (ต้องตั้งปิดเองในหน้าเจ้าของ)
-    return { ...baseConfig, riders: [...base, ...extra], settings: shopSettings, tokenEnabled: shopSettings.tokenEnabled !== false };
+    // โปรวันพุธ/ดึก: ค่าใน settings ชนะ ถ้าไม่เคยตั้งใช้ค่า config (hasDayPromo)
+    const dayPromoEnabled = shopSettings.dayPromoEnabled != null ? shopSettings.dayPromoEnabled : (baseConfig.hasDayPromo !== false);
+    return { ...baseConfig, riders: [...base, ...extra], settings: shopSettings, tokenEnabled: shopSettings.tokenEnabled !== false, dayPromoEnabled };
   }, [baseConfig, cloudRiders, shopSettings]);
 
   const [view, setView] = useState('home');
@@ -2142,12 +2146,12 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
       )}
       {view === 'home' && <HomeView config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
-      {view === 'newOrder' && <NewOrderView config={config} orders={orders} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
+      {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
-      {view === 'editOrder' && selectedOrder && <NewOrderView config={config} orders={orders} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
+      {view === 'editOrder' && selectedOrder && <NewOrderView config={config} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
   );
 }
@@ -2818,7 +2822,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
                     💬 LINE ลด {config.linePromoDiscount}฿
                   </button>
                 )}
-                {promoNow.active && (
+                {config.dayPromoEnabled !== false && promoNow.active && (
                   <button onClick={() => { setPromoName(promoNow.label); setPromoAmount(String(promoNow.discountPerWash)); }}
                     className={`px-3 py-1.5 rounded-full text-sm font-bold border ${promoName === promoNow.label ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-700 border-slate-300'}`}>
                     {promoNow.label} {promoNow.discountPerWash}฿/ถัง
@@ -3128,7 +3132,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
         )}
       </div>
 
-      {currentPromo.active && (
+      {config.dayPromoEnabled !== false && currentPromo.active && (
         <div className="px-5 mt-3">
           <div className="rounded-2xl p-3 shadow-lg flex items-center gap-3" style={{background: currentPromo.type === 'wednesday_midnight' ? 'linear-gradient(135deg, #8B5CF6, #EC4899)' : currentPromo.type === 'wednesday' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #6366F1, #8B5CF6)'}}>
             <div className="text-2xl">{currentPromo.type === 'wednesday' ? '🐻' : currentPromo.type === 'midnight' ? '🌙' : '🎉'}</div>
@@ -3185,7 +3189,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
   );
 }
 
-function NewOrderView({ config, orders, onCancel, onSubmit, editingOrder, isOwner }) {
+function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   const isEdit = !!editingOrder;
   const [name, setName] = useState(editingOrder?.customerName || '');
   const [phone, setPhone] = useState(editingOrder?.customerPhone || '');
@@ -3207,10 +3211,6 @@ function NewOrderView({ config, orders, onCancel, onSubmit, editingOrder, isOwne
   const [riderId, setRiderId] = useState(editingOrder?.riderId || null);
   const [fromKev, setFromKev] = useState(editingOrder?.fromKev || false);
   const [fromLine, setFromLine] = useState(editingOrder?.fromLine || false);
-  // งานที่ลูกค้าสั่งผ่านเว็บ
-  const [webJobs, setWebJobs] = useState(null);      // null=ยังไม่ดึง, []=ไม่มี
-  const [webLoading, setWebLoading] = useState(false);
-  const [webCode, setWebCode] = useState(editingOrder?.webCode || '');
   const [useLinePromo, setUseLinePromo] = useState(editingOrder?.useLinePromo || false);
   const [pickupTime, setPickupTime] = useState(editingOrder?.pickupTime || ''); // เวลานัดรับ (ข้อความอิสระ เช่น "18:00" หรือ "พรุ่งนี้เช้า")
 
@@ -3262,68 +3262,6 @@ function NewOrderView({ config, orders, onCancel, onSubmit, editingOrder, isOwne
     reader.readAsDataURL(file);
   };
 
-  // ── ดึงงานที่ลูกค้าสั่งผ่านเว็บ (ยังไม่ถูกรับ) ──
-  const loadWebJobs = async () => {
-    if (!window.db) return;
-    setWebLoading(true);
-    try {
-      const snap = await window.db.collection('webOrders')
-        .where('brand', '==', brand).where('status', '==', 'new').get();
-      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => String(b.createdLocal || '').localeCompare(String(a.createdLocal || '')));
-      setWebJobs(rows);
-    } catch (e) { setWebJobs([]); }
-    setWebLoading(false);
-  };
-
-  // ── เติมข้อมูลจากงานเว็บลงฟอร์ม (แก้ไขต่อได้) ──
-  const applyWebJob = (j) => {
-    setWebCode(j.code || '');
-    if (j.customerName) setName(j.customerName);
-    if (j.customerPhone) setPhone(j.customerPhone);
-    setWashItems(Array.isArray(j.washItems) ? j.washItems.map(x => ({ size: x.size, qty: x.qty, temp: x.temp || 'cold' })) : []);
-    setDryItems(Array.isArray(j.dryItems) ? j.dryItems.map(x => ({ size: x.size, qty: x.qty })) : []);
-    if (j.deliveryZone) setDeliveryZone(j.deliveryZone);
-    setFromLine(true);
-    if (j.wantFold === false) setNoFold(true);
-    const parts = [];
-    if (j.code) parts.push('งานเว็บ ' + j.code);
-    if (j.address) parts.push(j.address);
-    if (j.mapUrl) parts.push(j.mapUrl);
-    if (j.wantSeparate) parts.push('แยกผ้าสี/ขาว');
-    if (j.pickupTime) parts.push('รับผ้า: ' + j.pickupTime);
-    if (j.note) parts.push(j.note);
-    setNote(parts.join(' · '));
-    setWebJobs(null);
-    // ทำเครื่องหมายว่ารับงานแล้ว
-    if (window.db && j.id) {
-      window.db.collection('webOrders').doc(j.id)
-        .set({ status: 'taken', takenAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-    }
-  };
-
-  // ── ประวัติลูกค้า (อ้างอิงเบอร์โทร) ──
-  const digits = (phone || '').replace(/\D/g, '');
-  const history = useMemo(() => {
-    if (digits.length < 9 || !Array.isArray(orders)) return null;
-    const mine = orders.filter(o => {
-      if (editingOrder && o.id === editingOrder.id) return false;
-      return (o.customerPhone || '').replace(/\D/g, '') === digits;
-    });
-    if (!mine.length) return null;
-    const sorted = [...mine].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    const last = sorted[0];
-    const total = mine.reduce((s, o) => s + calculateTotal(o, config), 0);
-    // ขนาดเครื่องที่ใช้บ่อยสุด
-    const cnt = {};
-    mine.forEach(o => (o.washItems || []).forEach(w => { cnt[w.size] = (cnt[w.size] || 0) + (w.qty || 0); }));
-    const fav = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0];
-    return { count: mine.length, total, last, name: last.customerName, fav,
-             lastZone: last.deliveryZone || null, lastNote: last.note || '' };
-  }, [digits, orders, config, editingOrder]);
-
-  const useOldName = () => { if (history?.name) setName(history.name); };
-
   const updateItem = (list, setter, size, delta, temp) => {
     setter(prev => {
       const existing = prev.find(i => i.size === size && (i.temp || 'cold') === (temp || 'cold'));
@@ -3366,6 +3304,7 @@ function NewOrderView({ config, orders, onCancel, onSubmit, editingOrder, isOwne
     washItems, dryItems, detergentQty, softenerQty, foldBaskets,
     deliveryZone, useLinePromo,
     createdAt: orderTime,
+    noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false),
   };
   const breakdown = calculateBreakdown(tempOrder, config);
   const total = breakdown.total;
@@ -3460,7 +3399,6 @@ function NewOrderView({ config, orders, onCancel, onSubmit, editingOrder, isOwne
       updatedAt: Date.now(),
       customerName: name.trim() || '(ไม่ระบุชื่อ)',
       customerPhone: phone.trim() || '',
-      webCode: webCode || '',
       pickupTime: pickupTime.trim() || '',
       basketPhoto: basketPhoto || '',
       moneyPhoto: moneyPhoto || '',
@@ -3482,6 +3420,7 @@ function NewOrderView({ config, orders, onCancel, onSubmit, editingOrder, isOwne
       fromKev: fromKev || false,
       fromLine: fromLine || false,
       useLinePromo: useLinePromo || false,
+      noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false),
       collected: editingOrder?.collected || false,
       collectedAt: editingOrder?.collectedAt || null,
       // preserve split collected flags (กันเก็บซ้ำตอนแก้ไข)
@@ -3505,57 +3444,6 @@ function NewOrderView({ config, orders, onCancel, onSubmit, editingOrder, isOwne
       </div>
 
       <div className="px-5 py-5 space-y-5">
-        {/* ── งานที่ลูกค้าสั่งผ่านเว็บ ── */}
-        {!isEdit && (
-          <div className="rounded-2xl p-4 shadow-lg border-2" style={{background:'linear-gradient(135deg,#E0F2FE 0%,#DBEAFE 100%)',borderColor:'#7DD3FC'}}>
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <p className="font-extrabold text-sky-900 text-sm">🌐 งานจากเว็บลูกค้า</p>
-                <p className="text-[11px] text-sky-700 mt-0.5">
-                  {webCode ? ('ดึงงาน ' + webCode + ' มาแล้ว · แก้ไขได้ตามจริง') : 'ลูกค้ากรอกมาแล้ว ดึงมาใช้ได้เลย ไม่ต้องพิมพ์ซ้ำ'}
-                </p>
-              </div>
-              {!webCode && (
-                <button onClick={loadWebJobs} disabled={webLoading}
-                  className="px-4 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-bold active:scale-95 transition disabled:opacity-50 flex-none">
-                  {webLoading ? 'กำลังดึง…' : '📥 ดึงงาน'}
-                </button>
-              )}
-              {webCode && (
-                <span className="px-3 py-1.5 rounded-lg bg-white text-sky-700 text-xs font-bold flex-none">✓ {webCode}</span>
-              )}
-            </div>
-
-            {webJobs !== null && (
-              <div className="mt-3 space-y-2">
-                {webJobs.length === 0 && (
-                  <p className="text-xs text-sky-800 bg-white/70 rounded-xl px-3 py-2.5">ยังไม่มีงานใหม่จากเว็บ</p>
-                )}
-                {webJobs.map(j => (
-                  <button key={j.id} onClick={() => applyWebJob(j)}
-                    className="w-full text-left bg-white rounded-xl px-3 py-2.5 border border-sky-200 active:scale-[.99] transition">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-bold text-slate-900 text-sm">{j.customerName || 'ไม่ระบุชื่อ'}</span>
-                      <span className="text-[11px] font-bold text-sky-600">{j.code}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      {(j.washItems || []).map(w => w.size + 'กก.×' + w.qty).join(' · ') || 'ไม่ซัก'}
-                      {(j.dryItems || []).length ? ' | อบ ' + j.dryItems.map(d => d.size + 'กก.×' + d.qty).join(' · ') : ''}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      {j.mode === 'self' ? '🚶 มาส่งเอง' : '🛵 เดลิเวอรี่ ' + (j.deliveryFee || 0) + '฿'}
-                      {j.customerPhone ? ' · ' + j.customerPhone : ''}
-                      {j.grandTotal ? ' · รวม ' + j.grandTotal + '฿' : ''}
-                    </p>
-                    {j.address && <p className="text-[11px] text-slate-400 truncate">{j.address}</p>}
-                  </button>
-                ))}
-                <button onClick={() => setWebJobs(null)} className="w-full text-center text-[11px] text-sky-700 py-1">ปิดรายการ</button>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Section "วันเวลารับงาน" — แสดงเฉพาะเจ้าของ (สำหรับบันทึกย้อนหลัง) */}
         {isOwner && (
           <div className="rounded-2xl p-4 shadow-lg border-2 border-amber-300" style={{background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'}}>
@@ -3676,30 +3564,6 @@ function NewOrderView({ config, orders, onCancel, onSubmit, editingOrder, isOwne
           <Field label={needPhone ? 'เบอร์โทร *' : 'เบอร์โทร'}>
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needPhone && !phoneOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
             {needPhone && !phoneOk && <p className="text-xs text-amber-700 mt-1 font-medium">จำเป็นต้องกรอก — ใช้ติดต่อลูกค้าตอนงานเสร็จ</p>}
-
-            {history && (
-              <div className="mt-2 rounded-xl px-3 py-2.5 border-2" style={{background:'#ECFDF5',borderColor:'#6EE7B7'}}>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-extrabold text-emerald-800 text-sm">
-                    ⭐ ลูกค้าเก่า · มาแล้ว {history.count} ครั้ง
-                  </p>
-                  {history.name && history.name !== name && (
-                    <button onClick={useOldName}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold active:scale-95 transition flex-none">
-                      ใช้ชื่อ "{history.name}"
-                    </button>
-                  )}
-                </div>
-                <p className="text-[11px] text-emerald-700 mt-1">
-                  ยอดสะสม {formatMoney(history.total)}฿
-                  {history.last?.createdAt ? ' · ล่าสุด ' + formatDate(history.last.createdAt) : ''}
-                  {history.fav ? ' · ใช้ ' + history.fav + ' กก. บ่อยสุด' : ''}
-                </p>
-                {history.lastNote && (
-                  <p className="text-[11px] text-emerald-600 mt-0.5 truncate">📝 ครั้งก่อน: {history.lastNote}</p>
-                )}
-              </div>
-            )}
           </Field>
         </Section>
 
@@ -5451,6 +5315,22 @@ function SettingsView({ config, staffList }) {
           <span>แตะเพื่อ{config.tokenEnabled !== false ? 'ปิด' : 'เปิด'}</span>
         </button>
         <p className="text-[11px] text-slate-400 mt-1.5">ปิดแล้วซ่อนการ์ด{exchangeName(config)}หน้าแม่บ้าน + แท็บในหน้าเจ้าของ (ข้อมูลเก่าไม่หาย)</p>
+      </div>
+
+      {/* โปรวันพุธ/ดึก */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200">
+        <p className="text-sm font-bold text-slate-800 mb-2">🐻 โปรวันพุธ / ดึก (ลด 10฿/ถังซัก)</p>
+        <button
+          onClick={async () => {
+            const next = !(config.dayPromoEnabled !== false);
+            try { await saveShopSettings(config.brand, { dayPromoEnabled: next }); }
+            catch (err) { alert('บันทึกไม่สำเร็จ: ' + (err && err.message ? err.message : err)); }
+          }}
+          className={`w-full py-2.5 rounded-xl text-sm font-bold border-2 flex items-center justify-between px-3 active:scale-95 transition ${config.dayPromoEnabled !== false ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
+          <span>{config.dayPromoEnabled !== false ? '✅ เปิดอยู่' : '⛔ ปิดอยู่'}</span>
+          <span>แตะเพื่อ{config.dayPromoEnabled !== false ? 'ปิด' : 'เปิด'}</span>
+        </button>
+        <p className="text-[11px] text-slate-400 mt-1.5">มีผลกับออเดอร์ใหม่เท่านั้น — ออเดอร์เก่าที่เคยได้ส่วนลดยังคิดราคาเดิม</p>
       </div>
 
       {/* จัดการแม่บ้าน */}
