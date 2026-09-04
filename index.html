@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v81-2026-09-01';
+  window.APP_VERSION = 'v82-2026-09-05';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -5491,6 +5491,8 @@ function CreditView({ config, orders, staffList }) {
   const [editPromoName, setEditPromoName] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editMachine, setEditMachine] = useState('');
+  const [statMode, setStatMode] = useState('all'); // all = คงเหลือสะสม | month = สรุปรายเดือน
+  const [statDate, setStatDate] = useState(() => new Date());
 
   useEffect(() => {
     if (!window.db) return;
@@ -5529,6 +5531,23 @@ function CreditView({ config, orders, staffList }) {
     const lastCheck = after.find(e => e.type === 'check');
     return { baseline, base, topup, promo, promoCount: promoList.length, dropUse, deliveryUse, orderUse, orderCount: myOrders.length, expected, lastCheck };
   };
+
+  // สรุปรายเดือน (ไม่สนยอดตั้งต้น — ดูการใช้เครดิตของเดือนนั้นล้วนๆ)
+  const sMonStart = new Date(statDate.getFullYear(), statDate.getMonth(), 1).getTime();
+  const sMonEnd = new Date(statDate.getFullYear(), statDate.getMonth() + 1, 1).getTime();
+  const monthStatFor = (name) => {
+    const inM = t => t >= sMonStart && t < sMonEnd;
+    const mine = ledger.filter(e => e.staffName === name && inM(ts(e.createdAt)));
+    const topup = mine.filter(e => e.type === 'topup').reduce((s, e) => s + (e.amount || 0), 0);
+    const promoList = mine.filter(e => e.type === 'promo');
+    const promo = promoList.reduce((s, e) => s + (e.amount || 0), 0);
+    const myOrders = (orders || []).filter(o => o.staffName === name && inM(ts(o.createdAt)));
+    let dropUse = 0, deliveryUse = 0;
+    myOrders.forEach(o => { const cr = creditForOrder(o, config); if (o.deliveryZone) deliveryUse += cr; else dropUse += cr; });
+    const orderUse = dropUse + deliveryUse;
+    return { baseline: true, base: 0, topup, promo, promoCount: promoList.length, dropUse, deliveryUse, orderUse, orderCount: myOrders.length, expected: topup - promo - orderUse, lastCheck: null, monthMode: true };
+  };
+  const shiftStatMonth = (dir) => { const d = new Date(statDate); d.setMonth(d.getMonth() + dir); setStatDate(d); };
 
   const openForm = (staff, action) => { setAmount(''); setNoteText(''); setSel({ staff, action }); };
 
@@ -5621,12 +5640,24 @@ function CreditView({ config, orders, staffList }) {
         <p className="text-[11px] text-slate-500 mt-1">คงเหลือควรเป็น = ยอดต้น + เติม − ราคาเครื่องงานฝาก/ส่ง − โปรซักเอง · กด 🔍 กรอกยอดจริงจากระบบเครื่องเพื่อเทียบ · <b className="text-rose-600">ติดลบ = เครดิตหายเกินที่แอปรู้</b></p>
       </div>
 
+      <div className="flex gap-1.5">
+        <button onClick={() => setStatMode('all')} className={`flex-1 py-2 rounded-xl text-xs font-bold ${statMode === 'all' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>คงเหลือสะสม</button>
+        <button onClick={() => { setStatMode('month'); setStatDate(new Date()); }} className={`flex-1 py-2 rounded-xl text-xs font-bold ${statMode === 'month' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>สรุปรายเดือน</button>
+      </div>
+      {statMode === 'month' && (
+        <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-2 py-1.5">
+          <button onClick={() => shiftStatMonth(-1)} className="px-4 py-1 text-lg font-bold text-slate-600">‹</button>
+          <p className="text-sm font-bold text-slate-800">{statDate.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</p>
+          <button onClick={() => shiftStatMonth(1)} className="px-4 py-1 text-lg font-bold text-slate-600">›</button>
+        </div>
+      )}
+
       {staffs.length === 0 && (
         <div className="bg-white rounded-2xl p-6 text-center text-sm text-slate-500">ยังไม่มีแม่บ้านในระบบ — เพิ่มชื่อด้านล่างแล้วกดเติมเครดิต</div>
       )}
 
       {staffs.map(s => {
-        const st = statFor(s.name);
+        const st = statMode === 'month' ? monthStatFor(s.name) : statFor(s.name);
         return (
           <div key={s.name} className="bg-white rounded-2xl p-4 border border-slate-200">
             <div className="flex items-center justify-between">
@@ -5634,20 +5665,20 @@ function CreditView({ config, orders, staffList }) {
               {st.lastCheck && diffBadge(st.lastCheck.diff)}
             </div>
 
-            {!st.baseline && (
+            {statMode === 'all' && !st.baseline && (
               <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">⚠️ ยังไม่ตั้งยอดต้น — กด 🎯 ใส่ยอดเครดิตปัจจุบันจากระบบเครื่อง แล้วแอปจะเริ่มนับจากตรงนั้น</p>
             )}
 
             <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-xs">
-              <p className="text-slate-500">ยอดต้น</p><p className="text-right font-bold text-slate-700">{fm(st.base)}฿</p>
-              <p className="text-slate-500">เติมเพิ่ม</p><p className="text-right font-bold text-emerald-600">+{fm(st.topup)}฿</p>
-              <p className="text-slate-500">งานฝาก ({st.orderCount} งาน)</p><p className="text-right font-bold text-rose-600">−{fm(st.dropUse)}฿</p>
-              <p className="text-slate-500">เดลิเวอรี่</p><p className="text-right font-bold text-rose-600">−{fm(st.deliveryUse)}฿</p>
+              {!st.monthMode && <React.Fragment><p className="text-slate-500">ยอดต้น</p><p className="text-right font-bold text-slate-700">{fm(st.base)}฿</p></React.Fragment>}
+              <p className="text-slate-500">เติม{st.monthMode ? ' (เดือนนี้)' : 'เพิ่ม'}</p><p className="text-right font-bold text-emerald-600">+{fm(st.topup)}฿</p>
+              <p className="text-slate-500">งานฝาก ({st.orderCount} งาน · สด+โอน)</p><p className="text-right font-bold text-rose-600">−{fm(st.dropUse)}฿</p>
+              <p className="text-slate-500">เดลิเวอรี่ (ไม่รวมค่าส่ง)</p><p className="text-right font-bold text-rose-600">−{fm(st.deliveryUse)}฿</p>
               <p className="text-slate-500">โปรซักเอง ({st.promoCount} ครั้ง)</p><p className="text-right font-bold text-rose-600">−{fm(st.promo)}฿</p>
             </div>
 
             <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 flex items-center justify-between">
-              <p className="text-xs font-bold text-slate-600">คงเหลือควรเป็น</p>
+              <p className="text-xs font-bold text-slate-600">{st.monthMode ? 'สุทธิเดือนนี้ (เติม − ใช้)' : 'คงเหลือควรเป็น'}</p>
               <p className="text-lg font-extrabold text-slate-800">{fm(st.expected)}฿</p>
             </div>
 
