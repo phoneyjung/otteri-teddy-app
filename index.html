@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v83-2026-09-05';
+  window.APP_VERSION = 'v84-2026-09-05';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -376,7 +376,7 @@ const TEDDY_CONFIG = {
   linePromoDiscount: 40,
   hasKev: true,
   deliveryZones: [
-    { id: 'free', label: 'ส่งฟรี 0฿ (โปร นศ.)', price: 0, riderFee: 20, color: '#14B8A6' },
+    { id: 'free', label: 'ส่งฟรี 0฿ (ในมหาลัย)', price: 0, riderFee: 20, color: '#14B8A6' },
     { id: 'green', label: 'เขียว (ใกล้สุด)', price: 20, color: '#10B981' },
     { id: 'yellow', label: 'เหลือง', price: 30, color: '#F59E0B' },
     { id: 'blue', label: 'ฟ้า', price: 40, color: '#3B82F6' },
