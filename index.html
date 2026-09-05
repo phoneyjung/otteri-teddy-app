@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v84-2026-09-05';
+  window.APP_VERSION = 'v85-2026-09-05';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1005,6 +1005,45 @@ function saveCollections(brand, items) { try { localStorage.setItem(getCollectio
 
 // ============ HELPERS ============
 const formatMoney = (n) => new Intl.NumberFormat('th-TH').format(n || 0);
+
+// ============ 🇲🇲 ภาษาพม่า (หน้าแม่บ้าน) — ให้พนักงานพม่าตรวจแล้วแจ้งแก้ได้ ============
+const MM_DICT = {
+  'เลือกชื่อของคุณ': 'သင့်နာမည်ကို ရွေးပါ',
+  'แตะชื่อเพื่อเข้าใช้งาน': 'အသုံးပြုရန် နာမည်ကို နှိပ်ပါ',
+  'รับงานใหม่': 'အလုပ်သစ် လက်ခံရန်',
+  'ฟรีค่าบริการฝาก ซัก อบ พับ': 'အပ်နှံ လျှော်-ခြောက်-ခေါက် ဝန်ဆောင်ခ အခမဲ့',
+  'ฝาก ซัก อบ พับ': 'အပ်နှံ လျှော်-ခြောက်-ခေါက်',
+  'รายการล่าสุด': 'နောက်ဆုံးစာရင်း',
+  'วันนี้': 'ဒီနေ့',
+  'รอเก็บเงิน': 'ငွေကောက်ရန်ကျန်',
+  'ฝาก ซัก อบ พับ - ฟรี!': 'အပ်နှံ လျှော် ခြောက် ခေါက် - အခမဲ့!',
+  'ลูกค้าไม่ต้องการให้พับ': 'ဖောက်သည် မခေါက်စေချင်ပါ',
+  'หยอดเพิ่ม (เพิ่มเวลา)': 'အချိန်ထပ်တိုး (ဒင်္ဂါးထပ်ထည့်)',
+  'หน้าร้าน': 'ဆိုင်ရှေ့',
+  'ใครเป็นไลเดอร์?': 'ဘယ်သူ ပို့မလဲ?',
+  'กรุณาเลือกไลเดอร์': 'ပို့ဆောင်သူ ရွေးပါ',
+  'ลูกค้าแอดไลน์ครั้งแรก': 'ဖောက်သည် LINE အသစ် add လုပ်',
+  'เงินสด': 'ငွေသား',
+  'โอน': 'ငွေလွှဲ',
+  'สด+โอน': 'ငွေသား+လွှဲ',
+  'ยอดรวม': 'စုစုပေါင်း',
+  'บันทึกใบรับงาน': 'အလုပ်လက်ခံစာ သိမ်းရန်',
+  'ยกเลิก': 'ပယ်ဖျက်',
+  'ข้อมูลลูกค้า': 'ဖောက်သည် အချက်အလက်',
+  'ชื่อลูกค้า': 'ဖောက်သည်အမည်',
+  'เบอร์โทร': 'ဖုန်းနံပါတ်',
+  'ถ่ายรูป': 'ဓာတ်ပုံရိုက်',
+  'เลือกจากอัลบั้ม': 'အယ်လ်ဘမ်မှ ရွေး',
+  'ยังกดบันทึกไม่ได้ — ต้องกรอกก่อน:': 'မသိမ်းနိုင်သေးပါ — အရင်ဖြည့်ပါ:',
+  'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)': 'ဝန်ဆောင်မှု အနည်းဆုံး ၁ ခု ရွေးပါ (လျှော်/ခြောက်/ဆပ်ပြာ/ခေါက်)',
+  'ใส่ชื่อลูกค้า': 'ဖောက်သည်အမည် ထည့်ပါ',
+  'ใส่เบอร์โทรลูกค้า': 'ဖုန်းနံပါတ် ထည့်ပါ',
+  'เครื่องซัก': 'အဝတ်လျှော်စက်',
+  'เครื่องอบ': 'အခြောက်ခံစက်',
+};
+function tr(config, th) {
+  return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
+}
 const formatDate = (ts) => {
   const d = new Date(ts);
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -1482,7 +1521,7 @@ function AvatarPicker({ value, onChange }) {
 }
 
 // ============ หน้า Login แม่บ้าน (เฟส 1) ============
-function StaffLoginView({ config, staffList, onLogin }) {
+function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
   const [step, setStep] = useState('pick'); // pick | pin
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [pin, setPin] = useState('');
@@ -1692,8 +1731,13 @@ function StaffLoginView({ config, staffList, onLogin }) {
         ) : step === 'pick' ? (
           /* ===== เลือกชื่อ ===== */
           <div className="bg-white rounded-3xl p-5 shadow-2xl">
-            <h2 className="font-extrabold text-slate-900 text-center mb-1">เลือกชื่อของคุณ</h2>
-            <p className="text-xs text-slate-400 text-center mb-4">แตะชื่อเพื่อเข้าใช้งาน</p>
+            <div className="flex justify-end mb-2">
+              <button onClick={onToggleLang} className="px-3 py-1 rounded-full bg-slate-100 text-[11px] font-bold text-slate-600 active:scale-95 transition">
+                {config.lang === 'mm' ? '🇹🇭 ภาษาไทย' : '🇲🇲 မြန်မာဘာသာ'}
+              </button>
+            </div>
+            <h2 className="font-extrabold text-slate-900 text-center mb-1">{tr(config, 'เลือกชื่อของคุณ')}</h2>
+            <p className="text-xs text-slate-400 text-center mb-4">{tr(config, 'แตะชื่อเพื่อเข้าใช้งาน')}</p>
 
             {activeStaff.length === 0 ? (
               <div className="text-center py-6">
@@ -1771,6 +1815,8 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
   // 🛵 ไรเดอร์ที่เพิ่มเองจาก Firestore — merge เข้า config เพื่อให้ทุกหน้าที่ใช้ config.riders เห็นอัตโนมัติ
   const [cloudRiders, setCloudRiders] = useState([]);
   const [shopSettings, setShopSettings] = useState({});
+  const [lang, setLang] = useState(() => localStorage.getItem('lang-' + baseConfig.brand) || 'th');
+  const toggleLang = () => setLang(l => { const n = l === 'th' ? 'mm' : 'th'; localStorage.setItem('lang-' + baseConfig.brand, n); return n; });
   useEffect(() => {
     if (!window.db) return;
     const unsub = subscribeToRiders(baseConfig.brand, setCloudRiders);
@@ -1784,8 +1830,8 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
     // โปรวันพุธ/ดึก: ค่าใน settings ชนะ ถ้าไม่เคยตั้งใช้ค่า config (hasDayPromo)
     const dayPromoEnabled = shopSettings.dayPromoEnabled != null ? shopSettings.dayPromoEnabled : (baseConfig.hasDayPromo !== false);
     const staffRider = { id: 'staff', label: 'แม่บ้าน', emoji: '🧕', color: '#0D9488' };
-    return { ...baseConfig, riders: [...base, staffRider, ...extra], settings: shopSettings, tokenEnabled: shopSettings.tokenEnabled !== false, dayPromoEnabled };
-  }, [baseConfig, cloudRiders, shopSettings]);
+    return { ...baseConfig, riders: [...base, staffRider, ...extra], settings: shopSettings, tokenEnabled: shopSettings.tokenEnabled !== false, dayPromoEnabled, lang };
+  }, [baseConfig, cloudRiders, shopSettings, lang]);
 
   const [view, setView] = useState('home');
   const [orders, setOrders] = useState([]);
@@ -2142,7 +2188,7 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
 
   // เฟส 1 — บังคับ login แม่บ้านก่อนใช้งาน (เฉพาะสาขาที่เปิด hasStaffLogin)
   if (config.hasStaffLogin && !currentStaff) {
-    return <StaffLoginView config={config} staffList={staffList} onLogin={handleStaffLogin} />;
+    return <StaffLoginView config={config} staffList={staffList} onToggleLang={toggleLang} onLogin={handleStaffLogin} />;
   }
 
   return (
@@ -2153,7 +2199,7 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
           🔄 กำลังเชื่อมต่อ cloud...
         </div>
       )}
-      {view === 'home' && <HomeView config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
@@ -2423,7 +2469,7 @@ function DeliveryCheckerView({ onBack }) {
   );
 }
 
-function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer }) {
+function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [tokenAmount, setTokenAmount] = useState('');
   const [tokenPayment, setTokenPayment] = useState('cash'); // cash | transfer
@@ -2834,9 +2880,15 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
             <Icon name="plus" className="w-7 h-7 text-white" strokeWidth={3} />
           </div>
           <div className="text-left flex-1">
-            <p className="text-slate-900 font-bold text-lg">รับงานใหม่</p>
-            <p className="text-slate-500 text-sm">{config.freeService ? 'ฟรีค่าบริการฝาก ซัก อบ พับ' : 'ฝาก ซัก อบ พับ'}</p>
+            <p className="text-slate-900 font-bold text-lg">{tr(config, 'รับงานใหม่')}</p>
+            <p className="text-slate-500 text-sm">{tr(config, config.freeService ? 'ฟรีค่าบริการฝาก ซัก อบ พับ' : 'ฝาก ซัก อบ พับ')}</p>
           </div>
+        </button>
+      </div>
+
+      <div className="px-5 mt-3 flex justify-end">
+        <button onClick={onToggleLang} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs font-bold text-slate-600 active:scale-95 transition">
+          {config.lang === 'mm' ? '🇹🇭 ภาษาไทย' : '🇲🇲 မြန်မာဘာသာ'}
         </button>
       </div>
 
@@ -3205,7 +3257,7 @@ function HomeView({ config, orders, tokenExchanges, onAddToken, onDeleteToken, o
 
       <div className="px-5 mt-6 pb-8">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-slate-900 font-bold text-lg">รายการล่าสุด</h2>
+          <h2 className="text-slate-900 font-bold text-lg">{tr(config, 'รายการล่าสุด')}</h2>
           <span className="text-slate-500 text-sm">{orders.length} รายการ</span>
         </div>
 
@@ -3379,9 +3431,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
-  if (!hasAnyItem) missingList.push('เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)');
-  if (needCustomerInfo && !name.trim()) missingList.push('ใส่ชื่อลูกค้า');
-  if (needPhone && !phone.trim()) missingList.push('ใส่เบอร์โทรลูกค้า');
+  if (!hasAnyItem) missingList.push(tr(config, 'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)'));
+  if (needCustomerInfo && !name.trim()) missingList.push(tr(config, 'ใส่ชื่อลูกค้า'));
+  if (needPhone && !phone.trim()) missingList.push(tr(config, 'ใส่เบอร์โทรลูกค้า'));
   else if (needPhone && phone.trim().length < 9) missingList.push('เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)');
   if (useLinePromo && !linePromoPhoto) missingList.push('ถ่ายรูปคูปองแอดไลน์');
 
@@ -3677,7 +3729,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                       <div className="flex items-center gap-2">
                         <span className="text-amber-700 text-sm">⏱️</span>
                         <div>
-                          <p className="text-xs font-bold text-amber-800">หยอดเพิ่ม (เพิ่มเวลา)</p>
+                          <p className="text-xs font-bold text-amber-800">{tr(config, 'หยอดเพิ่ม (เพิ่มเวลา)')}</p>
                           <p className="text-[10px] text-amber-600">ทีละ 10 บาท</p>
                         </div>
                       </div>
@@ -3706,7 +3758,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <div className="flex items-center gap-2">
                 <span className="text-xl">✨</span>
                 <div className="flex-1">
-                  <p className="font-bold text-emerald-700 text-sm">ฝาก ซัก อบ พับ - ฟรี!</p>
+                  <p className="font-bold text-emerald-700 text-sm">{tr(config, 'ฝาก ซัก อบ พับ - ฟรี!')}</p>
                   <p className="text-xs text-emerald-600">พับให้เป็นปกติ ไม่คิดเงินเพิ่ม</p>
                 </div>
               </div>
@@ -3719,7 +3771,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                   {noFold && <Icon name="check" className="w-3 h-3 text-white" strokeWidth={4} />}
                 </div>
                 <div className="flex-1 text-left">
-                  <span className={`text-sm font-bold ${noFold ? 'text-amber-800' : 'text-slate-600'}`}>🚫 ลูกค้าไม่ต้องการให้พับ</span>
+                  <span className={`text-sm font-bold ${noFold ? 'text-amber-800' : 'text-slate-600'}`}>🚫 {tr(config, 'ลูกค้าไม่ต้องการให้พับ')}</span>
                   <p className="text-xs text-slate-400">เช่น ผ้าเยอะ ลูกค้าพับเอง</p>
                 </div>
               </button>
@@ -3734,7 +3786,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <button onClick={() => setDeliveryZone(null)} className={`p-3 rounded-xl border-2 transition ${!deliveryZone ? 'bg-slate-100 border-slate-400' : 'bg-slate-50 border-transparent'}`}>
                 <div className="flex flex-col items-center gap-1">
                   <Icon name="store" className={`w-5 h-5 ${!deliveryZone ? 'text-slate-700' : 'text-slate-400'}`} />
-                  <span className={`font-bold text-xs ${!deliveryZone ? 'text-slate-900' : 'text-slate-500'}`}>หน้าร้าน</span>
+                  <span className={`font-bold text-xs ${!deliveryZone ? 'text-slate-900' : 'text-slate-500'}`}>{tr(config, 'หน้าร้าน')}</span>
                   <span className="text-xs text-slate-400">ไม่คิดค่าส่ง</span>
                 </div>
               </button>
@@ -3752,7 +3804,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             {/* เลือกไลเดอร์ — แสดงเฉพาะเมื่อมี delivery zone */}
             {deliveryZone && config.riders && (
               <div className="mt-3 pt-3 border-t border-slate-200">
-                <p className="text-xs font-bold text-slate-700 mb-2">🛵 ใครเป็นไลเดอร์?</p>
+                <p className="text-xs font-bold text-slate-700 mb-2">🛵 {tr(config, 'ใครเป็นไลเดอร์?')}</p>
                 <div className="grid grid-cols-2 gap-2">
                   {config.riders.filter(r => r.active !== false).map(r => (
                     <button 
@@ -3769,7 +3821,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                   ))}
                 </div>
                 {!riderId && (
-                  <p className="text-[11px] text-amber-600 mt-2">⚠️ กรุณาเลือกไลเดอร์</p>
+                  <p className="text-[11px] text-amber-600 mt-2">⚠️ {tr(config, 'กรุณาเลือกไลเดอร์')}</p>
                 )}
               </div>
             )}
@@ -3784,7 +3836,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                   {useLinePromo && <Icon name="check" className="w-3 h-3 text-white" strokeWidth={4} />}
                 </div>
                 <div className="text-left">
-                  <span className={`text-sm font-bold ${useLinePromo ? 'text-green-900' : 'text-slate-700'}`}>💚 ลูกค้าแอดไลน์ครั้งแรก</span>
+                  <span className={`text-sm font-bold ${useLinePromo ? 'text-green-900' : 'text-slate-700'}`}>💚 {tr(config, 'ลูกค้าแอดไลน์ครั้งแรก')}</span>
                   <p className="text-xs text-slate-500 mt-0.5">ลด {config.linePromoDiscount} บาท (ไม่เกินค่าซัก)</p>
                   <p className="text-xs text-amber-600 mt-0.5">⚠️ เฉพาะหน้าร้าน + ต้องถ่ายรูปคูปอง</p>
                 </div>
@@ -3830,19 +3882,19 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <button onClick={() => setPaymentMethod('cash')} className={`p-3 rounded-2xl border-2 transition ${paymentMethod === 'cash' ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-transparent'}`}>
                 <div className="flex flex-col items-center gap-1">
                   <Icon name="banknote" className={`w-6 h-6 ${paymentMethod === 'cash' ? 'text-emerald-600' : 'text-slate-400'}`} />
-                  <span className={`font-bold text-xs ${paymentMethod === 'cash' ? 'text-emerald-700' : 'text-slate-600'}`}>เงินสด</span>
+                  <span className={`font-bold text-xs ${paymentMethod === 'cash' ? 'text-emerald-700' : 'text-slate-600'}`}>{tr(config, 'เงินสด')}</span>
                 </div>
               </button>
               <button onClick={() => setPaymentMethod('transfer')} className={`p-3 rounded-2xl border-2 transition ${paymentMethod === 'transfer' ? 'bg-violet-50 border-violet-500' : 'bg-slate-50 border-transparent'}`}>
                 <div className="flex flex-col items-center gap-1">
                   <Icon name="smartphone" className={`w-6 h-6 ${paymentMethod === 'transfer' ? 'text-violet-600' : 'text-slate-400'}`} />
-                  <span className={`font-bold text-xs ${paymentMethod === 'transfer' ? 'text-violet-700' : 'text-slate-600'}`}>โอน</span>
+                  <span className={`font-bold text-xs ${paymentMethod === 'transfer' ? 'text-violet-700' : 'text-slate-600'}`}>{tr(config, 'โอน')}</span>
                 </div>
               </button>
               <button onClick={() => setPaymentMethod('split')} className={`p-3 rounded-2xl border-2 transition ${paymentMethod === 'split' ? 'bg-amber-50 border-amber-500' : 'bg-slate-50 border-transparent'}`}>
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-xl">💵💳</span>
-                  <span className={`font-bold text-xs ${paymentMethod === 'split' ? 'text-amber-700' : 'text-slate-600'}`}>สด+โอน</span>
+                  <span className={`font-bold text-xs ${paymentMethod === 'split' ? 'text-amber-700' : 'text-slate-600'}`}>{tr(config, 'สด+โอน')}</span>
                 </div>
               </button>
             </div>
@@ -3976,7 +4028,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           {/* บอกให้ชัดว่าขาดอะไรถึงกดบันทึกไม่ได้ */}
           {missingList.length > 0 && (
             <div className="mb-2 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2">
-              <p className="text-xs font-bold text-amber-800 mb-0.5">⚠️ ยังกดบันทึกไม่ได้ — ต้องกรอกก่อน:</p>
+              <p className="text-xs font-bold text-amber-800 mb-0.5">⚠️ {tr(config, 'ยังกดบันทึกไม่ได้ — ต้องกรอกก่อน:')}</p>
               {missingList.map((m, i) => (
                 <p key={i} className="text-xs text-amber-700 leading-snug">• {m}</p>
               ))}
@@ -3988,7 +4040,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <span className="text-sm">ยกเลิก</span>
             </button>
             <button onClick={handleSubmit} disabled={!canSubmit} className={`flex-1 py-3 rounded-xl font-bold transition ${canSubmit ? 'text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400'}`} style={canSubmit ? {background: config.gradient} : {}}>
-              {isEdit ? '💾 บันทึกการแก้ไข' : '✓ บันทึกใบรับงาน'}
+              {isEdit ? '💾 บันทึกการแก้ไข' : '✓ ' + tr(config, 'บันทึกใบรับงาน')}
             </button>
           </div>
         </div>
