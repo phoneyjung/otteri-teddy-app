@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v85-2026-09-05';
+  window.APP_VERSION = 'v86-2026-09-05';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1040,6 +1040,105 @@ const MM_DICT = {
   'ใส่เบอร์โทรลูกค้า': 'ဖုန်းနံပါတ် ထည့်ပါ',
   'เครื่องซัก': 'အဝတ်လျှော်စက်',
   'เครื่องอบ': 'အခြောက်ခံစက်',
+  'PIN 4 หลัก': 'PIN ၄ လုံး',
+  'ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ': 'အမည် / အမည်ပြောင် / အဆောက်အဦ / အိပ်ဆောင်',
+  'ชื่อแม่บ้าน': 'ဝန်ထမ်းအမည်',
+  'หมายเหตุ เช่น เครื่อง 3 / ชื่อลูกค้า': 'မှတ်ချက် ဥပမာ စက် ၃ / ဖောက်သည်အမည်',
+  'เช่น 100': 'ဥပမာ 100',
+  'เช่น 18:00 วันนี้ / พรุ่งนี้เช้า': 'ဥပမာ 18:00 ဒီနေ့ / မနက်ဖြန်မနက်',
+  'เช่น 25 ตัว': 'ဥပမာ ၂၅ ထည်',
+  'เช่น พี่วิ': 'ဥပမာ Ma Wi',
+  'เช่น แยกซักผ้าขาว, หอใน 405': 'ဥပမာ အဖြူထည် သီးသန့်လျှော်, အိပ်ဆောင် 405',
+  'กลับ': 'နောက်သို့',
+  'จำเป็นต้องกรอก — ใช้ติดต่อลูกค้าตอนงานเสร็จ': 'ဖြည့်ရန်လိုအပ် — အလုပ်ပြီးလျှင် ဖောက်သည်ကို ဆက်သွယ်ရန်',
+  'จำเป็นต้องกรอก — ใช้เรียกลูกค้าตอนมารับผ้า': 'ဖြည့်ရန်လိုအပ် — အဝတ်လာယူချိန် ဖောက်သည်ကို ခေါ်ရန်',
+  'ซักทุกขนาด ลด 10 บาท / ถัง อัตโนมัติ': 'အရွယ်တိုင်း တစ်လုံး ၁၀ ဘတ် အလိုအလျောက်လျှော့',
+  'ถ้ามีบริการส่งให้เลือกโซนตามแผนที่': 'ပို့ဆောင်လျှင် မြေပုံအတိုင်း ဇုန်ရွေးပါ',
+  'ทีละ 10 บาท': 'တစ်ကြိမ် ၁၀ ဘတ်',
+  'บังคับถ่ายเพื่อใช้สิทธิ์': 'အခွင့်အရေးသုံးရန် ဓာတ်ပုံရိုက်ရမည်',
+  'บันทึก': 'သိမ်းရန်',
+  'บันทึกตัดเครดิตแล้ว': 'ခရက်ဒစ်ဖြတ် သိမ်းပြီးပါပြီ',
+  'บันทึกลูกค้าใช้โปร': 'ဖောက်သည် ပရိုသုံး မှတ်တမ်း',
+  'บันทึกแลก Token': 'Token လဲလှယ်မှု သိမ်းရန်',
+  'บันทึกแลก Token เรียบร้อย': 'Token လဲလှယ်မှု သိမ်းပြီးပါပြီ',
+  'ปิด': 'ပိတ်ရန်',
+  'พับให้เป็นปกติ ไม่คิดเงินเพิ่ม': 'ပုံမှန်ခေါက်ပေး ထပ်မကျသင့်ပါ',
+  'ยอดที่ต้องเก็บ': 'ကောက်ရမည့်ငွေ',
+  'ยอดเครดิตที่สแกนให้ลูกค้า (บาท)': 'ဖောက်သည်အတွက် စကင်န်ပေးသော ခရက်ဒစ် (ဘတ်)',
+  'ยังไม่มีรายการ': 'စာရင်း မရှိသေးပါ',
+  'ยังไม่มีรายชื่อแม่บ้าน': 'ဝန်ထမ်းစာရင်း မရှိသေးပါ',
+  'ยังไม่มีแม่บ้าน — เพิ่มด้านบน': 'ဝန်ထမ်း မရှိသေး — အပေါ်တွင်ထည့်ပါ',
+  'รวมที่ให้ลูกค้า': 'ဖောက်သည်ကိုပေးသည့် စုစုပေါင်း',
+  'ราคาเต็ม': 'စျေးအပြည့်',
+  'รายการ': 'ခု',
+  'ลดอัตโนมัติ 10 บาท / ถัง สำหรับเครื่องซักทุกขนาด': 'အဝတ်လျှော်စက် အရွယ်တိုင်း တစ်လုံး ၁၀ ဘတ် အလိုအလျောက်လျှော့',
+  'ลูกค้าใช้โปร (ซักเอง ไม่ฝาก)': 'ဖောက်သည် ပရိုသုံး (ကိုယ်တိုင်လျှော် မအပ်)',
+  'วิธีจ่าย': 'ငွေပေးချေနည်း',
+  'วิธีชำระเงิน': 'ငွေပေးချေနည်း',
+  'สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม': 'ခရက်ဒစ်စကင်န် → ဓာတ်ပုံရိုက် → Group ပို့',
+  'เคฟ': 'Kev',
+  'เครื่องที่ลูกค้าใช้': 'ဖောက်သည်သုံးသည့်စက်',
+  'เช่น ผ้าเยอะ ลูกค้าพับเอง': 'ဥပမာ အဝတ်များ၍ ကိုယ်တိုင်ခေါက်',
+  'เวลา': 'အချိန်',
+  'เสร็จ': 'ပြီးပြီ',
+  'โปรที่ใช้': 'သုံးသည့် ပရိုမိုးရှင်း',
+  'โหมดฝึกใช้งาน — ข้อมูลแยกจากของจริง ลองเล่นได้เต็มที่': 'လေ့ကျင့်မုဒ် — ဒေတာအစစ်နှင့်သီးခြား လွတ်လပ်စွာစမ်းနိုင်',
+  'โหมดเจ้าของ — วันเวลารับงาน': 'ပိုင်ရှင်မုဒ် — အလုပ်လက်ခံချိန်',
+  'ใช้กรณีบันทึกย้อนหลัง / แม่บ้านลืมกด': 'နောက်ကြောင်းပြန်မှတ်ရန် / မနှိပ်မိလျှင်',
+  'ใส่ PIN 4 หลัก': 'PIN ၄ လုံး ထည့်ပါ',
+  'ไม่คิดค่าส่ง': 'ပို့ခ မယူပါ',
+  '— ไม่บังคับ': '— မဖြည့်လည်းရ',
+  '• สลับ': '• ပြောင်း',
+  '‹ กลับ': '‹ နောက်သို့',
+  '⚙️ จัดการแม่บ้าน': '⚙️ ဝန်ထမ်းစီမံရန်',
+  '⚠️ เฉพาะหน้าร้าน + ต้องถ่ายรูปคูปอง': '⚠️ ဆိုင်ရှေ့သာ + ကူပွန်ဓာတ်ပုံရိုက်ရမည်',
+  '➕ เพิ่มแม่บ้านใหม่': '➕ ဝန်ထမ်းအသစ်ထည့်ရန်',
+  '🎁 ให้ลูกค้าเป็น': '🎁 ဖောက်သည်ကိုပေးမည်မှာ',
+  '💚 แอดไลน์ครั้งแรก': '💚 LINE ပထမဆုံး add',
+  '💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ': '💡 ဆပ်ပြာချည်းရောင်းနိုင် — စက်ရွေးစရာမလို',
+  '💡 โอนเข้าบัญชีร้านโดยตรง — ไม่ต้องเก็บเงินสดจากแม่บ้าน': '💡 ဆိုင်အကောင့်သို့တိုက်ရိုက်လွှဲ — ငွေသားမကောက်ပါ',
+  '💬 ส่งเข้ากลุ่ม LINE': '💬 LINE Group သို့ပို့ရန်',
+  '💳 ลูกค้าจ่ายมาแบบไหน': '💳 ဖောက်သည် ဘယ်လိုပေးလဲ',
+  '💳 โอน': '💳 ငွေလွှဲ',
+  '💵 จำนวนเงิน (บาท)': '💵 ငွေပမာဏ (ဘတ်)',
+  '💵 เงินสด': '💵 ငွေသား',
+  '📷 ถ่าย': '📷 ရိုက်',
+  '📷 ถ่ายรูป': '📷 ဓာတ်ပုံရိုက်',
+  '📷 ถ่ายใหม่': '📷 ပြန်ရိုက်',
+  '📷 รูปหลักฐาน (จำเป็น)': '📷 အထောက်အထားပုံ (မဖြစ်မနေ)',
+  '📷 รูปหลักฐานคูปอง': '📷 ကူပွန်အထောက်အထားပုံ',
+  '🖼️ อัลบั้ม': '🖼️ အယ်လ်ဘမ်',
+  '🖼️ เลือกจากอัลบั้ม': '🖼️ အယ်လ်ဘမ်မှရွေး',
+  '🖼️ เลือกรูป': '🖼️ ပုံရွေး',
+  '🖼️ เลือกอัลบั้ม': '🖼️ အယ်လ်ဘမ်ရွေး',
+  '🪙 Token ร้าน': '🪙 ဆိုင် Token',
+  '🪙 เหรียญ 10': '🪙 ၁၀ ဘတ်ဒင်္ဂါး',
+  '🪙 เหรียญ 10 บาท': '🪙 ၁၀ ဘတ်ဒင်္ဂါး',
+  '🪙 เหรียญ 10 บาท (เหรียญ)': '🪙 ၁၀ ဘတ်ဒင်္ဂါး (အလုံး)',
+  '🪙 แลก Token ล่าสุด': '🪙 နောက်ဆုံး Token လဲလှယ်မှု',
+  'รูปตะกร้าผ้า': 'အဝတ်ခြင်း ဓာတ်ပုံ',
+  'งานนี้จากเคฟ?': 'ဒီအလုပ် Kev ထံမှလား?',
+  'แตะเพื่อติ๊กก่อน แล้วค่อยกรอกข้อมูลลูกค้า': 'အရင်နှိပ်ပြီး ဖောက်သည်အချက်အလက်ဖြည့်ပါ',
+  'งานนี้รับทาง Line?': 'ဒီအလုပ် LINE မှလား?',
+  'ติ๊กถ้าลูกค้าติดต่อมาทาง Line': 'LINE မှဆက်သွယ်လျှင် အမှန်ခြစ်ပါ',
+  'บริการ Delivery': 'Delivery ဝန်ဆောင်မှု',
+  'ชำระเงิน': 'ငွေပေးချေရန်',
+  'น้ำยาซักผ้า': 'ဆပ်ပြာရည်',
+  'น้ำยาปรับผ้านุ่ม': 'အဝတ်ပျော့ဆေး',
+  'บริการพับผ้า': 'အဝတ်ခေါက် ဝန်ဆောင်မှု',
+  'จำนวนผ้า (ตัว)': 'အဝတ်အရေအတွက် (ထည်)',
+  'หมายเหตุ': 'မှတ်ချက်',
+  'เวลานัดรับ': 'ချိန်းဆိုချိန်',
+  'ตะกร้า': 'ခြင်း',
+  'คัดลอก': 'ကူးယူရန်',
+  'ส่ง Line': 'LINE ပို့ရန်',
+  'อื่นๆ': 'အခြား',
+  'เพิ่ม': 'ထည့်ရန်',
+  'เพิ่มรายชื่อ (เจ้าของ)': 'အမည်ထည့်ရန် (ပိုင်ရှင်)',
+  '✏️ แก้': '✏️ ပြင်ရန်',
+  '👔 เข้าแบบเจ้าของ': '👔 ပိုင်ရှင်အဖြစ်ဝင်ရန်',
+  '📅 เลือกเอง': '📅 ကိုယ်တိုင်ရွေး',
+  '📢 ให้แม่บ้านหยิบเหรียญ 10 ให้ลูกค้า': '📢 ဝန်ထမ်းက ၁၀ ဘတ်ဒင်္ဂါး ဖောက်သည်ကိုပေးပါ',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -1642,23 +1741,23 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
         {manageMode ? (
           <div className="bg-white rounded-3xl p-5 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-extrabold text-slate-900">⚙️ จัดการแม่บ้าน</h2>
-              <button onClick={() => setManageMode(false)} className="text-sm text-slate-500 font-bold">เสร็จ</button>
+              <h2 className="font-extrabold text-slate-900">{tr(config, "⚙️ จัดการแม่บ้าน")}</h2>
+              <button onClick={() => setManageMode(false)} className="text-sm text-slate-500 font-bold">{tr(config, "เสร็จ")}</button>
             </div>
 
             {/* เพิ่มใหม่ */}
             <div className="bg-slate-50 rounded-2xl p-3 mb-4">
-              <p className="text-xs font-bold text-slate-600 mb-2">➕ เพิ่มแม่บ้านใหม่</p>
+              <p className="text-xs font-bold text-slate-600 mb-2">{tr(config, "➕ เพิ่มแม่บ้านใหม่")}</p>
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="ชื่อแม่บ้าน"
+                placeholder={tr(config, "ชื่อแม่บ้าน")}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm mb-2 focus:outline-none focus:border-teal-400"
               />
               <input
                 value={newPin}
                 onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                placeholder="PIN 4 หลัก"
+                placeholder={tr(config, "PIN 4 หลัก")}
                 inputMode="numeric"
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm mb-3 focus:outline-none focus:border-teal-400"
               />
@@ -1667,14 +1766,14 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
                 <AvatarPicker value={newAvatar} onChange={setNewAvatar} />
               </div>
               <button onClick={handleAddStaff} className="w-full py-2 rounded-xl text-white font-bold text-sm active:scale-95 transition" style={{ background: config.gradient }}>
-                เพิ่ม
+                {tr(config, "เพิ่ม")}
               </button>
             </div>
 
             {/* รายชื่อ */}
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {staffList.length === 0 && (
-                <p className="text-center text-slate-400 text-sm py-4">ยังไม่มีแม่บ้าน — เพิ่มด้านบน</p>
+                <p className="text-center text-slate-400 text-sm py-4">{tr(config, "ยังไม่มีแม่บ้าน — เพิ่มด้านบน")}</p>
               )}
               {staffList.map(s => (
                 editingStaffId === s.id ? (
@@ -1684,13 +1783,13 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
                     <input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      placeholder="ชื่อแม่บ้าน"
+                      placeholder={tr(config, "ชื่อแม่บ้าน")}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm mb-2 focus:outline-none focus:border-teal-400"
                     />
                     <input
                       value={editPin}
                       onChange={(e) => setEditPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      placeholder="PIN 4 หลัก"
+                      placeholder={tr(config, "PIN 4 หลัก")}
                       inputMode="numeric"
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm mb-3 focus:outline-none focus:border-teal-400"
                     />
@@ -1698,8 +1797,8 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
                       <AvatarPicker value={editAvatar} onChange={setEditAvatar} />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <button onClick={handleCancelEdit} className="py-2 rounded-xl font-bold text-sm bg-slate-100 text-slate-600 active:scale-95 transition">ยกเลิก</button>
-                      <button onClick={handleSaveEdit} className="py-2 rounded-xl font-bold text-sm text-white active:scale-95 transition" style={{ background: config.gradient }}>บันทึก</button>
+                      <button onClick={handleCancelEdit} className="py-2 rounded-xl font-bold text-sm bg-slate-100 text-slate-600 active:scale-95 transition">{tr(config, "ยกเลิก")}</button>
+                      <button onClick={handleSaveEdit} className="py-2 rounded-xl font-bold text-sm text-white active:scale-95 transition" style={{ background: config.gradient }}>{tr(config, "บันทึก")}</button>
                     </div>
                   </div>
                 ) : (
@@ -1715,7 +1814,7 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
                       onClick={() => handleStartEdit(s)}
                       className="text-xs font-bold px-2.5 py-1 rounded-lg bg-sky-100 text-sky-700 active:scale-95 transition"
                     >
-                      ✏️ แก้
+                      {tr(config, "✏️ แก้")}
                     </button>
                     <button
                       onClick={() => handleToggleActive(s)}
@@ -1741,9 +1840,9 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
 
             {activeStaff.length === 0 ? (
               <div className="text-center py-6">
-                <p className="text-slate-400 text-sm mb-3">ยังไม่มีรายชื่อแม่บ้าน</p>
+                <p className="text-slate-400 text-sm mb-3">{tr(config, "ยังไม่มีรายชื่อแม่บ้าน")}</p>
                 <button onClick={handleOpenManage} className="text-teal-600 font-bold text-sm underline">
-                  เพิ่มรายชื่อ (เจ้าของ)
+                  {tr(config, "เพิ่มรายชื่อ (เจ้าของ)")}
                 </button>
               </div>
             ) : (
@@ -1765,20 +1864,20 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
 
             <div className="flex gap-2 pt-3 border-t border-slate-100">
               <button onClick={handleOwnerLogin} className="flex-1 py-2 text-xs font-bold text-slate-500 bg-slate-50 rounded-xl active:scale-95 transition">
-                👔 เข้าแบบเจ้าของ
+                {tr(config, "👔 เข้าแบบเจ้าของ")}
               </button>
             </div>
           </div>
         ) : (
           /* ===== ใส่ PIN ===== */
           <div className="bg-white rounded-3xl p-5 shadow-2xl">
-            <button onClick={() => setStep('pick')} className="text-sm text-slate-400 font-bold mb-2">‹ กลับ</button>
+            <button onClick={() => setStep('pick')} className="text-sm text-slate-400 font-bold mb-2">{tr(config, "‹ กลับ")}</button>
             <div className="flex flex-col items-center mb-4">
               <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden mb-1 shadow-sm">
                 <StaffAvatar avatar={selectedStaff?.avatar} size={60} />
               </div>
               <h2 className="font-extrabold text-slate-900">{selectedStaff?.name}</h2>
-              <p className="text-xs text-slate-400">ใส่ PIN 4 หลัก</p>
+              <p className="text-xs text-slate-400">{tr(config, "ใส่ PIN 4 หลัก")}</p>
             </div>
 
             {/* จุด PIN */}
@@ -2757,7 +2856,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                   🪙
                 </div>
                 <div>
-                  <p className="text-amber-50 text-xs font-bold">บันทึกแลก Token เรียบร้อย</p>
+                  <p className="text-amber-50 text-xs font-bold">{tr(config, "บันทึกแลก Token เรียบร้อย")}</p>
                   <p className="text-2xl font-extrabold">฿{formatMoney(savedToken.amount)}</p>
                 </div>
               </div>
@@ -2766,25 +2865,25 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
             {/* Body — รายละเอียด */}
             <div className="p-5 space-y-2.5">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">วิธีจ่าย</span>
+                <span className="text-slate-500">{tr(config, "วิธีจ่าย")}</span>
                 <span className={`font-bold px-2 py-0.5 rounded-full text-xs ${savedToken.paymentMethod === 'transfer' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
                   {savedToken.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด'}
                 </span>
               </div>
               {savedToken.tokenCount > 0 && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">🪙 Token ร้าน</span>
+                  <span className="text-slate-500">{tr(config, "🪙 Token ร้าน")}</span>
                   <span className="font-bold text-amber-700">{savedToken.tokenCount} เหรียญ</span>
                 </div>
               )}
               {savedToken.coinCount > 0 && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">🪙 เหรียญ 10 บาท</span>
+                  <span className="text-slate-500">{tr(config, "🪙 เหรียญ 10 บาท")}</span>
                   <span className="font-bold text-slate-900">{savedToken.coinCount} เหรียญ</span>
                 </div>
               )}
               <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-100">
-                <span className="text-slate-500">เวลา</span>
+                <span className="text-slate-500">{tr(config, "เวลา")}</span>
                 <span className="text-slate-700 text-xs">{formatDate(savedToken.createdAt)}</span>
               </div>
 
@@ -2795,21 +2894,21 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                   className="py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm active:scale-95 transition flex items-center justify-center gap-1.5"
                 >
                   <Icon name="copy" className="w-4 h-4" />
-                  คัดลอก
+                  {tr(config, "คัดลอก")}
                 </button>
                 <button 
                   onClick={handleShareToken}
                   className="py-3 bg-green-500 text-white rounded-xl font-bold text-sm active:scale-95 transition shadow-lg flex items-center justify-center gap-1.5"
                 >
                   <span>💬</span>
-                  ส่ง Line
+                  {tr(config, "ส่ง Line")}
                 </button>
               </div>
               <button 
                 onClick={() => setSavedToken(null)}
                 className="w-full py-3 mt-1 text-slate-500 font-bold text-sm active:scale-95 transition"
               >
-                ปิด
+                {tr(config, "ปิด")}
               </button>
             </div>
           </div>
@@ -2819,7 +2918,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
       {config.brand === 'trainee' && (
         <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 flex items-center justify-center gap-2 text-white text-xs font-bold">
           <span>🎓</span>
-          <span>โหมดฝึกใช้งาน — ข้อมูลแยกจากของจริง ลองเล่นได้เต็มที่</span>
+          <span>{tr(config, "โหมดฝึกใช้งาน — ข้อมูลแยกจากของจริง ลองเล่นได้เต็มที่")}</span>
         </div>
       )}
       <div className="relative overflow-hidden" style={{ background: config.gradient }}>
@@ -2852,7 +2951,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                 {currentStaff.avatar ? <StaffAvatar avatar={currentStaff.avatar} size={24} /> : <span className="text-sm">👔</span>}
               </span>
               <span className="text-white text-xs font-bold">{currentStaff.name}</span>
-              <span className="text-white text-opacity-70 text-[10px]">• สลับ</span>
+              <span className="text-white text-opacity-70 text-[10px]">{tr(config, "• สลับ")}</span>
             </button>
           )}
           {/* โหมดเครื่องพิมพ์ — เครื่องนี้พิมพ์ให้เครื่องอื่นที่ส่งงานมา (เฉพาะสาขาที่มีเครื่องพิมพ์) */}
@@ -2863,12 +2962,12 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
           </button>}
           <div className="grid grid-cols-2 gap-3 mt-6">
             <div className="bg-white bg-opacity-15 backdrop-blur-sm rounded-2xl p-3 border border-white border-opacity-20">
-              <p className="text-white text-xs opacity-90">วันนี้</p>
-              <p className="text-white text-2xl font-bold">{todayOrders.length}<span className="text-sm font-normal ml-1">รายการ</span></p>
+              <p className="text-white text-xs opacity-90">{tr(config, "วันนี้")}</p>
+              <p className="text-white text-2xl font-bold">{todayOrders.length}<span className="text-sm font-normal ml-1">{tr(config, "รายการ")}</span></p>
             </div>
             <div className="bg-white bg-opacity-15 backdrop-blur-sm rounded-2xl p-3 border border-white border-opacity-20">
-              <p className="text-white text-xs opacity-90">รอเก็บเงิน</p>
-              <p className="text-white text-2xl font-bold">{uncollected.length}<span className="text-sm font-normal ml-1">รายการ</span></p>
+              <p className="text-white text-xs opacity-90">{tr(config, "รอเก็บเงิน")}</p>
+              <p className="text-white text-2xl font-bold">{uncollected.length}<span className="text-sm font-normal ml-1">{tr(config, "รายการ")}</span></p>
             </div>
           </div>
         </div>
@@ -2899,8 +2998,8 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
             className="w-full bg-rose-50 rounded-2xl p-3 border-2 border-rose-200 active:scale-95 transition flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-400 to-rose-600 flex items-center justify-center text-xl shadow">🎟️</div>
             <div className="text-left flex-1">
-              <p className="font-bold text-rose-900 text-sm">ลูกค้าใช้โปร (ซักเอง ไม่ฝาก)</p>
-              <p className="text-xs text-rose-700">สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม</p>
+              <p className="font-bold text-rose-900 text-sm">{tr(config, "ลูกค้าใช้โปร (ซักเอง ไม่ฝาก)")}</p>
+              <p className="text-xs text-rose-700">{tr(config, "สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม")}</p>
             </div>
             <Icon name="chevron-right" className="w-5 h-5 text-rose-600" />
           </button>
@@ -2908,12 +3007,12 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
           <div className="bg-white rounded-2xl p-4 border-2 border-rose-300 shadow-lg space-y-3">
             <div className="flex items-center gap-2">
               <span className="text-xl">🎟️</span>
-              <p className="font-extrabold text-slate-900 flex-1">บันทึกลูกค้าใช้โปร</p>
+              <p className="font-extrabold text-slate-900 flex-1">{tr(config, "บันทึกลูกค้าใช้โปร")}</p>
               <button onClick={() => setShowPromoForm(false)} className="text-slate-400 text-xl leading-none px-2">✕</button>
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-600 mb-1.5">โปรที่ใช้</p>
+              <p className="text-xs font-bold text-slate-600 mb-1.5">{tr(config, "โปรที่ใช้")}</p>
               <div className="flex flex-wrap gap-2">
                 {config.hasLinePromo && (
                   <button onClick={() => { setPromoName(`LINE ลด ${config.linePromoDiscount}฿`); setPromoAmount(String(config.linePromoDiscount)); }}
@@ -2929,13 +3028,13 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                 )}
                 <button onClick={() => { setPromoName('อื่นๆ'); setPromoAmount(''); }}
                   className={`px-3 py-1.5 rounded-full text-sm font-bold border ${promoName === 'อื่นๆ' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-700 border-slate-300'}`}>
-                  อื่นๆ
+                  {tr(config, "อื่นๆ")}
                 </button>
               </div>
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-600 mb-1">ยอดเครดิตที่สแกนให้ลูกค้า (บาท)</p>
+              <p className="text-xs font-bold text-slate-600 mb-1">{tr(config, "ยอดเครดิตที่สแกนให้ลูกค้า (บาท)")}</p>
               <input type="number" inputMode="numeric" value={promoAmount} onChange={e => setPromoAmount(e.target.value)} onFocus={e => e.target.select()}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-lg font-bold text-right" placeholder="0" />
               {promoNow.active && promoName === promoNow.label && (
@@ -2944,7 +3043,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-600 mb-1.5">เครื่องที่ลูกค้าใช้</p>
+              <p className="text-xs font-bold text-slate-600 mb-1.5">{tr(config, "เครื่องที่ลูกค้าใช้")}</p>
               <div className="flex flex-wrap gap-1.5">
                 {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).filter(m => m.label.startsWith('ซัก')).map(m => (
                   <button key={m.id} onClick={() => setPromoMachine(promoMachine === m.label ? '' : m.label)}
@@ -2957,14 +3056,14 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
 
             {!currentStaff && (
               <div>
-                <p className="text-xs font-bold text-slate-600 mb-1">ชื่อแม่บ้าน</p>
+                <p className="text-xs font-bold text-slate-600 mb-1">{tr(config, "ชื่อแม่บ้าน")}</p>
                 <input type="text" value={promoStaffName} onChange={e => setPromoStaffName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="เช่น พี่วิ" />
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder={tr(config, "เช่น พี่วิ")} />
               </div>
             )}
 
             <div>
-              <p className="text-xs font-bold text-slate-600 mb-1">📷 รูปหลักฐาน (จำเป็น)</p>
+              <p className="text-xs font-bold text-slate-600 mb-1">{tr(config, "📷 รูปหลักฐาน (จำเป็น)")}</p>
               <input ref={promoCameraRef} type="file" accept="image/*" capture="environment" onChange={handlePromoPhotoUpload} className="hidden" />
               <input ref={promoGalleryRef} type="file" accept="image/*" onChange={handlePromoPhotoUpload} className="hidden" />
               {promoPhoto ? (
@@ -2972,27 +3071,27 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                   <img src={promoPhoto} className="w-full h-40 object-cover rounded-xl border border-slate-200" alt="หลักฐาน" />
                   <div className="absolute bottom-2 right-2 flex gap-1">
                     <button onClick={() => promoCameraRef.current && promoCameraRef.current.click()}
-                      className="bg-white bg-opacity-90 rounded-lg px-2 py-1 text-xs font-bold text-slate-700">📷 ถ่ายใหม่</button>
+                      className="bg-white bg-opacity-90 rounded-lg px-2 py-1 text-xs font-bold text-slate-700">{tr(config, "📷 ถ่ายใหม่")}</button>
                     <button onClick={() => promoGalleryRef.current && promoGalleryRef.current.click()}
-                      className="bg-white bg-opacity-90 rounded-lg px-2 py-1 text-xs font-bold text-slate-700">🖼️ เลือกรูป</button>
+                      className="bg-white bg-opacity-90 rounded-lg px-2 py-1 text-xs font-bold text-slate-700">{tr(config, "🖼️ เลือกรูป")}</button>
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => promoCameraRef.current && promoCameraRef.current.click()}
                     className="py-5 rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 text-rose-700 font-bold text-sm">
-                    📷 ถ่ายรูป
+                    {tr(config, "📷 ถ่ายรูป")}
                   </button>
                   <button onClick={() => promoGalleryRef.current && promoGalleryRef.current.click()}
                     className="py-5 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-700 font-bold text-sm">
-                    🖼️ เลือกจากอัลบั้ม
+                    {tr(config, "🖼️ เลือกจากอัลบั้ม")}
                   </button>
                 </div>
               )}
             </div>
 
             <input type="text" value={promoNote} onChange={e => setPromoNote(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="หมายเหตุ เช่น เครื่อง 3 / ชื่อลูกค้า" />
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder={tr(config, "หมายเหตุ เช่น เครื่อง 3 / ชื่อลูกค้า")} />
 
             <button onClick={handleSubmitPromo} disabled={savingPromo}
               className="w-full py-3.5 rounded-2xl bg-rose-500 text-white font-bold text-base active:scale-95 transition disabled:opacity-50">
@@ -3006,12 +3105,12 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6" onClick={() => setSavedPromo(null)}>
           <div className="bg-white rounded-3xl w-full max-w-xs p-5 text-center" onClick={e => e.stopPropagation()}>
             <p className="text-4xl mb-1">✅</p>
-            <p className="text-lg font-extrabold text-slate-800">บันทึกตัดเครดิตแล้ว</p>
+            <p className="text-lg font-extrabold text-slate-800">{tr(config, "บันทึกตัดเครดิตแล้ว")}</p>
             <p className="text-sm text-slate-600 mt-1">{savedPromo.promoName} · <b>{savedPromo.amount}฿</b></p>
             <p className="text-xs text-slate-500">🧕 {savedPromo.staffName}{savedPromo.machine ? ` · 🧺 ${savedPromo.machine}` : ''}</p>
             <img src={savedPromo.photo} className="w-full h-32 object-cover rounded-xl mt-3 border border-slate-200" alt="" />
-            <button onClick={handleSharePromo} className="w-full mt-4 py-3 rounded-2xl bg-emerald-500 text-white font-bold active:scale-95 transition">💬 ส่งเข้ากลุ่ม LINE</button>
-            <button onClick={() => setSavedPromo(null)} className="mt-2 text-xs text-slate-400">ปิด</button>
+            <button onClick={handleSharePromo} className="w-full mt-4 py-3 rounded-2xl bg-emerald-500 text-white font-bold active:scale-95 transition">{tr(config, "💬 ส่งเข้ากลุ่ม LINE")}</button>
+            <button onClick={() => setSavedPromo(null)} className="mt-2 text-xs text-slate-400">{tr(config, "ปิด")}</button>
           </div>
         </div>
       )}
@@ -3045,35 +3144,35 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
           <div className="bg-white rounded-2xl p-4 border-2 border-amber-300 shadow-lg">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-xl">🪙</span>
-              <p className="font-extrabold text-slate-900">บันทึกแลก Token</p>
+              <p className="font-extrabold text-slate-900">{tr(config, "บันทึกแลก Token")}</p>
             </div>
             <div className="space-y-3">
 
               {/* วิธีจ่าย: เงินสด / โอน */}
               <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">💳 ลูกค้าจ่ายมาแบบไหน</label>
+                <label className="text-xs font-bold text-slate-600 mb-1 block">{tr(config, "💳 ลูกค้าจ่ายมาแบบไหน")}</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setTokenPayment('cash')}
                     className={`py-2.5 rounded-xl font-bold text-sm transition active:scale-95 ${tokenPayment === 'cash' ? 'bg-emerald-500 text-white shadow' : 'bg-slate-50 text-slate-600 border-2 border-slate-200'}`}
                   >
-                    💵 เงินสด
+                    {tr(config, "💵 เงินสด")}
                   </button>
                   <button
                     onClick={() => setTokenPayment('transfer')}
                     className={`py-2.5 rounded-xl font-bold text-sm transition active:scale-95 ${tokenPayment === 'transfer' ? 'bg-violet-500 text-white shadow' : 'bg-slate-50 text-slate-600 border-2 border-slate-200'}`}
                   >
-                    💳 โอน
+                    {tr(config, "💳 โอน")}
                   </button>
                 </div>
                 {tokenPayment === 'transfer' && (
-                  <p className="text-[10px] text-violet-600 mt-1">💡 โอนเข้าบัญชีร้านโดยตรง — ไม่ต้องเก็บเงินสดจากแม่บ้าน</p>
+                  <p className="text-[10px] text-violet-600 mt-1">{tr(config, "💡 โอนเข้าบัญชีร้านโดยตรง — ไม่ต้องเก็บเงินสดจากแม่บ้าน")}</p>
                 )}
               </div>
 
               {/* จำนวนเงิน */}
               <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">💵 จำนวนเงิน (บาท)</label>
+                <label className="text-xs font-bold text-slate-600 mb-1 block">{tr(config, "💵 จำนวนเงิน (บาท)")}</label>
                 <input 
                   type="number"
                   value={tokenAmount}
@@ -3084,7 +3183,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                     setCoinCount('');
                   }}
                   inputMode="numeric"
-                  placeholder="เช่น 100"
+                  placeholder={tr(config, "เช่น 100")}
                   autoFocus
                   className="w-full px-4 py-3 bg-amber-50 rounded-xl border-2 border-amber-200 focus:bg-white outline-none transition text-lg font-bold text-slate-900"
                 />
@@ -3093,10 +3192,10 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
               {/* Teddy: 2 ช่อง — Token ของร้าน + เหรียญ 10 จริง */}
               {config.hasToken && amountNum > 0 && (
                 <div className="bg-amber-50 rounded-xl p-3 space-y-2 border border-amber-200">
-                  <p className="text-xs text-amber-800 font-bold">🎁 ให้ลูกค้าเป็น</p>
+                  <p className="text-xs text-amber-800 font-bold">{tr(config, "🎁 ให้ลูกค้าเป็น")}</p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[11px] font-bold text-slate-600 mb-1 block">🪙 Token ร้าน</label>
+                      <label className="text-[11px] font-bold text-slate-600 mb-1 block">{tr(config, "🪙 Token ร้าน")}</label>
                       <input 
                         type="number"
                         value={tokenCount === '' ? autoCount : tokenCount}
@@ -3107,7 +3206,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                       <p className="text-[10px] text-slate-500 mt-1">×10 = ฿{displayedTokenCount * 10}</p>
                     </div>
                     <div>
-                      <label className="text-[11px] font-bold text-slate-600 mb-1 block">🪙 เหรียญ 10</label>
+                      <label className="text-[11px] font-bold text-slate-600 mb-1 block">{tr(config, "🪙 เหรียญ 10")}</label>
                       <input 
                         type="number"
                         value={coinCount === '' ? 0 : coinCount}
@@ -3119,7 +3218,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                     </div>
                   </div>
                   <div className={`flex items-center justify-between pt-2 border-t border-amber-200 ${totalCoinValue !== amountNum ? 'text-rose-600' : 'text-emerald-700'}`}>
-                    <span className="text-xs font-bold">รวมที่ให้ลูกค้า</span>
+                    <span className="text-xs font-bold">{tr(config, "รวมที่ให้ลูกค้า")}</span>
                     <span className="text-sm font-extrabold">฿{totalCoinValue} {totalCoinValue !== amountNum && `(ควรเป็น ฿${amountNum})`}</span>
                   </div>
                   <p className="text-[10px] text-amber-700 italic">💡 Default: ใช้ Token ทั้งหมด — ถ้า Token หมด เพิ่มจำนวน "เหรียญ 10" แทน</p>
@@ -3129,9 +3228,9 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
               {/* Otteri: 1 ช่อง — เหรียญ 10 อย่างเดียว */}
               {!config.hasToken && amountNum > 0 && (
                 <div className="bg-amber-50 rounded-xl p-3 space-y-2 border border-amber-200">
-                  <p className="text-xs text-amber-800 font-bold">🎁 ให้ลูกค้าเป็น</p>
+                  <p className="text-xs text-amber-800 font-bold">{tr(config, "🎁 ให้ลูกค้าเป็น")}</p>
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 mb-1 block">🪙 เหรียญ 10 บาท (เหรียญ)</label>
+                    <label className="text-[11px] font-bold text-slate-600 mb-1 block">{tr(config, "🪙 เหรียญ 10 บาท (เหรียญ)")}</label>
                     <input 
                       type="number"
                       value={coinCount === '' ? autoCount : coinCount}
@@ -3142,7 +3241,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                   </div>
                   <div className="bg-emerald-50 rounded-lg p-2.5 border border-emerald-200">
                     <p className="text-xs font-bold text-emerald-800 text-center">
-                      📢 ให้แม่บ้านหยิบเหรียญ 10 ให้ลูกค้า
+                      {tr(config, "📢 ให้แม่บ้านหยิบเหรียญ 10 ให้ลูกค้า")}
                     </p>
                     <p className="text-base font-extrabold text-emerald-700 text-center">
                       {displayedCoinCount} เหรียญ = ฿{totalCoinValue}
@@ -3154,7 +3253,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
               {/* รูปหลักฐาน */}
               <div>
                 <label className="text-xs font-bold text-slate-600 mb-1 block">
-                  📷 รูปหลักฐาน {tokenPayment === 'transfer' ? '(สลิปโอน)' : '(เงินที่รับ)'} <span className="text-slate-400 font-normal">— ไม่บังคับ</span>
+                  📷 รูปหลักฐาน {tokenPayment === 'transfer' ? '(สลิปโอน)' : '(เงินที่รับ)'} <span className="text-slate-400 font-normal">{tr(config, "— ไม่บังคับ")}</span>
                 </label>
                 <input ref={tokenInputRef} type="file" accept="image/*" onChange={handleTokenPhotoUpload} className="hidden" />
                 <input ref={tokenCameraRef} type="file" accept="image/*" capture="environment" onChange={handleTokenPhotoUpload} className="hidden" />
@@ -3169,11 +3268,11 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => tokenCameraRef.current?.click()} className="py-3 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                       <Icon name="camera" className="w-5 h-5 text-sky-600" />
-                      <span className="text-xs text-sky-700 font-bold">📷 ถ่าย</span>
+                      <span className="text-xs text-sky-700 font-bold">{tr(config, "📷 ถ่าย")}</span>
                     </button>
                     <button onClick={() => tokenInputRef.current?.click()} className="py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                       <Icon name="image" className="w-5 h-5 text-slate-500" />
-                      <span className="text-xs text-slate-600 font-bold">🖼️ อัลบั้ม</span>
+                      <span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ อัลบั้ม")}</span>
                     </button>
                   </div>
                 )}
@@ -3185,7 +3284,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                   disabled={savingToken}
                   className="py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm active:scale-95 transition"
                 >
-                  ยกเลิก
+                  {tr(config, "ยกเลิก")}
                 </button>
                 <button 
                   onClick={handleSubmitToken}
@@ -3202,7 +3301,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
         {/* รายการแลก token ล่าสุด — แสดงเฉพาะ active (ยังไม่ถูกเคลีย) */}
         {!showTokenForm && activeTokens.length > 0 && (
           <div className="mt-2 bg-white rounded-2xl p-3 border border-amber-100">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700 mb-2">🪙 แลก Token ล่าสุด</p>
+            <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700 mb-2">{tr(config, "🪙 แลก Token ล่าสุด")}</p>
             <div className="space-y-1 max-h-44 overflow-auto">
               {activeTokens.slice(0, 8).map(t => {
                 const pm = t.paymentMethod || 'cash';
@@ -3249,7 +3348,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
             <div className="text-2xl">{currentPromo.type === 'wednesday' ? '🐻' : currentPromo.type === 'midnight' ? '🌙' : '🎉'}</div>
             <div className="flex-1">
               <p className="text-white font-extrabold text-sm">{currentPromo.label} • กำลังลดอยู่!</p>
-              <p className="text-white text-xs opacity-90">ซักทุกขนาด ลด 10 บาท / ถัง อัตโนมัติ</p>
+              <p className="text-white text-xs opacity-90">{tr(config, "ซักทุกขนาด ลด 10 บาท / ถัง อัตโนมัติ")}</p>
             </div>
           </div>
         </div>
@@ -3266,7 +3365,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
             <div className="w-16 h-16 mx-auto rounded-full bg-slate-100 flex items-center justify-center mb-3">
               <Icon name="shirt" className="w-8 h-8 text-slate-400" />
             </div>
-            <p className="text-slate-600 font-medium">ยังไม่มีรายการ</p>
+            <p className="text-slate-600 font-medium">{tr(config, "ยังไม่มีรายการ")}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -3279,7 +3378,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <p className="font-semibold text-slate-900 truncate">{o.customerName}</p>
                     {o.deliveryZone && <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🚚</span>}
-                    {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">เคฟ</span>}
+                    {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">{tr(config, "เคฟ")}</span>}
                     {o.fromLine && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💬</span>}
                     {(o.dryItems || []).some(d => d.topUp > 0) && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⏱️</span>}
                   </div>
@@ -3546,7 +3645,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       <div className="sticky z-20 bg-white border-b border-slate-100 px-5 py-3 flex items-center gap-3" style={{top: '0px'}}>
         <button onClick={onCancel} className="flex items-center gap-1 px-3 py-2 -ml-2 rounded-xl active:scale-95 active:bg-slate-100 transition">
           <Icon name="chevron-left" className="w-6 h-6 text-slate-700" />
-          <span className="text-sm font-bold text-slate-700">กลับ</span>
+          <span className="text-sm font-bold text-slate-700">{tr(config, "กลับ")}</span>
         </button>
         <div className="flex-1">
           <h1 className="font-bold text-slate-900 text-lg">{isEdit ? 'แก้ไขรายการ' : 'รับงานใหม่'}</h1>
@@ -3560,9 +3659,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           <div className="rounded-2xl p-4 shadow-lg border-2 border-amber-300" style={{background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'}}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">🔐</span>
-              <p className="font-extrabold text-amber-900 text-sm">โหมดเจ้าของ — วันเวลารับงาน</p>
+              <p className="font-extrabold text-amber-900 text-sm">{tr(config, "โหมดเจ้าของ — วันเวลารับงาน")}</p>
             </div>
-            <p className="text-[11px] text-amber-800 mb-3">ใช้กรณีบันทึกย้อนหลัง / แม่บ้านลืมกด</p>
+            <p className="text-[11px] text-amber-800 mb-3">{tr(config, "ใช้กรณีบันทึกย้อนหลัง / แม่บ้านลืมกด")}</p>
             
             <div className="grid grid-cols-2 gap-2 mb-2">
               <button 
@@ -3575,7 +3674,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 onClick={() => setUseCustomTime(true)}
                 className={`py-2.5 rounded-xl text-xs font-bold transition active:scale-95 ${useCustomTime ? 'bg-amber-600 text-white shadow' : 'bg-white text-amber-800 border border-amber-300'}`}
               >
-                📅 เลือกเอง
+                {tr(config, "📅 เลือกเอง")}
               </button>
             </div>
             
@@ -3610,7 +3709,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <div className="text-3xl">{breakdown.promo.type === 'wednesday' ? '🐻' : breakdown.promo.type === 'midnight' ? '🌙' : '🎉'}</div>
               <div className="flex-1">
                 <p className="text-white font-extrabold text-base">{breakdown.promo.label}</p>
-                <p className="text-white text-xs opacity-90">ลดอัตโนมัติ 10 บาท / ถัง สำหรับเครื่องซักทุกขนาด</p>
+                <p className="text-white text-xs opacity-90">{tr(config, "ลดอัตโนมัติ 10 บาท / ถัง สำหรับเครื่องซักทุกขนาด")}</p>
               </div>
             </div>
           </div>
@@ -3669,12 +3768,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
         <Section iconName="user" title="ข้อมูลลูกค้า">
           <Field label={needCustomerInfo ? 'ชื่อลูกค้า *' : 'ชื่อลูกค้า'}>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needCustomerInfo && !nameOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
-            {needCustomerInfo && !nameOk && <p className="text-xs text-amber-700 mt-1 font-medium">จำเป็นต้องกรอก — ใช้เรียกลูกค้าตอนมารับผ้า</p>}
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={tr(config, "ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ")} className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needCustomerInfo && !nameOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
+            {needCustomerInfo && !nameOk && <p className="text-xs text-amber-700 mt-1 font-medium">{tr(config, "จำเป็นต้องกรอก — ใช้เรียกลูกค้าตอนมารับผ้า")}</p>}
           </Field>
           <Field label={needPhone ? 'เบอร์โทร *' : 'เบอร์โทร'}>
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needPhone && !phoneOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
-            {needPhone && !phoneOk && <p className="text-xs text-amber-700 mt-1 font-medium">จำเป็นต้องกรอก — ใช้ติดต่อลูกค้าตอนงานเสร็จ</p>}
+            {needPhone && !phoneOk && <p className="text-xs text-amber-700 mt-1 font-medium">{tr(config, "จำเป็นต้องกรอก — ใช้ติดต่อลูกค้าตอนงานเสร็จ")}</p>}
           </Field>
         </Section>
 
@@ -3692,19 +3791,19 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => basketCameraRef.current?.click()} className="py-6 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                 <Icon name="camera" className="w-7 h-7 text-sky-600" />
-                <span className="text-xs text-sky-700 font-bold">📷 ถ่ายรูป</span>
+                <span className="text-xs text-sky-700 font-bold">{tr(config, "📷 ถ่ายรูป")}</span>
               </button>
               <button onClick={() => basketInputRef.current?.click()} className="py-6 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                 <Icon name="image" className="w-7 h-7 text-slate-500" />
-                <span className="text-xs text-slate-600 font-bold">🖼️ เลือกจากอัลบั้ม</span>
+                <span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ เลือกจากอัลบั้ม")}</span>
               </button>
             </div>
           )}
           <Field label="จำนวนผ้า (ตัว/ชุด)">
-            <input type="text" value={clothCount} onChange={(e) => setClothCount(e.target.value)} placeholder="เช่น 25 ตัว" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
+            <input type="text" value={clothCount} onChange={(e) => setClothCount(e.target.value)} placeholder={tr(config, "เช่น 25 ตัว")} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
           </Field>
           <Field label="⏰ เวลานัดรับ (สะดวกมารับ)">
-            <input type="text" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} placeholder="เช่น 18:00 วันนี้ / พรุ่งนี้เช้า" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
+            <input type="text" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} placeholder={tr(config, "เช่น 18:00 วันนี้ / พรุ่งนี้เช้า")} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
           </Field>
         </Section>
 
@@ -3730,7 +3829,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                         <span className="text-amber-700 text-sm">⏱️</span>
                         <div>
                           <p className="text-xs font-bold text-amber-800">{tr(config, 'หยอดเพิ่ม (เพิ่มเวลา)')}</p>
-                          <p className="text-[10px] text-amber-600">ทีละ 10 บาท</p>
+                          <p className="text-[10px] text-amber-600">{tr(config, "ทีละ 10 บาท")}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -3747,7 +3846,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
         </Section>
 
         <Section iconName="sparkles" title="รายการเสริม / ขายแยก">
-          <p className="text-[11px] text-slate-500 -mt-2 mb-2">💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ</p>
+          <p className="text-[11px] text-slate-500 -mt-2 mb-2">{tr(config, "💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ")}</p>
           <CounterRow iconEmoji="🧴" label="น้ำยาซัก" sublabel={`฿${config.detergentPrice} / ซอง`} unit="ซอง" qty={detergentQty} onAdd={() => setDetergentQty(q => q + 1)} onRemove={() => setDetergentQty(q => Math.max(0, q - 1))} colorActive="bg-purple-500" />
           <CounterRow iconEmoji="🌸" label="น้ำยาปรับผ้านุ่ม" sublabel={`฿${config.softenerPrice} / ซอง`} unit="ซอง" qty={softenerQty} onAdd={() => setSoftenerQty(q => q + 1)} onRemove={() => setSoftenerQty(q => Math.max(0, q - 1))} colorActive="bg-pink-500" />
           {!config.freeService && (
@@ -3759,7 +3858,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 <span className="text-xl">✨</span>
                 <div className="flex-1">
                   <p className="font-bold text-emerald-700 text-sm">{tr(config, 'ฝาก ซัก อบ พับ - ฟรี!')}</p>
-                  <p className="text-xs text-emerald-600">พับให้เป็นปกติ ไม่คิดเงินเพิ่ม</p>
+                  <p className="text-xs text-emerald-600">{tr(config, "พับให้เป็นปกติ ไม่คิดเงินเพิ่ม")}</p>
                 </div>
               </div>
               {/* ตัวเลือก: ลูกค้าไม่ต้องการพับ */}
@@ -3772,7 +3871,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 </div>
                 <div className="flex-1 text-left">
                   <span className={`text-sm font-bold ${noFold ? 'text-amber-800' : 'text-slate-600'}`}>🚫 {tr(config, 'ลูกค้าไม่ต้องการให้พับ')}</span>
-                  <p className="text-xs text-slate-400">เช่น ผ้าเยอะ ลูกค้าพับเอง</p>
+                  <p className="text-xs text-slate-400">{tr(config, "เช่น ผ้าเยอะ ลูกค้าพับเอง")}</p>
                 </div>
               </button>
             </div>
@@ -3781,13 +3880,13 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
         {config.hasDelivery && (
           <Section iconName="truck" title="บริการ Delivery">
-            <p className="text-xs text-slate-500 mb-2">ถ้ามีบริการส่งให้เลือกโซนตามแผนที่</p>
+            <p className="text-xs text-slate-500 mb-2">{tr(config, "ถ้ามีบริการส่งให้เลือกโซนตามแผนที่")}</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setDeliveryZone(null)} className={`p-3 rounded-xl border-2 transition ${!deliveryZone ? 'bg-slate-100 border-slate-400' : 'bg-slate-50 border-transparent'}`}>
                 <div className="flex flex-col items-center gap-1">
                   <Icon name="store" className={`w-5 h-5 ${!deliveryZone ? 'text-slate-700' : 'text-slate-400'}`} />
                   <span className={`font-bold text-xs ${!deliveryZone ? 'text-slate-900' : 'text-slate-500'}`}>{tr(config, 'หน้าร้าน')}</span>
-                  <span className="text-xs text-slate-400">ไม่คิดค่าส่ง</span>
+                  <span className="text-xs text-slate-400">{tr(config, "ไม่คิดค่าส่ง")}</span>
                 </div>
               </button>
               {config.deliveryZones.map(z => (
@@ -3838,14 +3937,14 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 <div className="text-left">
                   <span className={`text-sm font-bold ${useLinePromo ? 'text-green-900' : 'text-slate-700'}`}>💚 {tr(config, 'ลูกค้าแอดไลน์ครั้งแรก')}</span>
                   <p className="text-xs text-slate-500 mt-0.5">ลด {config.linePromoDiscount} บาท (ไม่เกินค่าซัก)</p>
-                  <p className="text-xs text-amber-600 mt-0.5">⚠️ เฉพาะหน้าร้าน + ต้องถ่ายรูปคูปอง</p>
+                  <p className="text-xs text-amber-600 mt-0.5">{tr(config, "⚠️ เฉพาะหน้าร้าน + ต้องถ่ายรูปคูปอง")}</p>
                 </div>
               </div>
             </button>
 
             {useLinePromo && (
               <div className="mt-3">
-                <p className="text-xs text-slate-600 mb-2 font-bold">📷 รูปหลักฐานคูปอง <span className="text-rose-500">*</span></p>
+                <p className="text-xs text-slate-600 mb-2 font-bold">{tr(config, "📷 รูปหลักฐานคูปอง ")}<span className="text-rose-500">*</span></p>
                 <input ref={linePromoInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setLinePromoPhoto)} className="hidden" />
                 <input ref={linePromoCameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setLinePromoPhoto)} className="hidden" />
                 {linePromoPhoto ? (
@@ -3857,15 +3956,15 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                   </div>
                 ) : (
                   <div>
-                    <p className="text-[11px] text-amber-600 mb-1.5">บังคับถ่ายเพื่อใช้สิทธิ์</p>
+                    <p className="text-[11px] text-amber-600 mb-1.5">{tr(config, "บังคับถ่ายเพื่อใช้สิทธิ์")}</p>
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => linePromoCameraRef.current?.click()} className="py-5 bg-amber-50 border-2 border-dashed border-amber-400 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                         <Icon name="camera" className="w-6 h-6 text-amber-700" />
-                        <span className="text-xs text-amber-700 font-bold">📷 ถ่ายรูป</span>
+                        <span className="text-xs text-amber-700 font-bold">{tr(config, "📷 ถ่ายรูป")}</span>
                       </button>
                       <button onClick={() => linePromoInputRef.current?.click()} className="py-5 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                         <Icon name="image" className="w-6 h-6 text-slate-500" />
-                        <span className="text-xs text-slate-600 font-bold">🖼️ เลือกอัลบั้ม</span>
+                        <span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ เลือกอัลบั้ม")}</span>
                       </button>
                     </div>
                   </div>
@@ -3877,7 +3976,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
         <Section iconName="dollar-sign" title="การชำระเงิน">
           <div>
-            <p className="text-xs font-medium text-slate-600 mb-2">วิธีชำระเงิน <span className="text-rose-500">*</span></p>
+            <p className="text-xs font-medium text-slate-600 mb-2">{tr(config, "วิธีชำระเงิน ")}<span className="text-rose-500">*</span></p>
             <div className="grid grid-cols-3 gap-2">
               <button onClick={() => setPaymentMethod('cash')} className={`p-3 rounded-2xl border-2 transition ${paymentMethod === 'cash' ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-transparent'}`}>
                 <div className="flex flex-col items-center gap-1">
@@ -3906,7 +4005,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <p className="text-xs font-bold text-amber-800">แบ่งจ่าย — กรอกทั้ง 2 ช่อง (รวมต้องเท่ายอด ฿{formatMoney(total)})</p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-emerald-700 mb-1 block">💵 เงินสด</label>
+                  <label className="text-xs font-bold text-emerald-700 mb-1 block">{tr(config, "💵 เงินสด")}</label>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -3923,7 +4022,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-violet-700 mb-1 block">💳 โอน</label>
+                  <label className="text-xs font-bold text-violet-700 mb-1 block">{tr(config, "💳 โอน")}</label>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -3959,7 +4058,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             {breakdown.totalDiscount > 0 && (
               <>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-slate-500 text-xs">ราคาเต็ม</span>
+                  <span className="text-slate-500 text-xs">{tr(config, "ราคาเต็ม")}</span>
                   <span className="text-slate-500 text-sm line-through">฿{formatMoney(breakdown.subtotal)}</span>
                 </div>
                 {breakdown.promoDiscount > 0 && (
@@ -3970,7 +4069,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 )}
                 {breakdown.lineDiscount > 0 && (
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-green-600 text-xs font-bold">💚 แอดไลน์ครั้งแรก</span>
+                    <span className="text-green-600 text-xs font-bold">{tr(config, "💚 แอดไลน์ครั้งแรก")}</span>
                     <span className="text-green-600 text-sm font-bold">-฿{formatMoney(breakdown.lineDiscount)}</span>
                   </div>
                 )}
@@ -3978,7 +4077,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               </>
             )}
             <div className="flex items-center justify-between">
-              <span className="text-slate-600 text-sm font-semibold">ยอดที่ต้องเก็บ</span>
+              <span className="text-slate-600 text-sm font-semibold">{tr(config, "ยอดที่ต้องเก็บ")}</span>
               <span className={`text-2xl font-extrabold ${paymentMethod === 'transfer' ? 'text-violet-700' : paymentMethod === 'split' ? 'text-amber-700' : 'text-sky-700'}`}>฿{formatMoney(total)}</span>
             </div>
           </div>
@@ -3998,18 +4097,18 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => moneyCameraRef.current?.click()} className="py-4 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                   <Icon name="camera" className="w-5 h-5 text-sky-600" />
-                  <span className="text-xs text-sky-700 font-bold">📷 ถ่าย</span>
+                  <span className="text-xs text-sky-700 font-bold">{tr(config, "📷 ถ่าย")}</span>
                 </button>
                 <button onClick={() => moneyInputRef.current?.click()} className="py-4 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                   <Icon name="image" className="w-5 h-5 text-slate-500" />
-                  <span className="text-xs text-slate-600 font-bold">🖼️ เลือกอัลบั้ม</span>
+                  <span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ เลือกอัลบั้ม")}</span>
                 </button>
               </div>
             )}
           </div>
 
           <Field label="หมายเหตุ (ไม่บังคับ)">
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น แยกซักผ้าขาว, หอใน 405" rows={2} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition resize-none" />
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr(config, "เช่น แยกซักผ้าขาว, หอใน 405")} rows={2} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition resize-none" />
           </Field>
         </Section>
       </div>
@@ -4037,7 +4136,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           <div className="flex items-center gap-2">
             <button onClick={onCancel} className="px-4 py-3 rounded-xl font-bold bg-slate-100 text-slate-700 active:scale-95 transition flex items-center gap-1">
               <Icon name="x" className="w-4 h-4" />
-              <span className="text-sm">ยกเลิก</span>
+              <span className="text-sm">{tr(config, "ยกเลิก")}</span>
             </button>
             <button onClick={handleSubmit} disabled={!canSubmit} className={`flex-1 py-3 rounded-xl font-bold transition ${canSubmit ? 'text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400'}`} style={canSubmit ? {background: config.gradient} : {}}>
               {isEdit ? '💾 บันทึกการแก้ไข' : '✓ ' + tr(config, 'บันทึกใบรับงาน')}
