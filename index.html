@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v86-2026-09-05';
+  window.APP_VERSION = 'v87-2026-09-05';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1139,6 +1139,69 @@ const MM_DICT = {
   '👔 เข้าแบบเจ้าของ': '👔 ပိုင်ရှင်အဖြစ်ဝင်ရန်',
   '📅 เลือกเอง': '📅 ကိုယ်တိုင်ရွေး',
   '📢 ให้แม่บ้านหยิบเหรียญ 10 ให้ลูกค้า': '📢 ဝန်ထမ်းက ၁၀ ဘတ်ဒင်္ဂါး ဖောက်သည်ကိုပေးပါ',
+  'รับงานพิมพ์': 'ပရင့်အလုပ်လက်ခံ',
+  'โหมดเครื่องพิมพ์': 'ပရင်တာမုဒ်',
+  'เก็บแล้ว': 'ကောက်ပြီး',
+  'แก้ไขรายการ': 'စာရင်းပြင်ရန်',
+  'ฟรีค่าฝากซัก-อบ-พับ': 'အပ်လျှော်-ခြောက်-ခေါက် အခမဲ့',
+  '✓ งานนี้จากเคฟ': '✓ ဒီအလုပ် Kev မှ',
+  '👨‍💼 งานนี้จากเคฟ?': '👨‍💼 ဒီအลုပ် Kev မှလား?',
+  'แตะอีกครั้งเพื่อยกเลิก': 'ပယ်ဖျက်ရန် ထပ်နှိပ်ပါ',
+  '✓ งานนี้รับทาง Line': '✓ ဒီအလုပ် LINE မှ',
+  '💬 งานนี้รับทาง Line?': '💬 ဒီအလုပ် LINE မှလား?',
+  'ใช้ร่วมกับเคฟไม่ได้': 'Kev နှင့်တွဲသုံး၍မရ',
+  'ชื่อลูกค้า *': 'ဖောก်သည်အမည် *',
+  'เบอร์โทร *': 'ဖုန်းနံပါတ် *',
+  'รูปสลิปโอน (ไม่บังคับ)': 'ငွေလွှဲစလစ်ပုံ (မဖြစ်မနေမဟုတ်)',
+  'รูปเงิน (ไม่บังคับ)': 'ငွေပုံ (မဖြစ်မနေမဟုတ်)',
+  'ลด': 'လျှော့',
+  'แบ่งจ่าย — กรอกทั้ง 2 ช่อง รวมต้องเท่ายอด': 'ခွဲပေး — ၂ ကွက်လုံးဖြည့်ပါ ပေါင်းလျှင် စုစုပေါင်းနှင့်ညီရမည်',
+  'รวม': 'ပေါင်း',
+  '✓ ตรงยอด': '✓ ကိုက်ညီ',
+  'เกิน': 'ပို',
+  'ขาด': 'လို',
+  'บาท (ไม่เกินค่าซัก)': 'ဘတ် (လျှော်ခထက်မပို)',
+  'ซัก 2 ถัง =': '၂ လုံးလျှော်လျှင် =',
+  'แก้ตัวเลขตามจำนวนถังได้': 'အလုံးအရေအတွက်အလိုက် ပြင်နိုင်',
+  'ถัง': 'လုံး',
+  'กำลังบันทึก…': 'သိမ်းနေသည်...',
+  'บันทึกตัดเครดิต': 'ခရက်ဒစ်ဖြတ် သိမ်းရန်',
+  '✓ บันทึก': '✓ သိမ်းရန်',
+  'เหรียญ': 'ဒင်္ဂါး',
+  '💵 สด': '💵 ငွေသား',
+  'อีก': 'နောက်ထပ်',
+  'กำลังลดอยู่!': 'လျှော့ဈေးနေသည်!',
+  '(ตู้แลกเหรียญเสีย)': '(ဒင်္ဂါးလဲစက် ပျက်)',
+  'ลูกค้าแลกเหรียญกับแม่บ้าน (สด/โอน)': 'ဖောက်သည် ဝန်ထမ်းနှင့် ဒင်္ဂါးလဲ (ငွေသား/လွှဲ)',
+  'ลูกค้าแลก Tokenกับแม่บ้าน (สด/โอน)': 'ဖောက်သည် ဝန်ထမ်းနှင့် Token လဲ (ငွေသား/လွှဲ)',
+  'รอเคลีย:': 'ရှင်းရန်ကျန်:',
+  'ครั้ง': 'ကြိမ်',
+  'Token': 'Token',
+  'ในมือแม่บ้าน': 'ဝန်ထမ်းလက်ထဲ',
+  '⚠️ ใกล้หมด แจ้งเจ้าของ': '⚠️ ကုန်တော့မည် ပိုင်ရှင်ကိုပြောပါ',
+  '💡 ปกติใช้ Token ทั้งหมด — ถ้า Token หมด เพิ่มจำนวนเหรียญ 10 แทน': '💡 ပုံမှန် Token အားလုံးသုံး — Token ကုန်လျှင် ၁၀ ဘတ်ဒင်္ဂါး ထည့်ပါ',
+  'เปิด': 'ဖွင့်',
+  '✏️ แก้ไข': '✏️ ပြင်ရန်',
+  'เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)': 'ဖုန်းနံပါတ်မပြည့် (အနည်းဆုံး ၉ လုံး)',
+  'ถ่ายรูปคูปองแอดไลน์': 'LINE ကူပွန် ဓာတ်ပုံရိုက်ပါ',
+  'ยืนยันการรับงาน': 'အလုပ်လက်ခံမှု အတည်ပြုပါ',
+  'ยอด': 'ပမာဏ',
+  'บาท': 'ဘတ်',
+  'แน่ใจนะ?': 'သေချာလား?',
+  'ถ้าผิดให้กดยกเลิก แล้วเปลี่ยนเป็น': 'မှားလျှင် ပယ်ဖျက်နှိပ်ပြီး ပြောင်းပါ',
+  'แลกเหรียญ': 'ဒင်္ဂါးလဲ',
+  'แลก Token': 'Token လဲ',
+  'รายการเสริม / ขายแยก': 'အပိုပစ္စည်း / သီးသန့်ရောင်း',
+  'โปรโมชั่นพิเศษ': 'အထူးပရိုမိုးရှင်း',
+  'การชำระเงิน': 'ငွေပေးချေမှု',
+  'จำนวนผ้า (ตัว/ชุด)': 'အဝတ်အရေအတွက် (ထည်/စုံ)',
+  '⏰ เวลานัดรับ (สะดวกมารับ)': '⏰ လာယူမည့်ချိန်',
+  'หมายเหตุ (ไม่บังคับ)': 'မှတ်ချက် (မဖြစ်မနေမဟုတ်)',
+  'น้ำยาซัก': 'ဆပ်ပြာရည်',
+  'ค่าพับผ้า': 'အဝတ်ခေါက်ခ',
+  'ซอง': 'ထုပ်',
+  'ลบ': 'ဖျက်ရန်',
+  'เปลี่ยนร้าน': 'ဆိုင်ပြောင်းရန်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -1779,7 +1842,7 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
                 editingStaffId === s.id ? (
                   /* ===== ฟอร์มแก้ไข inline ===== */
                   <div key={s.id} className="bg-teal-50 border-2 border-teal-300 rounded-xl p-3">
-                    <p className="text-xs font-bold text-teal-700 mb-2">✏️ แก้ไข {s.name}</p>
+                    <p className="text-xs font-bold text-teal-700 mb-2">{tr(config, '✏️ แก้ไข')} {s.name}</p>
                     <input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
@@ -1820,7 +1883,7 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
                       onClick={() => handleToggleActive(s)}
                       className={`text-xs font-bold px-2.5 py-1 rounded-lg ${s.active === false ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}`}
                     >
-                      {s.active === false ? 'ปิด' : 'เปิด'}
+                      {tr(config, s.active === false ? 'ปิด' : 'เปิด')}
                     </button>
                   </div>
                 )
@@ -2873,13 +2936,13 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
               {savedToken.tokenCount > 0 && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-500">{tr(config, "🪙 Token ร้าน")}</span>
-                  <span className="font-bold text-amber-700">{savedToken.tokenCount} เหรียญ</span>
+                  <span className="font-bold text-amber-700">{savedToken.tokenCount} {tr(config, 'เหรียญ')}</span>
                 </div>
               )}
               {savedToken.coinCount > 0 && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-500">{tr(config, "🪙 เหรียญ 10 บาท")}</span>
-                  <span className="font-bold text-slate-900">{savedToken.coinCount} เหรียญ</span>
+                  <span className="font-bold text-slate-900">{savedToken.coinCount} {tr(config, 'เหรียญ')}</span>
                 </div>
               )}
               <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-100">
@@ -2936,7 +2999,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={onChangeBrand} className="bg-white bg-opacity-20 backdrop-blur-sm rounded-full p-2.5 border border-white border-opacity-30 active:scale-95 transition" title="เปลี่ยนร้าน">
+              <button onClick={onChangeBrand} className="bg-white bg-opacity-20 backdrop-blur-sm rounded-full p-2.5 border border-white border-opacity-30 active:scale-95 transition" title={tr(config, "เปลี่ยนร้าน")}>
                 <Icon name="repeat" className="w-5 h-5 text-white" />
               </button>
               <button onClick={onOwnerLogin} className="bg-white bg-opacity-20 backdrop-blur-sm rounded-full p-2.5 border border-white border-opacity-30 active:scale-95 transition">
@@ -2957,7 +3020,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
           {/* โหมดเครื่องพิมพ์ — เครื่องนี้พิมพ์ให้เครื่องอื่นที่ส่งงานมา (เฉพาะสาขาที่มีเครื่องพิมพ์) */}
           {config.hasPrinter && <button onClick={onTogglePrintServer} className={`mb-1 ml-2 inline-flex items-center gap-1.5 backdrop-blur-sm rounded-full px-3 py-1 border active:scale-95 transition ${printServer ? 'bg-green-400 bg-opacity-90 border-green-200' : 'bg-white bg-opacity-20 border-white border-opacity-30'}`}>
             <span className="text-sm">🖨️</span>
-            <span className="text-white text-xs font-bold">{printServer ? 'รับงานพิมพ์' : 'โหมดเครื่องพิมพ์'}</span>
+            <span className="text-white text-xs font-bold">{tr(config, printServer ? 'รับงานพิมพ์' : 'โหมดเครื่องพิมพ์')}</span>
             {printServer && printServerStatus && <span className="text-white text-opacity-80 text-[9px]">• {printServerStatus}</span>}
           </button>}
           <div className="grid grid-cols-2 gap-3 mt-6">
@@ -3023,7 +3086,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                 {config.dayPromoEnabled !== false && promoNow.active && (
                   <button onClick={() => { setPromoName(promoNow.label); setPromoAmount(String(promoNow.discountPerWash)); }}
                     className={`px-3 py-1.5 rounded-full text-sm font-bold border ${promoName === promoNow.label ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-700 border-slate-300'}`}>
-                    {promoNow.label} {promoNow.discountPerWash}฿/ถัง
+                    {promoNow.label} {promoNow.discountPerWash}฿/{tr(config, 'ถัง')}
                   </button>
                 )}
                 <button onClick={() => { setPromoName('อื่นๆ'); setPromoAmount(''); }}
@@ -3038,7 +3101,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
               <input type="number" inputMode="numeric" value={promoAmount} onChange={e => setPromoAmount(e.target.value)} onFocus={e => e.target.select()}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-lg font-bold text-right" placeholder="0" />
               {promoNow.active && promoName === promoNow.label && (
-                <p className="text-[11px] text-slate-400 mt-1">ซัก 2 ถัง = {promoNow.discountPerWash * 2}฿ — แก้ตัวเลขตามจำนวนถังได้</p>
+                <p className="text-[11px] text-slate-400 mt-1">{tr(config, 'ซัก 2 ถัง =')} {promoNow.discountPerWash * 2}฿ — {tr(config, 'แก้ตัวเลขตามจำนวนถังได้')}</p>
               )}
             </div>
 
@@ -3095,7 +3158,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
 
             <button onClick={handleSubmitPromo} disabled={savingPromo}
               className="w-full py-3.5 rounded-2xl bg-rose-500 text-white font-bold text-base active:scale-95 transition disabled:opacity-50">
-              {savingPromo ? 'กำลังบันทึก…' : `บันทึกตัดเครดิต ${parseInt(promoAmount, 10) || 0}฿`}
+              {savingPromo ? tr(config, 'กำลังบันทึก…') : tr(config, 'บันทึกตัดเครดิต') + ' ' + (parseInt(promoAmount, 10) || 0) + '฿'}
             </button>
           </div>
         )}
@@ -3126,15 +3189,15 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
               🪙
             </div>
             <div className="text-left flex-1">
-              <p className="font-bold text-amber-900 text-sm">{exchangeName(config)} (ตู้แลกเหรียญเสีย)</p>
+              <p className="font-bold text-amber-900 text-sm">{tr(config, exchangeName(config))} {tr(config, '(ตู้แลกเหรียญเสีย)')}</p>
               {activeTokenSum > 0 ? (
-                <p className="text-xs text-amber-700">รอเคลีย: ฿{formatMoney(activeTokenSum)} • {activeTokens.length} ครั้ง</p>
+                <p className="text-xs text-amber-700">{tr(config, 'รอเคลีย:')} ฿{formatMoney(activeTokenSum)} • {activeTokens.length} {tr(config, 'ครั้ง')}</p>
               ) : (
-                <p className="text-xs text-amber-700">ลูกค้า{exchangeName(config)}กับแม่บ้าน (สด/โอน)</p>
+                <p className="text-xs text-amber-700">{tr(config, 'ลูกค้า' + exchangeName(config) + 'กับแม่บ้าน (สด/โอน)')}</p>
               )}
               {(() => { const fs = coinFloatStatus(config, tokenExchanges); return fs ? (
                 <p className={`text-[11px] font-bold mt-0.5 ${fs.remain <= 10 ? 'text-rose-600' : 'text-amber-800'}`}>
-                  {exchangeUnit(config)}ในมือแม่บ้าน ~{formatMoney(fs.remain)} {fs.remain <= 10 ? '⚠️ ใกล้หมด แจ้งเจ้าของ' : ''}
+                  {tr(config, exchangeUnit(config))}{tr(config, 'ในมือแม่บ้าน')} ~{formatMoney(fs.remain)} {fs.remain <= 10 ? tr(config, '⚠️ ใกล้หมด แจ้งเจ้าของ') : ''}
                 </p>
               ) : null; })()}
             </div>
@@ -3221,7 +3284,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                     <span className="text-xs font-bold">{tr(config, "รวมที่ให้ลูกค้า")}</span>
                     <span className="text-sm font-extrabold">฿{totalCoinValue} {totalCoinValue !== amountNum && `(ควรเป็น ฿${amountNum})`}</span>
                   </div>
-                  <p className="text-[10px] text-amber-700 italic">💡 Default: ใช้ Token ทั้งหมด — ถ้า Token หมด เพิ่มจำนวน "เหรียญ 10" แทน</p>
+                  <p className="text-[10px] text-amber-700 italic">{tr(config, '💡 ปกติใช้ Token ทั้งหมด — ถ้า Token หมด เพิ่มจำนวนเหรียญ 10 แทน')}</p>
                 </div>
               )}
 
@@ -3244,7 +3307,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                       {tr(config, "📢 ให้แม่บ้านหยิบเหรียญ 10 ให้ลูกค้า")}
                     </p>
                     <p className="text-base font-extrabold text-emerald-700 text-center">
-                      {displayedCoinCount} เหรียญ = ฿{totalCoinValue}
+                      {displayedCoinCount} {tr(config, 'เหรียญ')} = ฿{totalCoinValue}
                     </p>
                   </div>
                 </div>
@@ -3291,7 +3354,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                   disabled={savingToken || !tokenAmount}
                   className="py-3 bg-amber-500 text-white rounded-xl font-bold text-sm active:scale-95 transition disabled:opacity-50"
                 >
-                  {savingToken ? 'กำลังบันทึก...' : '✓ บันทึก'}
+                  {tr(config, savingToken ? 'กำลังบันทึก…' : '✓ บันทึก')}
                 </button>
               </div>
             </div>
@@ -3316,7 +3379,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-slate-700">฿{formatMoney(t.amount)}</span>
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${pm === 'transfer' ? 'bg-violet-200 text-violet-800' : 'bg-emerald-200 text-emerald-800'}`}>
-                          {pm === 'transfer' ? '💳 โอน' : '💵 สด'}
+                          {tr(config, pm === 'transfer' ? '💳 โอน' : '💵 สด')}
                         </span>
                       </div>
                       {breakdown.length > 0 && (
@@ -3327,7 +3390,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                     <button 
                       onClick={() => onDeleteToken(t.id)} 
                       className="ml-2 p-1.5 rounded-md text-rose-500 active:bg-rose-100"
-                      title="ลบ"
+                      title={tr(config, "ลบ")}
                     >
                       <Icon name="trash-2" className="w-4 h-4" />
                     </button>
@@ -3336,7 +3399,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
               })}
             </div>
             {activeTokens.length > 8 && (
-              <p className="text-[10px] text-slate-400 mt-1 text-center">+ อีก {activeTokens.length - 8} รายการ</p>
+              <p className="text-[10px] text-slate-400 mt-1 text-center">+ {tr(config, 'อีก')} {activeTokens.length - 8} {tr(config, 'รายการ')}</p>
             )}
           </div>
         )}
@@ -3347,7 +3410,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
           <div className="rounded-2xl p-3 shadow-lg flex items-center gap-3" style={{background: currentPromo.type === 'wednesday_midnight' ? 'linear-gradient(135deg, #8B5CF6, #EC4899)' : currentPromo.type === 'wednesday' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #6366F1, #8B5CF6)'}}>
             <div className="text-2xl">{currentPromo.type === 'wednesday' ? '🐻' : currentPromo.type === 'midnight' ? '🌙' : '🎉'}</div>
             <div className="flex-1">
-              <p className="text-white font-extrabold text-sm">{currentPromo.label} • กำลังลดอยู่!</p>
+              <p className="text-white font-extrabold text-sm">{currentPromo.label} • {tr(config, 'กำลังลดอยู่!')}</p>
               <p className="text-white text-xs opacity-90">{tr(config, "ซักทุกขนาด ลด 10 บาท / ถัง อัตโนมัติ")}</p>
             </div>
           </div>
@@ -3357,7 +3420,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
       <div className="px-5 mt-6 pb-8">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-slate-900 font-bold text-lg">{tr(config, 'รายการล่าสุด')}</h2>
-          <span className="text-slate-500 text-sm">{orders.length} รายการ</span>
+          <span className="text-slate-500 text-sm">{orders.length} {tr(config, 'รายการ')}</span>
         </div>
 
         {orders.length === 0 ? (
@@ -3387,7 +3450,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
                 <div className="text-right">
                   <p className="font-bold text-slate-900">฿{formatMoney(calculateTotal(o, config))}</p>
                   <p className={`text-xs font-medium ${o.collected ? 'text-emerald-600' : (o.paymentMethod === 'transfer' ? 'text-violet-600' : 'text-amber-600')}`}>
-                    {o.collected ? 'เก็บแล้ว' : (o.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด')}
+                    {tr(config, o.collected ? 'เก็บแล้ว' : (o.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'))}
                   </p>
                 </div>
               </button>
@@ -3533,8 +3596,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   if (!hasAnyItem) missingList.push(tr(config, 'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)'));
   if (needCustomerInfo && !name.trim()) missingList.push(tr(config, 'ใส่ชื่อลูกค้า'));
   if (needPhone && !phone.trim()) missingList.push(tr(config, 'ใส่เบอร์โทรลูกค้า'));
-  else if (needPhone && phone.trim().length < 9) missingList.push('เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)');
-  if (useLinePromo && !linePromoPhoto) missingList.push('ถ่ายรูปคูปองแอดไลน์');
+  else if (needPhone && phone.trim().length < 9) missingList.push(tr(config, 'เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)'));
+  if (useLinePromo && !linePromoPhoto) missingList.push(tr(config, 'ถ่ายรูปคูปองแอดไลน์'));
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
 
@@ -3580,13 +3643,13 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
         alert(`⚠️ ยอดแบ่งจ่ายไม่ตรง\n\nเงินสด ฿${formatMoney(splitCashNum)} + โอน ฿${formatMoney(splitTransferNum)} = ฿${formatMoney(splitCashNum + splitTransferNum)}\nแต่ยอดรวม = ฿${formatMoney(total)}\n\nกรุณาแก้ให้ตรง`);
         return;
       }
-      if (!confirm(`✅ ยืนยันการรับงาน (แบ่งจ่าย)\n\n💵 เงินสด: ฿${formatMoney(splitCashNum)}\n💳 โอน: ฿${formatMoney(splitTransferNum)}\nรวม: ฿${formatMoney(total)}\n\n❓ แน่ใจนะ?`)) {
+      if (!confirm(`✅ ${tr(config, 'ยืนยันการรับงาน')} (${tr(config, 'สด+โอน')})\n\n💵 ${tr(config, 'เงินสด')}: ฿${formatMoney(splitCashNum)}\n💳 ${tr(config, 'โอน')}: ฿${formatMoney(splitTransferNum)}\n${tr(config, 'รวม')}: ฿${formatMoney(total)}\n\n❓ ${tr(config, 'แน่ใจนะ?')}`)) {
         return;
       }
     } else {
-      const payLabel = paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด';
-      const altLabel = paymentMethod === 'transfer' ? 'เงินสด' : 'โอน';
-      if (!confirm(`✅ ยืนยันการรับงาน\n\nวิธีจ่าย: ${payLabel}\nยอด: ${formatMoney(total)} บาท\n\n❓ แน่ใจนะ? (ถ้าผิดให้กดยกเลิก แล้วเปลี่ยนเป็น "${altLabel}")`)) {
+      const payLabel = tr(config, paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด');
+      const altLabel = tr(config, paymentMethod === 'transfer' ? 'เงินสด' : 'โอน');
+      if (!confirm(`✅ ${tr(config, 'ยืนยันการรับงาน')}\n\n${tr(config, 'วิธีจ่าย')}: ${payLabel}\n${tr(config, 'ยอด')}: ${formatMoney(total)} ${tr(config, 'บาท')}\n\n❓ ${tr(config, 'แน่ใจนะ?')} (${tr(config, 'ถ้าผิดให้กดยกเลิก แล้วเปลี่ยนเป็น')} "${altLabel}")`)) {
         return;
       }
     }
@@ -3648,8 +3711,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           <span className="text-sm font-bold text-slate-700">{tr(config, "กลับ")}</span>
         </button>
         <div className="flex-1">
-          <h1 className="font-bold text-slate-900 text-lg">{isEdit ? 'แก้ไขรายการ' : 'รับงานใหม่'}</h1>
-          <p className="text-xs text-slate-500">{config.name} • {config.freeService ? 'ฟรีค่าฝากซัก-อบ-พับ' : 'ฝาก ซัก อบ พับ'}</p>
+          <h1 className="font-bold text-slate-900 text-lg">{tr(config, isEdit ? 'แก้ไขรายการ' : 'รับงานใหม่')}</h1>
+          <p className="text-xs text-slate-500">{config.name} • {tr(config, config.freeService ? 'ฟรีค่าฝากซัก-อบ-พับ' : 'ฝาก ซัก อบ พับ')}</p>
         </div>
       </div>
 
@@ -3727,10 +3790,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               </div>
               <div className="flex-1 text-left">
                 <p className={`font-extrabold text-base ${fromKev ? 'text-white' : 'text-purple-700'}`}>
-                  {fromKev ? '✓ งานนี้จากเคฟ' : '👨‍💼 งานนี้จากเคฟ?'}
+                  {tr(config, fromKev ? '✓ งานนี้จากเคฟ' : '👨‍💼 งานนี้จากเคฟ?')}
                 </p>
                 <p className={`text-xs ${fromKev ? 'text-purple-100' : 'text-slate-500'}`}>
-                  {fromKev ? 'แตะอีกครั้งเพื่อยกเลิก' : 'แตะเพื่อติ๊กก่อน แล้วค่อยกรอกข้อมูลลูกค้า'}
+                  {tr(config, fromKev ? 'แตะอีกครั้งเพื่อยกเลิก' : 'แตะเพื่อติ๊กก่อน แล้วค่อยกรอกข้อมูลลูกค้า')}
                 </p>
               </div>
               <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${fromKev ? 'bg-white' : 'bg-white border-2 border-purple-300'}`}>
@@ -3753,10 +3816,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             </div>
             <div className="flex-1 text-left">
               <p className={`font-extrabold text-base ${fromLine ? 'text-white' : 'text-green-700'}`}>
-                {fromLine ? '✓ งานนี้รับทาง Line' : '💬 งานนี้รับทาง Line?'}
+                {tr(config, fromLine ? '✓ งานนี้รับทาง Line' : '💬 งานนี้รับทาง Line?')}
               </p>
               <p className={`text-xs ${fromLine ? 'text-green-100' : 'text-slate-500'}`}>
-                {fromKev ? 'ใช้ร่วมกับเคฟไม่ได้' : (fromLine ? 'แตะอีกครั้งเพื่อยกเลิก' : 'ติ๊กถ้าลูกค้าติดต่อมาทาง Line')}
+                {tr(config, fromKev ? 'ใช้ร่วมกับเคฟไม่ได้' : (fromLine ? 'แตะอีกครั้งเพื่อยกเลิก' : 'ติ๊กถ้าลูกค้าติดต่อมาทาง Line'))}
               </p>
             </div>
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${fromLine ? 'bg-white' : 'bg-white border-2 border-green-300'}`}>
@@ -3766,18 +3829,18 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
         </button>
 
 
-        <Section iconName="user" title="ข้อมูลลูกค้า">
-          <Field label={needCustomerInfo ? 'ชื่อลูกค้า *' : 'ชื่อลูกค้า'}>
+        <Section iconName="user" title={tr(config, "ข้อมูลลูกค้า")}>
+          <Field label={tr(config, needCustomerInfo ? 'ชื่อลูกค้า *' : 'ชื่อลูกค้า')}>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={tr(config, "ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ")} className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needCustomerInfo && !nameOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
             {needCustomerInfo && !nameOk && <p className="text-xs text-amber-700 mt-1 font-medium">{tr(config, "จำเป็นต้องกรอก — ใช้เรียกลูกค้าตอนมารับผ้า")}</p>}
           </Field>
-          <Field label={needPhone ? 'เบอร์โทร *' : 'เบอร์โทร'}>
+          <Field label={tr(config, needPhone ? 'เบอร์โทร *' : 'เบอร์โทร')}>
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needPhone && !phoneOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
             {needPhone && !phoneOk && <p className="text-xs text-amber-700 mt-1 font-medium">{tr(config, "จำเป็นต้องกรอก — ใช้ติดต่อลูกค้าตอนงานเสร็จ")}</p>}
           </Field>
         </Section>
 
-        <Section iconName="camera" title="รูปตะกร้าผ้า">
+        <Section iconName="camera" title={tr(config, "รูปตะกร้าผ้า")}>
           <input ref={basketInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
           <input ref={basketCameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
           {basketPhoto ? (
@@ -3799,15 +3862,15 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               </button>
             </div>
           )}
-          <Field label="จำนวนผ้า (ตัว/ชุด)">
+          <Field label={tr(config, "จำนวนผ้า (ตัว/ชุด)")}>
             <input type="text" value={clothCount} onChange={(e) => setClothCount(e.target.value)} placeholder={tr(config, "เช่น 25 ตัว")} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
           </Field>
-          <Field label="⏰ เวลานัดรับ (สะดวกมารับ)">
+          <Field label={tr(config, "⏰ เวลานัดรับ (สะดวกมารับ)")}>
             <input type="text" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} placeholder={tr(config, "เช่น 18:00 วันนี้ / พรุ่งนี้เช้า")} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
           </Field>
         </Section>
 
-        <Section iconName="droplet" title="เครื่องซัก">
+        <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
           <div className="space-y-3">
             {config.washMachines.map(m => (
               <WashMachineRow key={m.size} machine={m} hasMultipleTemps={hasMultipleTemps} getQty={getQty} washItems={washItems} onUpdate={(temp, delta) => updateItem(washItems, setWashItems, m.size, delta, temp)} />
@@ -3815,7 +3878,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           </div>
         </Section>
 
-        <Section iconName="wind" title="เครื่องอบ">
+        <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
           <div className="space-y-2">
             {config.dryMachines.map(m => {
               const qty = getQty(dryItems, m.size, 'cold');
@@ -3845,12 +3908,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           </div>
         </Section>
 
-        <Section iconName="sparkles" title="รายการเสริม / ขายแยก">
+        <Section iconName="sparkles" title={tr(config, "รายการเสริม / ขายแยก")}>
           <p className="text-[11px] text-slate-500 -mt-2 mb-2">{tr(config, "💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ")}</p>
-          <CounterRow iconEmoji="🧴" label="น้ำยาซัก" sublabel={`฿${config.detergentPrice} / ซอง`} unit="ซอง" qty={detergentQty} onAdd={() => setDetergentQty(q => q + 1)} onRemove={() => setDetergentQty(q => Math.max(0, q - 1))} colorActive="bg-purple-500" />
-          <CounterRow iconEmoji="🌸" label="น้ำยาปรับผ้านุ่ม" sublabel={`฿${config.softenerPrice} / ซอง`} unit="ซอง" qty={softenerQty} onAdd={() => setSoftenerQty(q => q + 1)} onRemove={() => setSoftenerQty(q => Math.max(0, q - 1))} colorActive="bg-pink-500" />
+          <CounterRow iconEmoji="🧴" label={tr(config, "น้ำยาซัก")} sublabel={`฿${config.detergentPrice} / ซอง`} unit={tr(config, "ซอง")} qty={detergentQty} onAdd={() => setDetergentQty(q => q + 1)} onRemove={() => setDetergentQty(q => Math.max(0, q - 1))} colorActive="bg-purple-500" />
+          <CounterRow iconEmoji="🌸" label={tr(config, "น้ำยาปรับผ้านุ่ม")} sublabel={`฿${config.softenerPrice} / ซอง`} unit={tr(config, "ซอง")} qty={softenerQty} onAdd={() => setSoftenerQty(q => q + 1)} onRemove={() => setSoftenerQty(q => Math.max(0, q - 1))} colorActive="bg-pink-500" />
           {!config.freeService && (
-            <CounterRow iconEmoji="🧺" label="ค่าพับผ้า" sublabel={`฿${config.foldPricePerBasket} / ตะกร้า`} unit="ตะกร้า" qty={foldBaskets} onAdd={() => setFoldBaskets(q => q + 1)} onRemove={() => setFoldBaskets(q => Math.max(0, q - 1))} colorActive="bg-emerald-500" hint={foldBaskets === 0 ? '⚠️ ไม่คิดค่าพับ' : null} />
+            <CounterRow iconEmoji="🧺" label={tr(config, "ค่าพับผ้า")} sublabel={`฿${config.foldPricePerBasket} / ตะกร้า`} unit={tr(config, "ตะกร้า")} qty={foldBaskets} onAdd={() => setFoldBaskets(q => q + 1)} onRemove={() => setFoldBaskets(q => Math.max(0, q - 1))} colorActive="bg-emerald-500" hint={foldBaskets === 0 ? '⚠️ ไม่คิดค่าพับ' : null} />
           )}
           {config.freeService && (
             <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3 space-y-3">
@@ -3879,7 +3942,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
         </Section>
 
         {config.hasDelivery && (
-          <Section iconName="truck" title="บริการ Delivery">
+          <Section iconName="truck" title={tr(config, "บริการ Delivery")}>
             <p className="text-xs text-slate-500 mb-2">{tr(config, "ถ้ามีบริการส่งให้เลือกโซนตามแผนที่")}</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setDeliveryZone(null)} className={`p-3 rounded-xl border-2 transition ${!deliveryZone ? 'bg-slate-100 border-slate-400' : 'bg-slate-50 border-transparent'}`}>
@@ -3928,7 +3991,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
         )}
 
         {config.hasLinePromo && !deliveryZone && (
-          <Section iconName="tag" title="โปรโมชั่นพิเศษ">
+          <Section iconName="tag" title={tr(config, "โปรโมชั่นพิเศษ")}>
             <button onClick={() => setUseLinePromo(!useLinePromo)} className={`w-full rounded-xl p-3 flex items-start justify-between transition border-2 ${useLinePromo ? 'bg-green-50 border-green-400' : 'bg-slate-50 border-transparent'}`}>
               <div className="flex items-start gap-3">
                 <div className={`w-5 h-5 mt-0.5 rounded-md flex items-center justify-center transition flex-shrink-0 ${useLinePromo ? 'bg-green-500' : 'bg-white border-2 border-slate-300'}`}>
@@ -3936,7 +3999,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 </div>
                 <div className="text-left">
                   <span className={`text-sm font-bold ${useLinePromo ? 'text-green-900' : 'text-slate-700'}`}>💚 {tr(config, 'ลูกค้าแอดไลน์ครั้งแรก')}</span>
-                  <p className="text-xs text-slate-500 mt-0.5">ลด {config.linePromoDiscount} บาท (ไม่เกินค่าซัก)</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{tr(config, 'ลด')} {config.linePromoDiscount} {tr(config, 'บาท (ไม่เกินค่าซัก)')}</p>
                   <p className="text-xs text-amber-600 mt-0.5">{tr(config, "⚠️ เฉพาะหน้าร้าน + ต้องถ่ายรูปคูปอง")}</p>
                 </div>
               </div>
@@ -3974,7 +4037,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           </Section>
         )}
 
-        <Section iconName="dollar-sign" title="การชำระเงิน">
+        <Section iconName="dollar-sign" title={tr(config, "การชำระเงิน")}>
           <div>
             <p className="text-xs font-medium text-slate-600 mb-2">{tr(config, "วิธีชำระเงิน ")}<span className="text-rose-500">*</span></p>
             <div className="grid grid-cols-3 gap-2">
@@ -4002,7 +4065,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           {/* ช่องกรอกแยกเมื่อเลือก สด+โอน */}
           {paymentMethod === 'split' && (
             <div className="rounded-2xl p-4 border-2 border-amber-200 bg-amber-50 space-y-3">
-              <p className="text-xs font-bold text-amber-800">แบ่งจ่าย — กรอกทั้ง 2 ช่อง (รวมต้องเท่ายอด ฿{formatMoney(total)})</p>
+              <p className="text-xs font-bold text-amber-800">{tr(config, 'แบ่งจ่าย — กรอกทั้ง 2 ช่อง รวมต้องเท่ายอด')} ฿{formatMoney(total)}</p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs font-bold text-emerald-700 mb-1 block">{tr(config, "💵 เงินสด")}</label>
@@ -4046,8 +4109,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 const match = sum === total;
                 return (
                   <div className={`flex items-center justify-between text-sm font-bold rounded-lg px-3 py-2 ${match ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                    <span>รวม: ฿{formatMoney(sum)}</span>
-                    <span>{match ? '✓ ตรงยอด' : `${sum > total ? 'เกิน' : 'ขาด'} ฿${formatMoney(Math.abs(total - sum))}`}</span>
+                    <span>{tr(config, 'รวม')}: ฿{formatMoney(sum)}</span>
+                    <span>{match ? tr(config, '✓ ตรงยอด') : `${tr(config, sum > total ? 'เกิน' : 'ขาด')} ฿${formatMoney(Math.abs(total - sum))}`}</span>
                   </div>
                 );
               })()}
@@ -4085,7 +4148,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           <input ref={moneyInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setMoneyPhoto)} className="hidden" />
           <input ref={moneyCameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setMoneyPhoto)} className="hidden" />
           <div className="mt-3">
-            <p className="text-xs text-slate-600 mb-2">{paymentMethod === 'transfer' ? 'รูปสลิปโอน (ไม่บังคับ)' : 'รูปเงิน (ไม่บังคับ)'}</p>
+            <p className="text-xs text-slate-600 mb-2">{tr(config, paymentMethod === 'transfer' ? 'รูปสลิปโอน (ไม่บังคับ)' : 'รูปเงิน (ไม่บังคับ)')}</p>
             {moneyPhoto ? (
               <div className="relative">
                 <img src={moneyPhoto} className="w-full rounded-xl" />
@@ -4107,7 +4170,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             )}
           </div>
 
-          <Field label="หมายเหตุ (ไม่บังคับ)">
+          <Field label={tr(config, "หมายเหตุ (ไม่บังคับ)")}>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr(config, "เช่น แยกซักผ้าขาว, หอใน 405")} rows={2} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition resize-none" />
           </Field>
         </Section>
@@ -4118,8 +4181,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           <div className="flex items-center gap-2 mb-2">
             <div className="flex-1">
               <p className="text-xs text-slate-500">
-                ยอดรวม • {paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'}
-                {breakdown.totalDiscount > 0 && <span className="ml-1 text-rose-600 font-bold">• ลด ฿{breakdown.totalDiscount}</span>}
+                {tr(config, 'ยอดรวม')} • {tr(config, paymentMethod === 'transfer' ? 'โอน' : 'เงินสด')}
+                {breakdown.totalDiscount > 0 && <span className="ml-1 text-rose-600 font-bold">• {tr(config, 'ลด')} ฿{breakdown.totalDiscount}</span>}
               </p>
               <p className="text-xl font-extrabold text-slate-900">฿{formatMoney(total)}</p>
             </div>
@@ -7117,7 +7180,7 @@ function TokenExchangeReportView({ config, tokenExchanges, onDelete }) {
                                 ฿{formatMoney(t.amount)}
                               </span>
                               <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${pm === 'transfer' ? 'bg-violet-200 text-violet-800' : 'bg-emerald-200 text-emerald-800'}`}>
-                                {pm === 'transfer' ? '💳 โอน' : '💵 สด'}
+                                {tr(config, pm === 'transfer' ? '💳 โอน' : '💵 สด')}
                               </span>
                               {t.cleared && <span className="text-[10px] text-emerald-600 font-bold">✓ เคลียแล้ว</span>}
                             </div>
