@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v82-2026-09-05';
+  window.APP_VERSION = 'v83-2026-09-05';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -376,6 +376,7 @@ const TEDDY_CONFIG = {
   linePromoDiscount: 40,
   hasKev: true,
   deliveryZones: [
+    { id: 'free', label: 'ส่งฟรี 0฿ (โปร นศ.)', price: 0, riderFee: 20, color: '#14B8A6' },
     { id: 'green', label: 'เขียว (ใกล้สุด)', price: 20, color: '#10B981' },
     { id: 'yellow', label: 'เหลือง', price: 30, color: '#F59E0B' },
     { id: 'blue', label: 'ฟ้า', price: 40, color: '#3B82F6' },
@@ -1099,6 +1100,14 @@ function calculateBreakdown(order, config) {
 
 const calculateTotal = (order, config) => calculateBreakdown(order, config).total;
 
+// เงินตอบแทนคนส่ง: แม่บ้าน = ได้ตามค่าโซน (โซนฟรี = 0) / ไรเดอร์ = riderFee ถ้ามี (โซนฟรีร้านจ่าย 20)
+function riderFeeFor(order, config) {
+  const z = config.deliveryZones && config.deliveryZones.find(z => z.id === order.deliveryZone);
+  if (!z) return 0;
+  if (order.riderId === 'staff') return z.price || 0;
+  return (z.riderFee != null ? z.riderFee : z.price) || 0;
+}
+
 
 // ============ DEMO DATA - DISABLED ============
 // แอปเริ่มต้นว่างเปล่า ไม่มีตัวอย่าง
@@ -1774,7 +1783,8 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
     // tokenEnabled: ค่าเริ่มต้น = เปิด (ต้องตั้งปิดเองในหน้าเจ้าของ)
     // โปรวันพุธ/ดึก: ค่าใน settings ชนะ ถ้าไม่เคยตั้งใช้ค่า config (hasDayPromo)
     const dayPromoEnabled = shopSettings.dayPromoEnabled != null ? shopSettings.dayPromoEnabled : (baseConfig.hasDayPromo !== false);
-    return { ...baseConfig, riders: [...base, ...extra], settings: shopSettings, tokenEnabled: shopSettings.tokenEnabled !== false, dayPromoEnabled };
+    const staffRider = { id: 'staff', label: 'แม่บ้าน', emoji: '🧕', color: '#0D9488' };
+    return { ...baseConfig, riders: [...base, staffRider, ...extra], settings: shopSettings, tokenEnabled: shopSettings.tokenEnabled !== false, dayPromoEnabled };
   }, [baseConfig, cloudRiders, shopSettings]);
 
   const [view, setView] = useState('home');
@@ -2104,8 +2114,7 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
     // คำนวณยอดรวม
     const totalAmount = matched.reduce((sum, o) => {
       if (isService) return sum + ((o.foldBaskets || 0) * config.foldPricePerBasket);
-      const zone = config.deliveryZones?.find(z => z.id === o.deliveryZone);
-      return sum + (zone?.price || 0);
+      return sum + riderFeeFor(o, config);
     }, 0);
     
     if (!confirm(`${label}?\n\nจำนวน ${matched.length} รายการ\nยอดรวม: ${formatMoney(totalAmount)} บาท`)) return;
@@ -5925,10 +5934,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
   const unpaidDeliveryOrders = config.hasDelivery
     ? orders.filter(o => !!o.deliveryZone && !o.deliveryFeePaid)
     : [];
-  const unpaidDeliveryTotal = unpaidDeliveryOrders.reduce((sum, o) => {
-    const zone = config.deliveryZones?.find(z => z.id === o.deliveryZone);
-    return sum + (zone?.price || 0);
-  }, 0);
+  const unpaidDeliveryTotal = unpaidDeliveryOrders.reduce((sum, o) => sum + riderFeeFor(o, config), 0);
   
   const todayOrders = orders.filter(o => {
     const d = new Date(o.createdAt); const today = new Date();
@@ -7055,10 +7061,7 @@ function DeliveryReportView({ orders, config, onPay }) {
   // รายการ Delivery ทั้งหมดในช่วง
   const deliveryOrders = orders.filter(o => !!o.deliveryZone && inPeriod(o));
   
-  const getOrderFee = (o) => {
-    const z = config.deliveryZones?.find(z => z.id === o.deliveryZone);
-    return z?.price || 0;
-  };
+  const getOrderFee = (o) => riderFeeFor(o, config);
 
   // รวมตาม rider
   const riderStats = useMemo(() => {
