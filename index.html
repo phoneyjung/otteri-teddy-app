@@ -30,7 +30,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v87-2026-09-05';
+  window.APP_VERSION = 'v89-2026-09-05';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -688,12 +688,21 @@ async function saveOrderToCloud(brand, order) {
     // ทำให้รับประกันว่าไม่มี undefined แม้จะมี edge case
     data = JSON.parse(JSON.stringify(data));
     
+    // ⚡ เขียนแบบ optimistic: ไม่รอเซิร์ฟเวอร์ตอบ (เน็ตแกว่งก็ไปหน้าสรุปได้ทันที)
+    // Firestore persistence เก็บงานค้างใน IndexedDB — เน็ตกลับมา/เปิดแอปใหม่ ซิงก์ต่อให้เอง
     if (isFirestoreId(order.id)) {
-      // มี Firestore id → update doc เดิม (merge เพื่อกัน race condition)
-      await window.db.collection('orders').doc(order.id).set(data, { merge: true });
+      window.db.collection('orders').doc(order.id).set(data, { merge: true })
+        .catch(e => { console.error('saveOrder sync error:', e); alert('⚠️ ซิงก์ออเดอร์ไม่ผ่าน: ' + e.message); });
       return order.id;
     }
-    // ไม่มี id หรือเป็น local id → สร้าง doc ใหม่ใน Firestore
+    // มี clientId (จากฟอร์มรับงาน) → ใช้ doc id เดิมเสมอ = กดบันทึกซ้ำไม่เกิดออเดอร์ซ้ำ
+    if (data.clientId) {
+      const fixedId = brand + '-' + data.clientId;
+      window.db.collection('orders').doc(fixedId).set(data, { merge: true })
+        .catch(e => { console.error('saveOrder sync error:', e); alert('⚠️ ซิงก์ออเดอร์ไม่ผ่าน: ' + e.message); });
+      return fixedId;
+    }
+    // ไม่มี id → สร้าง doc ใหม่ใน Firestore
     const docRef = await window.db.collection('orders').add(data);
     return docRef.id;
   } catch (e) {
@@ -1005,6 +1014,26 @@ function saveCollections(brand, items) { try { localStorage.setItem(getCollectio
 
 // ============ HELPERS ============
 const formatMoney = (n) => new Intl.NumberFormat('th-TH').format(n || 0);
+
+// 🔔 เสียงติ๊งตอนบันทึกสำเร็จ (สร้างเสียงเอง ไม่ต้องมีไฟล์)
+function playSuccessSound() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!window.__sndCtx) window.__sndCtx = new Ctx();
+    const ctx = window.__sndCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    [[880, 0], [1318.5, 0.12]].forEach(([f, t]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.28);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.32);
+    });
+  } catch (e) { /* บางเครื่องไม่รองรับ — ข้ามเงียบๆ */ }
+}
 
 // ============ 🇲🇲 ภาษาพม่า (หน้าแม่บ้าน) — ให้พนักงานพม่าตรวจแล้วแจ้งแก้ได้ ============
 const MM_DICT = {
@@ -2110,8 +2139,9 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
       // เลขคิวรายวัน — เรียงต่อ 1,2,3,... รีเซตทุกวัน (นับจากงานของวันนี้)
       const qStart = new Date(); qStart.setHours(0, 0, 0, 0);
       orderWithoutId.queueNo = orders.filter(o => (o.createdAt || 0) >= qStart.getTime()).length + 1;
-      const newId = await saveOrderToCloud(config.brand, orderWithoutId);
+      const newId = await saveOrderToCloud(config.brand, orderWithoutId); // คืน id ทันที ไม่รอเน็ต
       const savedOrder = { ...orderWithoutId, id: newId };
+      playSuccessSound();
       setSelectedOrder(savedOrder);
       if (config.hasPrinter) setAutoOpenTicket(true); // เปิดใบงานให้เลย (เฉพาะสาขาที่มีเครื่องพิมพ์)
       setView('receipt');
@@ -2722,6 +2752,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
         dateKey: new Date().toISOString().slice(0, 10),
       };
       const id = await saveCreditEntry(config.brand, entry);
+      playSuccessSound();
       setSavedPromo({ ...entry, id, createdAt: Date.now() });
       setShowPromoForm(false);
       setPromoAmount(''); setPromoName(''); setPromoPhoto(''); setPromoNote(''); setPromoMachine('');
@@ -2842,6 +2873,7 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
     setSavingToken(false);
     if (ok) {
       // เก็บข้อมูลไว้แสดง popup share
+      playSuccessSound();
       setSavedToken(submittedData);
       // ล้าง form
       setTokenAmount('');
@@ -3463,6 +3495,9 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
 }
 
 function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const clientIdRef = useRef(null);
   const isEdit = !!editingOrder;
   const [name, setName] = useState(editingOrder?.customerName || '');
   const [phone, setPhone] = useState(editingOrder?.customerPhone || '');
@@ -3700,7 +3735,17 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       cashCollected: paymentMethod === 'split' ? (editingOrder?.cashCollected || false) : null,
       transferCollected: paymentMethod === 'split' ? (editingOrder?.transferCollected || false) : null,
     };
-    onSubmit(order);
+    if (submittingRef.current) return; // กันกดรัว
+    if (!editingOrder) {
+      if (!clientIdRef.current) clientIdRef.current = 'c' + Date.now() + Math.random().toString(36).slice(2, 7);
+      order.clientId = clientIdRef.current; // ฟอร์มเดียว = ออเดอร์เดียว แม้กดซ้ำ/รีทราย
+    }
+    submittingRef.current = true;
+    setSubmitting(true);
+    Promise.resolve(onSubmit(order)).finally(() => {
+      submittingRef.current = false;
+      setSubmitting(false);
+    });
   };
 
   return (
@@ -4201,8 +4246,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <Icon name="x" className="w-4 h-4" />
               <span className="text-sm">{tr(config, "ยกเลิก")}</span>
             </button>
-            <button onClick={handleSubmit} disabled={!canSubmit} className={`flex-1 py-3 rounded-xl font-bold transition ${canSubmit ? 'text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400'}`} style={canSubmit ? {background: config.gradient} : {}}>
-              {isEdit ? '💾 บันทึกการแก้ไข' : '✓ ' + tr(config, 'บันทึกใบรับงาน')}
+            <button onClick={handleSubmit} disabled={!canSubmit || submitting} className={`flex-1 py-3 rounded-xl font-bold transition ${canSubmit && !submitting ? 'text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400'}`} style={canSubmit && !submitting ? {background: config.gradient} : {}}>
+              {submitting ? '⏳ ' + tr(config, 'กำลังบันทึก…') : (isEdit ? '💾 บันทึกการแก้ไข' : '✓ ' + tr(config, 'บันทึกใบรับงาน'))}
             </button>
           </div>
         </div>
