@@ -12,6 +12,7 @@
 <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 
 <!-- Firebase SDK (compat mode for non-module use) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -30,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v92-2026-09-07';
+  window.APP_VERSION = 'v93-2026-09-07';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -490,6 +491,38 @@ const COIN_POINTS = {
   },
 };
 COIN_POINTS.trainee = COIN_POINTS.teddy;
+
+// ============ 💳 PromptPay QR ใส่ยอดอัตโนมัติ — payload ตรวจกับ QR จริงของ K+ แล้ว ============
+const PROMPTPAY_MERCHANTS = {
+  teddy: '0016A0000006770101110315004999148976029', // K+ Teddy 1 (บัญชีคุณปุรวิชญ์)
+};
+PROMPTPAY_MERCHANTS.trainee = PROMPTPAY_MERCHANTS.teddy;
+
+function ppCrc16(s) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < s.length; i++) {
+    crc ^= s.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+// amount = บาท (0/ไม่ใส่ = QR แบบไม่ระบุยอด)
+function buildPromptPayQr(brand, amount) {
+  const merchant = PROMPTPAY_MERCHANTS[brand];
+  if (!merchant || !window.qrcode) return null;
+  try {
+    const f = (id, v) => id + String(v.length).padStart(2, '0') + v;
+    let p = f('00', '01') + f('01', amount > 0 ? '12' : '11') + f('29', merchant) + f('53', '764');
+    if (amount > 0) p += f('54', amount.toFixed(2));
+    p += f('58', 'TH') + '6304';
+    p += ppCrc16(p);
+    const q = window.qrcode(0, 'M');
+    q.addData(p);
+    q.make();
+    return q.createDataURL(6, 3);
+  } catch (e) { console.error('buildPromptPayQr:', e); return null; }
+}
 
 // ============ 💳 QR รับโอน K+ (ฝัง base64 — ย่อแล้ว verify ด้วย cv2 ว่าสแกนได้) ============
 const PAYMENT_QRS = {
@@ -4362,7 +4395,7 @@ async function printImageDataUrl(dataUrl, onProgress) {
 
 function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) {
   const receiptRef = useRef(null);
-  const payQr = PAYMENT_QRS[config.brand]; // QR รับโอนของร้านนี้ (ไม่มี = ไม่โชว์กล่อง)
+  const payQr = PAYMENT_QRS[config.brand]; // QR static สำรอง (กรณีไลบรารีโหลดไม่ทัน)
   const jobTicketRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const [showJobTicket, setShowJobTicket] = useState(false);
@@ -4730,21 +4763,29 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
             </div>
           </div>
 
-          {payQr && (order.paymentMethod === 'transfer' || order.paymentMethod === 'split') && (
-            <div className="px-6 py-3 bg-sky-50 border-t border-sky-200">
-              <div className="flex items-center gap-3">
-                <div className="bg-white p-1.5 rounded-xl border border-slate-200 flex-shrink-0">
-                  <img src={payQr} alt="QR โอนเงิน" style={{width: '96px', height: '96px', display: 'block'}} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold" style={{color: headerColor}}>💳 สแกนจ่ายได้เลย · ทุกธนาคาร</p>
-                  <p className="text-2xl font-extrabold text-slate-900 leading-tight">฿{formatMoney(order.paymentMethod === 'split' ? (order.transferAmount || 0) : total)}</p>
-                  <p className="text-[11px] text-slate-600">นาย ปุรวิชญ์ หงษาชาติ · KBank</p>
-                  <p className="text-[10px] text-slate-400">โอนแล้วส่งสลิปในแชทนี้ 🙏</p>
+          {(() => {
+            if (order.paymentMethod !== 'transfer' && order.paymentMethod !== 'split') return null;
+            const amt = order.paymentMethod === 'split' ? (order.transferAmount || 0) : total;
+            const qrSrc = buildPromptPayQr(config.brand, amt) || payQr;
+            if (!qrSrc) return null;
+            const isDynamic = !!PROMPTPAY_MERCHANTS[config.brand] && !!window.qrcode;
+            return (
+              <div className="px-6 py-3 bg-sky-50 border-t border-sky-200">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white p-1.5 rounded-xl border border-slate-200 flex-shrink-0">
+                    <img src={qrSrc} alt="QR โอนเงิน" style={{width: '96px', height: '96px', display: 'block'}} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold" style={{color: headerColor}}>💳 สแกนจ่ายได้เลย · ทุกธนาคาร</p>
+                    <p className="text-2xl font-extrabold text-slate-900 leading-tight">฿{formatMoney(amt)}</p>
+                    {isDynamic && <p className="text-[10px] font-bold text-emerald-600">✓ สแกนแล้วยอดขึ้นในแอปธนาคารอัตโนมัติ</p>}
+                    <p className="text-[11px] text-slate-600">นาย ปุรวิชญ์ หงษาชาติ · KBank</p>
+                    <p className="text-[10px] text-slate-400">โอนแล้วส่งสลิปในแชทนี้ 🙏</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {order.note && (
             <div className="px-6 py-3 bg-amber-50 border-t border-amber-200">
