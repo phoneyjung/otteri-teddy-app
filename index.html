@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v93-2026-09-07';
+  window.APP_VERSION = 'v94-2026-09-07';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -496,6 +496,12 @@ COIN_POINTS.trainee = COIN_POINTS.teddy;
 const PROMPTPAY_MERCHANTS = {
   teddy: '0016A0000006770101110315004999148976029', // K+ Teddy 1 (บัญชีคุณปุรวิชญ์)
 };
+PROMPTPAY_MERCHANTS.teddy2 = '0016A0000006770101110315004999219820098'; // K+ Teddy 2 (บัญชีคุณทองไป่)
+const PAYMENT_ACCOUNT_NAMES = {
+  teddy: 'นาย ปุรวิชญ์ หงษาชาติ · KBank',
+  teddy2: 'นาย ทองไป่ สยองเดช · KBank',
+};
+PAYMENT_ACCOUNT_NAMES.trainee = PAYMENT_ACCOUNT_NAMES.teddy;
 PROMPTPAY_MERCHANTS.trainee = PROMPTPAY_MERCHANTS.teddy;
 
 function ppCrc16(s) {
@@ -528,6 +534,7 @@ function buildPromptPayQr(brand, amount) {
 const PAYMENT_QRS = {
   teddy: 'data:image/png;base64,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', // Thai QR / K+ Teddy 1 (gen ใหม่จาก payload เดิม — verify แล้ว)
 };
+PAYMENT_QRS.teddy2 = 'data:image/png;base64,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'; // Thai QR K+ Teddy 2 (verify แล้ว)
 PAYMENT_QRS.trainee = PAYMENT_QRS.teddy; // โหมดฝึกใช้ของ Teddy 1
 
 // ============ 📱 แชร์แอป (QR ฝัง base64 — verify ด้วย cv2 แล้ว) ============
@@ -4779,7 +4786,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
                     <p className="text-xs font-bold" style={{color: headerColor}}>💳 สแกนจ่ายได้เลย · ทุกธนาคาร</p>
                     <p className="text-2xl font-extrabold text-slate-900 leading-tight">฿{formatMoney(amt)}</p>
                     {isDynamic && <p className="text-[10px] font-bold text-emerald-600">✓ สแกนแล้วยอดขึ้นในแอปธนาคารอัตโนมัติ</p>}
-                    <p className="text-[11px] text-slate-600">นาย ปุรวิชญ์ หงษาชาติ · KBank</p>
+                    <p className="text-[11px] text-slate-600">{PAYMENT_ACCOUNT_NAMES[config.brand] || ''}</p>
                     <p className="text-[10px] text-slate-400">โอนแล้วส่งสลิปในแชทนี้ 🙏</p>
                   </div>
                 </div>
