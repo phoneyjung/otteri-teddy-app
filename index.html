@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v94-2026-09-07';
+  window.APP_VERSION = 'v95-2026-09-14';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1166,7 +1166,7 @@ const MM_DICT = {
   '• สลับ': '• ပြောင်း',
   '‹ กลับ': '‹ နောက်သို့',
   '⚙️ จัดการแม่บ้าน': '⚙️ ဝန်ထမ်းစီမံရန်',
-  '⚠️ เฉพาะหน้าร้าน + ต้องถ่ายรูปคูปอง': '⚠️ ဆိုင်ရှေ့သာ + ကူပွန်ဓာတ်ပုံရိုက်ရမည်',
+  '⚠️ ลูกค้าต้องมาที่ร้าน + ต้องถ่ายรูปคูปอง': '⚠️ ဖောက်သည် ဆိုင်သို့လာရမည် + ကူပွန်ဓာတ်ပုံရိုက်ရမည်',
   '➕ เพิ่มแม่บ้านใหม่': '➕ ဝန်ထမ်းအသစ်ထည့်ရန်',
   '🎁 ให้ลูกค้าเป็น': '🎁 ဖောက်သည်ကိုပေးမည်မှာ',
   '💚 แอดไลน์ครั้งแรก': '💚 LINE ပထမဆုံး add',
@@ -1353,9 +1353,9 @@ function calculateBreakdown(order, config) {
   // Promotion discount (per wash tank)
   const promoDiscount = promo.active ? promo.discountPerWash * washCount : 0;
   
-  // Line promo (Teddy only) — only for in-store (no delivery)
+  // Line promo (Teddy only) — ใช้ได้ทั้งหน้าร้านและเดลิเวอรี่ (ลูกค้าเอาผ้ามาส่งเองแต่ให้ไปส่งคืนที่ห้อง)
   let lineDiscount = 0;
-  if (config.hasLinePromo && order.useLinePromo && !order.deliveryZone) {
+  if (config.hasLinePromo && order.useLinePromo) {
     // ลดได้ไม่เกินค่าซัก
     const remainingWash = washSubtotal - promoDiscount;
     lineDiscount = Math.min(config.linePromoDiscount, Math.max(0, remainingWash));
@@ -3682,13 +3682,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
 
-  // Auto turn off line promo when delivery is selected
+  // Clear rider when delivery cancelled (คูปองแอดไลน์ใช้ได้ทั้งหน้าร้าน/เดลิเวอรี่แล้ว)
   useEffect(() => {
-    if (deliveryZone && useLinePromo) {
-      setUseLinePromo(false);
-      setLinePromoPhoto('');
-    }
-    // Clear rider when delivery cancelled
     if (!deliveryZone && riderId) {
       setRiderId(null);
     }
@@ -4083,7 +4078,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
         {config.hasLinePromo && !deliveryZone && (
           <Section iconName="tag" title={tr(config, "โปรโมชั่นพิเศษ")}>
-            <button onClick={() => setUseLinePromo(!useLinePromo)} className={`w-full rounded-xl p-3 flex items-start justify-between transition border-2 ${useLinePromo ? 'bg-green-50 border-green-400' : 'bg-slate-50 border-transparent'}`}>
+            <button onClick={() => {
+              if (!useLinePromo && !window.confirm('💚 คูปองแอดไลน์ครั้งแรก\n\nสำหรับลูกค้าที่มาที่ร้านเท่านั้น\n(ลูกค้าเอาผ้ามาส่งเอง — จะให้ไปส่งคืนที่ห้องก็ได้)\n\n✅ ลูกค้ามาที่ร้านใช่ไหม?')) return;
+              setUseLinePromo(!useLinePromo);
+            }} className={`w-full rounded-xl p-3 flex items-start justify-between transition border-2 ${useLinePromo ? 'bg-green-50 border-green-400' : 'bg-slate-50 border-transparent'}`}>
               <div className="flex items-start gap-3">
                 <div className={`w-5 h-5 mt-0.5 rounded-md flex items-center justify-center transition flex-shrink-0 ${useLinePromo ? 'bg-green-500' : 'bg-white border-2 border-slate-300'}`}>
                   {useLinePromo && <Icon name="check" className="w-3 h-3 text-white" strokeWidth={4} />}
@@ -4091,7 +4089,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 <div className="text-left">
                   <span className={`text-sm font-bold ${useLinePromo ? 'text-green-900' : 'text-slate-700'}`}>💚 {tr(config, 'ลูกค้าแอดไลน์ครั้งแรก')}</span>
                   <p className="text-xs text-slate-500 mt-0.5">{tr(config, 'ลด')} {config.linePromoDiscount} {tr(config, 'บาท (ไม่เกินค่าซัก)')}</p>
-                  <p className="text-xs text-amber-600 mt-0.5">{tr(config, "⚠️ เฉพาะหน้าร้าน + ต้องถ่ายรูปคูปอง")}</p>
+                  <p className="text-xs text-amber-600 mt-0.5">{tr(config, "⚠️ ลูกค้าต้องมาที่ร้าน + ต้องถ่ายรูปคูปอง")}</p>
                 </div>
               </div>
             </button>
