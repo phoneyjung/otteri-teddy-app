@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v95-2026-09-14';
+  window.APP_VERSION = 'v96-2026-09-14';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -3682,6 +3682,18 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
 
+  // ยืนยันเงื่อนไขคูปองแอดไลน์ — ใช้ทั้งตอนติ๊กคูปอง และตอนเลือกโซนส่งขณะคูปองเปิดอยู่
+  const confirmLinePromo = () => window.confirm('💚 คูปองแอดไลน์ครั้งแรก\n\nสำหรับลูกค้าที่มาที่ร้านเท่านั้น\n(ลูกค้าเอาผ้ามาส่งเอง — จะให้ไปส่งคืนที่ห้องก็ได้)\n\n✅ ลูกค้ามาที่ร้านใช่ไหม?');
+
+  // เลือกโซนส่ง: ถ้าคูปองเปิดอยู่ ต้องยืนยันว่าลูกค้ามาที่ร้านจริง — ไม่ใช่ก็ปิดคูปองให้
+  const pickDeliveryZone = (zoneId) => {
+    if (zoneId && useLinePromo && !confirmLinePromo()) {
+      setUseLinePromo(false);
+      setLinePromoPhoto('');
+    }
+    setDeliveryZone(zoneId);
+  };
+
   // Clear rider when delivery cancelled (คูปองแอดไลน์ใช้ได้ทั้งหน้าร้าน/เดลิเวอรี่แล้ว)
   useEffect(() => {
     if (!deliveryZone && riderId) {
@@ -4039,7 +4051,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
                 </div>
               </button>
               {config.deliveryZones.map(z => (
-                <button key={z.id} onClick={() => setDeliveryZone(z.id)} className={`p-3 rounded-xl border-2 transition ${deliveryZone === z.id ? 'border-current' : 'bg-slate-50 border-transparent'}`} style={deliveryZone === z.id ? {backgroundColor: z.color + '20', color: z.color} : {}}>
+                <button key={z.id} onClick={() => pickDeliveryZone(z.id)} className={`p-3 rounded-xl border-2 transition ${deliveryZone === z.id ? 'border-current' : 'bg-slate-50 border-transparent'}`} style={deliveryZone === z.id ? {backgroundColor: z.color + '20', color: z.color} : {}}>
                   <div className="flex flex-col items-center gap-1">
                     <div className="w-4 h-4 rounded-full" style={{backgroundColor: z.color}}></div>
                     <span className={`font-bold text-xs ${deliveryZone === z.id ? '' : 'text-slate-600'}`} style={deliveryZone === z.id ? {color: z.color} : {}}>{z.label}</span>
@@ -4079,7 +4091,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
         {config.hasLinePromo && !deliveryZone && (
           <Section iconName="tag" title={tr(config, "โปรโมชั่นพิเศษ")}>
             <button onClick={() => {
-              if (!useLinePromo && !window.confirm('💚 คูปองแอดไลน์ครั้งแรก\n\nสำหรับลูกค้าที่มาที่ร้านเท่านั้น\n(ลูกค้าเอาผ้ามาส่งเอง — จะให้ไปส่งคืนที่ห้องก็ได้)\n\n✅ ลูกค้ามาที่ร้านใช่ไหม?')) return;
+              if (!useLinePromo && !confirmLinePromo()) return;
               setUseLinePromo(!useLinePromo);
             }} className={`w-full rounded-xl p-3 flex items-start justify-between transition border-2 ${useLinePromo ? 'bg-green-50 border-green-400' : 'bg-slate-50 border-transparent'}`}>
               <div className="flex items-start gap-3">
