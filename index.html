@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v96-2026-09-14';
+  window.APP_VERSION = 'v97-2026-09-14';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4088,7 +4088,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           </Section>
         )}
 
-        {config.hasLinePromo && !deliveryZone && (
+        {config.hasLinePromo && (
           <Section iconName="tag" title={tr(config, "โปรโมชั่นพิเศษ")}>
             <button onClick={() => {
               if (!useLinePromo && !confirmLinePromo()) return;
