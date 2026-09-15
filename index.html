@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v98-2026-09-15';
+  window.APP_VERSION = 'v99-2026-09-15';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -3688,6 +3688,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     }
     return editingOrder?.createdAt || Date.now();
   })();
+  // 🔧 งานภายในร้าน — ต้องประกาศก่อนถูกใช้ด้านล่าง (กติกา const ก่อนใช้)
+  const isInternal = !!internalType;
+  const customAmt = parseInt(internalCustom, 10) || 0;
+
   const tempOrder = { 
     washItems, dryItems, detergentQty, softenerQty, foldBaskets,
     deliveryZone, useLinePromo,
@@ -3702,8 +3706,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   // Teddy 2 บังคับใส่เบอร์ลูกค้า (ใช้ติดต่อกลับ/ตามงาน)
   // บังคับชื่อ + เบอร์ เฉพาะลูกค้าหน้าร้าน (งาน LINE / เคฟ ไม่บังคับ)
   const isWalkIn = !fromKev && !fromLine;
-  const isInternal = !!internalType; // 🔧 งานภายในร้าน (ล้าง/ทดสอบ) — ไม่ใช่รายได้
-  const customAmt = parseInt(internalCustom, 10) || 0;
   const needCustomerInfo = !isInternal && !!config.requirePhone && isWalkIn;
   const needPhone = needCustomerInfo;
   const phoneOk = !needPhone || phone.trim().length >= 9;
