@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v104-2026-09-15';
+  window.APP_VERSION = 'v105-2026-09-15';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4704,12 +4704,22 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
             </div>
           </div>
 
-          <div className="bg-slate-900 text-white text-center py-2.5">
-            <h2 className="text-base font-bold tracking-widest">ใบรับงานบริการซักผ้า</h2>
-            <p className="text-slate-300 text-xs mt-0.5">LAUNDRY SERVICE RECEIPT</p>
-          </div>
+          {internal ? (
+            <div className="bg-slate-900 text-center py-5 px-4 border-b-4 border-amber-400">
+              <p className="text-amber-300 text-xs font-bold tracking-widest mb-1">🔧 งานภายในร้าน · ไม่ใช่รายการลูกค้า</p>
+              <p className="text-white text-3xl font-extrabold leading-tight">
+                {(INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).emoji} {(INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).label || order.internalType}
+              </p>
+              {order.internalReason && <p className="text-amber-100 text-sm mt-1.5">{order.internalReason}</p>}
+            </div>
+          ) : (
+            <div className="bg-slate-900 text-white text-center py-2.5">
+              <h2 className="text-base font-bold tracking-widest">ใบรับงานบริการซักผ้า</h2>
+              <p className="text-slate-300 text-xs mt-0.5">LAUNDRY SERVICE RECEIPT</p>
+            </div>
+          )}
 
-          <div className="px-6 py-4" style={{background: 'linear-gradient(to bottom, ' + headerColor + '15, white)'}}>
+          {!internal && <div className="px-6 py-4" style={{background: 'linear-gradient(to bottom, ' + headerColor + '15, white)'}}>
             <p className="text-xs font-bold tracking-wider mb-2" style={{color: headerColor}}>▎ ข้อมูลลูกค้า</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               <div>
@@ -4739,7 +4749,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
                 </div>
               )}
             </div>
-          </div>
+          </div>}
 
           <div className="px-6 py-4 bg-white border-t border-slate-100">
             <p className="text-xs font-bold tracking-wider mb-3" style={{color: headerColor}}>▎ รายการบริการ</p>
@@ -4872,15 +4882,8 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
           </div>
 
           {internal && (
-            <div className="px-6 py-3 border-y-4 border-amber-400" style={{background: '#FEF3C7'}}>
-              <p className="text-base font-extrabold text-slate-900">
-                🔧 งานภายในร้าน — ไม่ใช่รายการลูกค้า
-              </p>
-              <p className="text-sm font-bold text-slate-800 mt-0.5">
-                ประเภท: {(INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).label || order.internalType}
-              </p>
-              {order.internalReason && <p className="text-sm text-slate-700">เหตุผล: {order.internalReason}</p>}
-              <p className="text-xs text-slate-600 mt-1">⚠️ ไม่นับเป็นรายได้ · เครดิตที่ใช้ ฿{formatMoney(total)}</p>
+            <div className="px-6 py-2.5 border-y-4 border-amber-400 text-center" style={{background: '#FEF3C7'}}>
+              <p className="text-sm font-bold text-slate-800">⚠️ ไม่นับเป็นรายได้ · เครดิตที่ใช้ ฿{formatMoney(total)}</p>
             </div>
           )}
 
