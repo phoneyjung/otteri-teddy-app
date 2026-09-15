@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v97-2026-09-14';
+  window.APP_VERSION = 'v98-2026-09-15';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1045,6 +1045,15 @@ function subscribeToShopSettings(brand, callback) {
   );
 }
 
+// 🔧 งานภายในร้าน (ล้างเครื่อง/ทดสอบ) — ไม่ใช่รายได้ แต่ใช้เครดิตจริง
+const INTERNAL_TYPES = [
+  { id: 'clean', label: 'ล้างเครื่อง', emoji: '🧼' },
+  { id: 'test', label: 'ทดสอบเครื่อง', emoji: '🔧' },
+  { id: 'redo', label: 'ซักซ้ำให้ลูกค้า', emoji: '🔁' },
+  { id: 'other', label: 'อื่นๆ', emoji: '📝' },
+];
+const isInternalOrder = (o) => !!(o && o.internalType);
+
 // เครดิตที่แม่บ้านต้องสแกนให้ 1 ออเดอร์ = ราคาเครื่องล้วน (ซัก + อบ + หยอดเพิ่ม)
 // ไม่รวมน้ำยา/พับ/ค่าส่ง เพราะไม่ได้จ่ายผ่านเครื่อง
 function creditForOrder(order, config) {
@@ -1313,6 +1322,14 @@ function checkPromotion(timestamp) {
 
 // ============ CALCULATE BREAKDOWN ============
 function calculateBreakdown(order, config) {
+  // 🔧 งานภายใน + กรอกยอดเครดิตเอง → ใช้ยอดนั้นตรงๆ
+  if (order.internalType && order.internalCustom > 0) {
+    const amt = order.internalCustom;
+    return { washSubtotal: amt, drySubtotal: 0, dryTopUpTotal: 0, detergentTotal: 0, softenerTotal: 0,
+      foldTotal: 0, serviceTotal: 0, deliveryTotal: 0, promoDiscount: 0, lineDiscount: 0,
+      totalDiscount: 0, promo: { active: false, type: null, label: '', discountPerWash: 0 },
+      washCount: 0, total: amt };
+  }
   // noDayPromo = ออเดอร์ที่สร้างตอนโปรวันพุธ/ดึกถูกปิด — ไม่ให้ส่วนลด (ออเดอร์เก่าไม่มีธงนี้ คิดแบบเดิม)
   const promo = order.noDayPromo ? { active: false, type: null, label: '', discountPerWash: 0 } : checkPromotion(order.createdAt || Date.now());
   
@@ -2087,6 +2104,7 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
     try { return localStorage.getItem('printServer-' + config.brand) === '1'; } catch { return false; }
   });
   const [printServerStatus, setPrintServerStatus] = useState('');
+  const [internalMode, setInternalMode] = useState(false); // 🔧 เปิดหน้ารับงานในโหมดงานภายในร้าน
   const [autoOpenTicket, setAutoOpenTicket] = useState(false); // เปิดใบงานอัตโนมัติหลังรับงานใหม่
 
   // Real-time subscription to Firestore
@@ -2437,9 +2455,9 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
           🔄 กำลังเชื่อมต่อ cloud...
         </div>
       )}
-      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setInternalMode(false); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setView('newOrder'); }} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
-      {view === 'newOrder' && <NewOrderView config={config} onCancel={() => setView('home')} onSubmit={handleNewOrder} isOwner={isOwner} />}
+      {view === 'newOrder' && <NewOrderView config={config} onCancel={() => { setInternalMode(false); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
@@ -2707,7 +2725,7 @@ function DeliveryCheckerView({ onBack }) {
   );
 }
 
-function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer }) {
+function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [tokenAmount, setTokenAmount] = useState('');
   const [tokenPayment, setTokenPayment] = useState('cash'); // cash | transfer
@@ -3132,6 +3150,19 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
         </button>
       </div>
 
+      {/* 🔧 งานภายในร้าน — ล้าง/ทดสอบเครื่อง (ไม่ใช่รายได้) */}
+      <div className="px-5 mt-3">
+        <button onClick={onInternalOrder}
+          className="w-full rounded-2xl p-3 border-2 border-amber-400 bg-amber-50 active:scale-95 transition flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-xl flex-shrink-0">🔧</div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="font-bold text-slate-900 text-sm">{tr(config, 'งานภายในร้าน (ล้าง/ทดสอบเครื่อง)')}</p>
+            <p className="text-xs text-amber-800">{tr(config, 'ไม่นับเป็นรายได้ · บังคับใส่เหตุผล')}</p>
+          </div>
+          <Icon name="chevron-right" className="w-5 h-5 text-amber-700" />
+        </button>
+      </div>
+
       {/* 🎟️ ลูกค้าใช้โปร (ซักเอง ไม่ฝาก) — ตัดเครดิตแม่บ้าน */}
       <div className="px-5 mt-3">
         {!showPromoForm ? (
@@ -3540,7 +3571,10 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
   );
 }
 
-function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
+function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode }) {
+  const [internalType, setInternalType] = useState(() => editingOrder?.internalType || (internalMode ? 'clean' : ''));
+  const [internalReason, setInternalReason] = useState(() => editingOrder?.internalReason || '');
+  const [internalCustom, setInternalCustom] = useState(() => editingOrder?.internalCustom != null ? String(editingOrder.internalCustom) : '');
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const clientIdRef = useRef(null);
@@ -3659,6 +3693,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
     deliveryZone, useLinePromo,
     createdAt: orderTime,
     noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false),
+    internalType: internalType || null,
+    internalCustom: internalType && customAmt > 0 ? customAmt : null,
   };
   const breakdown = calculateBreakdown(tempOrder, config);
   const total = breakdown.total;
@@ -3666,16 +3702,25 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
   // Teddy 2 บังคับใส่เบอร์ลูกค้า (ใช้ติดต่อกลับ/ตามงาน)
   // บังคับชื่อ + เบอร์ เฉพาะลูกค้าหน้าร้าน (งาน LINE / เคฟ ไม่บังคับ)
   const isWalkIn = !fromKev && !fromLine;
-  const needCustomerInfo = !!config.requirePhone && isWalkIn;
+  const isInternal = !!internalType; // 🔧 งานภายในร้าน (ล้าง/ทดสอบ) — ไม่ใช่รายได้
+  const customAmt = parseInt(internalCustom, 10) || 0;
+  const needCustomerInfo = !isInternal && !!config.requirePhone && isWalkIn;
   const needPhone = needCustomerInfo;
   const phoneOk = !needPhone || phone.trim().length >= 9;
   const nameOk = !needCustomerInfo || name.trim().length > 0;
-  const canSubmit = hasAnyItem && nameOk && phoneOk && (!useLinePromo || linePromoPhoto);
+  const internalOk = !isInternal || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0));
+  const canSubmit = isInternal
+    ? internalOk
+    : (hasAnyItem && nameOk && phoneOk && (!useLinePromo || linePromoPhoto));
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
-  if (!hasAnyItem) missingList.push(tr(config, 'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)'));
-  if (needCustomerInfo && !name.trim()) missingList.push(tr(config, 'ใส่ชื่อลูกค้า'));
+  if (isInternal) {
+    if (!hasAnyItem && customAmt <= 0) missingList.push('เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง');
+    if (!internalReason.trim()) missingList.push('ใส่เหตุผล (บังคับ)');
+  }
+  if (!isInternal && !hasAnyItem) missingList.push(tr(config, 'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)'));
+  if (!isInternal && needCustomerInfo && !name.trim()) missingList.push(tr(config, 'ใส่ชื่อลูกค้า'));
   if (needPhone && !phone.trim()) missingList.push(tr(config, 'ใส่เบอร์โทรลูกค้า'));
   else if (needPhone && phone.trim().length < 9) missingList.push(tr(config, 'เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)'));
   if (useLinePromo && !linePromoPhoto) missingList.push(tr(config, 'ถ่ายรูปคูปองแอดไลน์'));
@@ -3722,9 +3767,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       return;
     }
     
-    // ป้องกันแม่บ้านกดสด/โอนผิด — ยืนยันวิธีจ่ายก่อนบันทึก
+    // 🔧 งานภายใน — ยืนยันแยก ไม่ถามวิธีจ่าย (ไม่ใช่รายได้)
     let splitCashNum = 0, splitTransferNum = 0;
-    if (paymentMethod === 'split') {
+    if (isInternal) {
+      const tLabel = (INTERNAL_TYPES.find(t => t.id === internalType) || {}).label || '';
+      if (!confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}\nเหตุผล: ${internalReason.trim()}\nเครดิตที่ใช้: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
+    } else if (paymentMethod === 'split') {
       splitCashNum = parseFloat(splitCash) || 0;
       splitTransferNum = parseFloat(splitTransfer) || 0;
       if (splitCashNum + splitTransferNum !== total) {
@@ -3771,7 +3819,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       softenerQty: softenerQty || 0,
       foldBaskets: foldBaskets || 0,
       noFold: config.freeService ? (noFold || false) : false,
-      paymentMethod: paymentMethod || 'cash',
+      paymentMethod: internalType ? 'internal' : (paymentMethod || 'cash'),
       cashAmount: paymentMethod === 'split' ? splitCashNum : null,
       transferAmount: paymentMethod === 'split' ? splitTransferNum : null,
       cashReceived: total,
@@ -3782,6 +3830,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
       fromLine: fromLine || false,
       useLinePromo: useLinePromo || false,
       noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false),
+      internalType: internalType || null,
+      internalReason: internalType ? internalReason.trim() : '',
+      internalCustom: internalType && customAmt > 0 ? customAmt : null,
       collected: editingOrder?.collected || false,
       collectedAt: editingOrder?.collectedAt || null,
       // preserve split collected flags (กันเก็บซ้ำตอนแก้ไข)
@@ -3876,7 +3927,34 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           </div>
         )}
 
-        {config.hasKev && (
+        {isInternal && (
+          <div className="rounded-2xl p-4 border-2 border-amber-400" style={{background: 'repeating-linear-gradient(45deg, #FEF3C7, #FEF3C7 12px, #FDE68A 12px, #FDE68A 24px)'}}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-extrabold text-slate-900">🔧 งานภายในร้าน</p>
+              <button onClick={() => { setInternalType(''); setInternalReason(''); setInternalCustom(''); }}
+                className="text-[11px] font-bold text-slate-600 bg-white rounded-lg px-2 py-1">เปลี่ยนเป็นงานลูกค้า</button>
+            </div>
+            <p className="text-xs font-bold text-slate-700 mb-1.5">ประเภทงาน</p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {INTERNAL_TYPES.map(t => (
+                <button key={t.id} onClick={() => setInternalType(t.id)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${internalType === t.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>
+                  {t.emoji} {t.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs font-bold text-slate-700 mb-1">เหตุผล <span className="text-rose-600">*บังคับ</span></p>
+            <input type="text" value={internalReason} onChange={e => setInternalReason(e.target.value)}
+              className={`w-full px-3 py-2.5 rounded-xl border-2 text-sm ${internalReason.trim() ? 'bg-white border-slate-300' : 'bg-rose-50 border-rose-300'}`}
+              placeholder="เช่น เครื่อง 3 มีกลิ่น / ทดสอบหลังช่างซ่อม" />
+            <p className="text-xs font-bold text-slate-700 mb-1 mt-3">กำหนดยอดเครดิตเอง (ถ้าไม่เลือกเครื่องด้านล่าง)</p>
+            <input type="number" inputMode="numeric" value={internalCustom} onChange={e => setInternalCustom(e.target.value)} onFocus={e => e.target.select()}
+              className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-lg font-bold text-right" placeholder="0" />
+            <p className="text-[11px] text-slate-600 mt-1">เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้</p>
+          </div>
+        )}
+
+        {!isInternal && config.hasKev && (
           <button 
             onClick={() => setFromKev(!fromKev)} 
             className={`w-full rounded-2xl p-4 shadow-lg transition active:scale-[0.98] ${fromKev ? 'shadow-purple-300' : ''}`}
@@ -3927,7 +4005,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
         </button>
 
 
-        <Section iconName="user" title={tr(config, "ข้อมูลลูกค้า")}>
+        {!isInternal && <Section iconName="user" title={tr(config, "ข้อมูลลูกค้า")}>
           <Field label={tr(config, needCustomerInfo ? 'ชื่อลูกค้า *' : 'ชื่อลูกค้า')}>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={tr(config, "ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ")} className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needCustomerInfo && !nameOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
             {needCustomerInfo && !nameOk && <p className="text-xs text-amber-700 mt-1 font-medium">{tr(config, "จำเป็นต้องกรอก — ใช้เรียกลูกค้าตอนมารับผ้า")}</p>}
@@ -3936,7 +4014,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needPhone && !phoneOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
             {needPhone && !phoneOk && <p className="text-xs text-amber-700 mt-1 font-medium">{tr(config, "จำเป็นต้องกรอก — ใช้ติดต่อลูกค้าตอนงานเสร็จ")}</p>}
           </Field>
-        </Section>
+        </Section>}
 
         <Section iconName="camera" title={tr(config, "รูปตะกร้าผ้า")}>
           <input ref={basketInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
@@ -4088,7 +4166,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           </Section>
         )}
 
-        {config.hasLinePromo && (
+        {!isInternal && config.hasLinePromo && (
           <Section iconName="tag" title={tr(config, "โปรโมชั่นพิเศษ")}>
             <button onClick={() => {
               if (!useLinePromo && !confirmLinePromo()) return;
@@ -4138,7 +4216,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           </Section>
         )}
 
-        <Section iconName="dollar-sign" title={tr(config, "การชำระเงิน")}>
+        {!isInternal && <Section iconName="dollar-sign" title={tr(config, "การชำระเงิน")}>
           <div>
             <p className="text-xs font-medium text-slate-600 mb-2">{tr(config, "วิธีชำระเงิน ")}<span className="text-rose-500">*</span></p>
             <div className="grid grid-cols-3 gap-2">
@@ -4274,7 +4352,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           <Field label={tr(config, "หมายเหตุ (ไม่บังคับ)")}>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr(config, "เช่น แยกซักผ้าขาว, หอใน 405")} rows={2} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition resize-none" />
           </Field>
-        </Section>
+        </Section>}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 shadow-2xl">
@@ -4282,7 +4360,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
           <div className="flex items-center gap-2 mb-2">
             <div className="flex-1">
               <p className="text-xs text-slate-500">
-                {tr(config, 'ยอดรวม')} • {tr(config, paymentMethod === 'transfer' ? 'โอน' : 'เงินสด')}
+                {isInternal ? '🔧 เครดิตที่ใช้ (งานภายใน)' : tr(config, 'ยอดรวม') + ' • ' + tr(config, paymentMethod === 'transfer' ? 'โอน' : 'เงินสด')}
                 {breakdown.totalDiscount > 0 && <span className="ml-1 text-rose-600 font-bold">• {tr(config, 'ลด')} ฿{breakdown.totalDiscount}</span>}
               </p>
               <p className="text-xl font-extrabold text-slate-900">฿{formatMoney(total)}</p>
@@ -4303,7 +4381,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner }) {
               <span className="text-sm">{tr(config, "ยกเลิก")}</span>
             </button>
             <button onClick={handleSubmit} disabled={!canSubmit || submitting} className={`flex-1 py-3 rounded-xl font-bold transition ${canSubmit && !submitting ? 'text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400'}`} style={canSubmit && !submitting ? {background: config.gradient} : {}}>
-              {submitting ? '⏳ ' + tr(config, 'กำลังบันทึก…') : (isEdit ? '💾 บันทึกการแก้ไข' : '✓ ' + tr(config, 'บันทึกใบรับงาน'))}
+              {submitting ? '⏳ ' + tr(config, 'กำลังบันทึก…') : (isEdit ? '💾 บันทึกการแก้ไข' : (isInternal ? '🔧 บันทึกงานภายใน' : '✓ ' + tr(config, 'บันทึกใบรับงาน')))}
             </button>
           </div>
         </div>
@@ -4570,10 +4648,13 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
   };
 
   const tempLabels = { cold: 'น้ำเย็น', warm: 'น้ำอุ่น', hot: 'น้ำร้อน' };
-  const headerColor = config.brand === 'otteri' ? '#38B6E0' : '#3B82F6';
-  const headerStripe = config.brand === 'otteri' 
-    ? 'repeating-linear-gradient(45deg, #38B6E0, #38B6E0 10px, #5DC5E8 10px, #5DC5E8 20px)'
-    : 'repeating-linear-gradient(45deg, #3B82F6, #3B82F6 10px, #93C5FD 10px, #93C5FD 20px)';
+  const internal = isInternalOrder(order); // 🔧 งานภายใน → บิลลายเหลือง-ดำ ไม่ให้สับสนกับบิลลูกค้า
+  const headerColor = internal ? '#1F2937' : (config.brand === 'otteri' ? '#38B6E0' : '#3B82F6');
+  const headerStripe = internal
+    ? 'repeating-linear-gradient(45deg, #111827, #111827 12px, #FBBF24 12px, #FBBF24 24px)'
+    : (config.brand === 'otteri'
+      ? 'repeating-linear-gradient(45deg, #38B6E0, #38B6E0 10px, #5DC5E8 10px, #5DC5E8 20px)'
+      : 'repeating-linear-gradient(45deg, #3B82F6, #3B82F6 10px, #93C5FD 10px, #93C5FD 20px)');
 
   return (
     <div className="min-h-screen bg-slate-100 pb-28">
@@ -4780,7 +4861,21 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
             </div>
           </div>
 
+          {internal && (
+            <div className="px-6 py-3 border-y-4 border-amber-400" style={{background: '#FEF3C7'}}>
+              <p className="text-base font-extrabold text-slate-900">
+                🔧 งานภายในร้าน — ไม่ใช่รายการลูกค้า
+              </p>
+              <p className="text-sm font-bold text-slate-800 mt-0.5">
+                ประเภท: {(INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).label || order.internalType}
+              </p>
+              {order.internalReason && <p className="text-sm text-slate-700">เหตุผล: {order.internalReason}</p>}
+              <p className="text-xs text-slate-600 mt-1">⚠️ ไม่นับเป็นรายได้ · เครดิตที่ใช้ ฿{formatMoney(total)}</p>
+            </div>
+          )}
+
           {(() => {
+            if (internal) return null; // งานภายในไม่ต้องมี QR รับโอน
             if (order.paymentMethod !== 'transfer' && order.paymentMethod !== 'split') return null;
             const amt = order.paymentMethod === 'split' ? (order.transferAmount || 0) : total;
             const qrSrc = buildPromptPayQr(config.brand, amt) || payQr;
@@ -6277,6 +6372,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
   const unpaidDeliveryTotal = unpaidDeliveryOrders.reduce((sum, o) => sum + riderFeeFor(o, config), 0);
   
   const todayOrders = orders.filter(o => {
+    if (isInternalOrder(o)) return false; // งานภายในไม่ใช่รายได้
     const d = new Date(o.createdAt); const today = new Date();
     return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
   });
@@ -6333,6 +6429,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
     };
   }, [orders, config]);
 
+  const internalOrders = orders.filter(isInternalOrder);
   let listToShow = [];
   if (tab === 'cash') listToShow = [...uncollectedCash, ...uncollectedSplitCash];
   else if (tab === 'transfer') listToShow = [...uncollectedTransfer, ...uncollectedSplitTransfer];
