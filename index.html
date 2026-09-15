@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v103-2026-09-15';
+  window.APP_VERSION = 'v104-2026-09-15';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4727,9 +4727,9 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
                 </div>
               )}
               <div>
-                <p className="text-xs text-slate-500">วิธีชำระ</p>
-                <p className="font-bold text-slate-900 text-sm">
-                  {order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด'}
+                <p className="text-xs text-slate-500">{internal ? 'ประเภท' : 'วิธีชำระ'}</p>
+                <p className={`font-bold text-sm ${internal ? 'text-amber-700' : 'text-slate-900'}`}>
+                  {internal ? '🔧 งานภายใน (ไม่ใช่รายได้)' : (order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด')}
                 </p>
               </div>
               {order.deliveryZone && (
@@ -5063,11 +5063,15 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 shadow-2xl">
         {internal ? (
-          <div className="max-w-md mx-auto">
-            <button onClick={onBack} className="w-full py-3 rounded-xl font-bold bg-slate-800 text-white active:scale-95 transition">
+          <div className="max-w-md mx-auto grid grid-cols-2 gap-2">
+            <button onClick={onBack} className="py-3 rounded-xl font-bold bg-slate-100 text-slate-700 active:scale-95 transition">
               ✓ เสร็จสิ้น
             </button>
-            <p className="text-center text-xs text-slate-400 mt-1.5">🔧 งานภายใน — ไม่ต้องพิมพ์บิล/ส่งลูกค้า</p>
+            <button onClick={handleShare} disabled={saving} className="py-3 rounded-xl font-bold text-white flex items-center justify-center gap-1.5 active:scale-95 transition disabled:opacity-50" style={{background: 'linear-gradient(135deg, #06C755, #00B900)'}}>
+              <span className="text-lg">📤</span>
+              <span className="text-sm">ส่งเข้ากลุ่ม</span>
+            </button>
+            <p className="col-span-2 text-center text-xs text-slate-400">🔧 งานภายใน — ส่งเข้ากลุ่มเพื่อรายงาน (ไม่ต้องส่งลูกค้า)</p>
           </div>
         ) : (
         <React.Fragment>
@@ -5989,12 +5993,17 @@ function CreditView({ config, orders, staffList }) {
     const promoList = after.filter(e => e.type === 'promo');
     const promo = promoList.reduce((s, e) => s + (e.amount || 0), 0);
     const myOrders = (orders || []).filter(o => o.staffName === name && ts(o.createdAt) > t0);
-    let dropUse = 0, deliveryUse = 0;
-    myOrders.forEach(o => { const c = creditForOrder(o, config); if (o.deliveryZone) deliveryUse += c; else dropUse += c; });
-    const orderUse = dropUse + deliveryUse;
+    let dropUse = 0, deliveryUse = 0, internalUse = 0;
+    myOrders.forEach(o => {
+      const cr = creditForOrder(o, config);
+      if (isInternalOrder(o)) internalUse += cr;
+      else if (o.deliveryZone) deliveryUse += cr;
+      else dropUse += cr;
+    });
+    const orderUse = dropUse + deliveryUse + internalUse;
     const expected = base + topup - promo - orderUse;
     const lastCheck = after.find(e => e.type === 'check');
-    return { baseline, base, topup, promo, promoCount: promoList.length, dropUse, deliveryUse, orderUse, orderCount: myOrders.length, expected, lastCheck };
+    return { baseline, base, topup, promo, promoCount: promoList.length, dropUse, deliveryUse, internalUse, orderUse, orderCount: myOrders.length, expected, lastCheck };
   };
 
   // สรุปรายเดือน (ไม่สนยอดตั้งต้น — ดูการใช้เครดิตของเดือนนั้นล้วนๆ)
@@ -6007,10 +6016,15 @@ function CreditView({ config, orders, staffList }) {
     const promoList = mine.filter(e => e.type === 'promo');
     const promo = promoList.reduce((s, e) => s + (e.amount || 0), 0);
     const myOrders = (orders || []).filter(o => o.staffName === name && inM(ts(o.createdAt)));
-    let dropUse = 0, deliveryUse = 0;
-    myOrders.forEach(o => { const cr = creditForOrder(o, config); if (o.deliveryZone) deliveryUse += cr; else dropUse += cr; });
-    const orderUse = dropUse + deliveryUse;
-    return { baseline: true, base: 0, topup, promo, promoCount: promoList.length, dropUse, deliveryUse, orderUse, orderCount: myOrders.length, expected: topup - promo - orderUse, lastCheck: null, monthMode: true };
+    let dropUse = 0, deliveryUse = 0, internalUse = 0;
+    myOrders.forEach(o => {
+      const cr = creditForOrder(o, config);
+      if (isInternalOrder(o)) internalUse += cr;
+      else if (o.deliveryZone) deliveryUse += cr;
+      else dropUse += cr;
+    });
+    const orderUse = dropUse + deliveryUse + internalUse;
+    return { baseline: true, base: 0, topup, promo, promoCount: promoList.length, dropUse, deliveryUse, internalUse, orderUse, orderCount: myOrders.length, expected: topup - promo - orderUse, lastCheck: null, monthMode: true };
   };
   const shiftStatMonth = (dir) => { const d = new Date(statDate); d.setMonth(d.getMonth() + dir); setStatDate(d); };
 
@@ -6140,6 +6154,7 @@ function CreditView({ config, orders, staffList }) {
               <p className="text-slate-500">งานฝาก ({st.orderCount} งาน · สด+โอน)</p><p className="text-right font-bold text-rose-600">−{fm(st.dropUse)}฿</p>
               <p className="text-slate-500">เดลิเวอรี่ (ไม่รวมค่าส่ง)</p><p className="text-right font-bold text-rose-600">−{fm(st.deliveryUse)}฿</p>
               <p className="text-slate-500">โปรซักเอง ({st.promoCount} ครั้ง)</p><p className="text-right font-bold text-rose-600">−{fm(st.promo)}฿</p>
+              {st.internalUse > 0 && <React.Fragment><p className="text-slate-500">🔧 งานภายใน (ล้าง/ทดสอบ)</p><p className="text-right font-bold text-amber-700">−{fm(st.internalUse)}฿</p></React.Fragment>}
             </div>
 
             <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 flex items-center justify-between">
