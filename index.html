@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v100-2026-09-15';
+  window.APP_VERSION = 'v101-2026-09-15';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -3691,6 +3691,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   // 🔧 งานภายในร้าน — ต้องประกาศก่อนถูกใช้ด้านล่าง (กติกา const ก่อนใช้)
   const isInternal = !!internalType;
   const customAmt = parseInt(internalCustom, 10) || 0;
+  // ล้างเครื่อง / ซักซ้ำ = งานประจำ ไม่ต้องกรอกเหตุผล-ราคา · ทดสอบ / อื่นๆ = บังคับทั้งคู่
+  const needInternalDetail = internalType === 'test' || internalType === 'other';
 
   const tempOrder = { 
     washItems, dryItems, detergentQty, softenerQty, foldBaskets,
@@ -3710,14 +3712,14 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const needPhone = needCustomerInfo;
   const phoneOk = !needPhone || phone.trim().length >= 9;
   const nameOk = !needCustomerInfo || name.trim().length > 0;
-  const internalOk = !isInternal || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0));
+  const internalOk = !isInternal || (!needInternalDetail || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0)));
   const canSubmit = isInternal
     ? internalOk
     : (hasAnyItem && nameOk && phoneOk && (!useLinePromo || linePromoPhoto));
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
-  if (isInternal) {
+  if (isInternal && needInternalDetail) {
     if (!hasAnyItem && customAmt <= 0) missingList.push('เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง');
     if (!internalReason.trim()) missingList.push('ใส่เหตุผล (บังคับ)');
   }
@@ -3773,7 +3775,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     let splitCashNum = 0, splitTransferNum = 0;
     if (isInternal) {
       const tLabel = (INTERNAL_TYPES.find(t => t.id === internalType) || {}).label || '';
-      if (!confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}\nเหตุผล: ${internalReason.trim()}\nเครดิตที่ใช้: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
+      if (!confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}${internalReason.trim() ? "\nเหตุผล: " + internalReason.trim() : ""}\nเครดิตที่ใช้: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
     } else if (paymentMethod === 'split') {
       splitCashNum = parseFloat(splitCash) || 0;
       splitTransferNum = parseFloat(splitTransfer) || 0;
@@ -3855,7 +3857,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   };
 
   return (
-    <div className="min-h-screen pb-32">
+    <div className="min-h-screen" style={{paddingBottom: missingList.length > 0 ? (200 + missingList.length * 26) + 'px' : '150px'}}>
       <div className="sticky z-20 bg-white border-b border-slate-100 px-5 py-3 flex items-center gap-3" style={{top: '0px'}}>
         <button onClick={onCancel} className="flex items-center gap-1 px-3 py-2 -ml-2 rounded-xl active:scale-95 active:bg-slate-100 transition">
           <Icon name="chevron-left" className="w-6 h-6 text-slate-700" />
@@ -3945,14 +3947,20 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                 </button>
               ))}
             </div>
-            <p className="text-xs font-bold text-slate-700 mb-1">เหตุผล <span className="text-rose-600">*บังคับ</span></p>
-            <input type="text" value={internalReason} onChange={e => setInternalReason(e.target.value)}
-              className={`w-full px-3 py-2.5 rounded-xl border-2 text-sm ${internalReason.trim() ? 'bg-white border-slate-300' : 'bg-rose-50 border-rose-300'}`}
-              placeholder="เช่น เครื่อง 3 มีกลิ่น / ทดสอบหลังช่างซ่อม" />
-            <p className="text-xs font-bold text-slate-700 mb-1 mt-3">กำหนดยอดเครดิตเอง (ถ้าไม่เลือกเครื่องด้านล่าง)</p>
-            <input type="number" inputMode="numeric" value={internalCustom} onChange={e => setInternalCustom(e.target.value)} onFocus={e => e.target.select()}
-              className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-lg font-bold text-right" placeholder="0" />
-            <p className="text-[11px] text-slate-600 mt-1">เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้</p>
+            {needInternalDetail ? (
+              <React.Fragment>
+                <p className="text-xs font-bold text-slate-700 mb-1">เหตุผล <span className="text-rose-600">*บังคับ</span></p>
+                <input type="text" value={internalReason} onChange={e => setInternalReason(e.target.value)}
+                  className={`w-full px-3 py-2.5 rounded-xl border-2 text-sm ${internalReason.trim() ? 'bg-white border-slate-300' : 'bg-rose-50 border-rose-300'}`}
+                  placeholder="เช่น ทดสอบหลังช่างซ่อม" />
+                <p className="text-xs font-bold text-slate-700 mb-1 mt-3">กำหนดยอดเครดิตเอง (ถ้าไม่เลือกเครื่องด้านล่าง)</p>
+                <input type="number" inputMode="numeric" value={internalCustom} onChange={e => setInternalCustom(e.target.value)} onFocus={e => e.target.select()}
+                  className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-lg font-bold text-right" placeholder="0" />
+                <p className="text-[11px] text-slate-600 mt-1">เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้</p>
+              </React.Fragment>
+            ) : (
+              <p className="text-[11px] text-slate-700">เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา</p>
+            )}
           </div>
         )}
 
