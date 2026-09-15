@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v101-2026-09-15';
+  window.APP_VERSION = 'v103-2026-09-15';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4503,6 +4503,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
   const payQr = PAYMENT_QRS[config.brand]; // QR static สำรอง (กรณีไลบรารีโหลดไม่ทัน)
   const jobTicketRef = useRef(null);
   const [saving, setSaving] = useState(false);
+  const internal = isInternalOrder(order); // 🔧 งานภายใน — ต้องประกาศบนสุด (useEffect ด้านล่างใช้)
   const [showJobTicket, setShowJobTicket] = useState(false);
   const [ticketPreview, setTicketPreview] = useState(''); // ภาพจริงที่จะพิมพ์ (ใช้แสดงพรีวิว)
   const [btStatus, setBtStatus] = useState(''); // สถานะพิมพ์ตรง Bluetooth
@@ -4569,10 +4570,10 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
   // เปิดใบงานอัตโนมัติหลังรับงานใหม่ (แม่บ้านไม่ต้องหาปุ่ม)
   useEffect(() => {
     if (autoOpenTicket) {
-      setShowJobTicket(true);
+      if (!internal) setShowJobTicket(true); // งานภายในไม่ต้องพิมพ์ใบงาน
       onTicketOpened && onTicketOpened();
     }
-  }, [autoOpenTicket]);
+  }, [autoOpenTicket, internal]);
 
   // เครื่องที่พิมพ์ตรงไม่ได้ (iPhone/iPad) ใช้ปุ่มส่งเข้าแอปเครื่องพิมพ์แทน
   const canPrintDirect = typeof navigator !== 'undefined' && !!navigator.bluetooth;
@@ -4658,7 +4659,6 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
   };
 
   const tempLabels = { cold: 'น้ำเย็น', warm: 'น้ำอุ่น', hot: 'น้ำร้อน' };
-  const internal = isInternalOrder(order); // 🔧 งานภายใน → บิลลายเหลือง-ดำ ไม่ให้สับสนกับบิลลูกค้า
   const headerColor = internal ? '#1F2937' : (config.brand === 'otteri' ? '#38B6E0' : '#3B82F6');
   const headerStripe = internal
     ? 'repeating-linear-gradient(45deg, #111827, #111827 12px, #FBBF24 12px, #FBBF24 24px)'
@@ -5062,6 +5062,15 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
       )}
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 shadow-2xl">
+        {internal ? (
+          <div className="max-w-md mx-auto">
+            <button onClick={onBack} className="w-full py-3 rounded-xl font-bold bg-slate-800 text-white active:scale-95 transition">
+              ✓ เสร็จสิ้น
+            </button>
+            <p className="text-center text-xs text-slate-400 mt-1.5">🔧 งานภายใน — ไม่ต้องพิมพ์บิล/ส่งลูกค้า</p>
+          </div>
+        ) : (
+        <React.Fragment>
         <div className={`max-w-md mx-auto grid gap-2 ${config.hasPrinter ? 'grid-cols-3' : 'grid-cols-3'}`}>
           {config.hasPrinter && (
             <button onClick={() => setShowJobTicket(true)} disabled={saving} className="py-3 rounded-xl font-bold bg-slate-800 text-white flex flex-col items-center justify-center gap-0.5 active:scale-95 transition disabled:opacity-50">
@@ -5081,6 +5090,8 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
         <p className="text-center text-xs text-slate-400 mt-1.5">
           {config.hasPrinter ? '🖨️ ใบงานให้แม่บ้าน • บันทึก/ส่ง Line ใบเสร็จลูกค้า' : 'บันทึก / ส่ง Line ใบเสร็จให้ลูกค้า'}
         </p>
+        </React.Fragment>
+        )}
       </div>
     </div>
   );
@@ -6443,7 +6454,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
   let listToShow = [];
   if (tab === 'cash') listToShow = [...uncollectedCash, ...uncollectedSplitCash];
   else if (tab === 'transfer') listToShow = [...uncollectedTransfer, ...uncollectedSplitTransfer];
-  else if (tab === 'all') listToShow = orders;
+  else if (tab === 'all') listToShow = orders.filter(o => !isInternalOrder(o));
+  else if (tab === 'internal') listToShow = internalOrders;
 
   // ==== กรองรายวัน/รายเดือน (สด/โอน/ทั้งหมด) ====
   const lTs = v => typeof v === 'number' ? v : (new Date(v).getTime() || 0);
@@ -6456,10 +6468,11 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
     if (listMode === 'month') return t >= lMonStart && t < lMonEnd;
     return true;
   };
-  if (listMode !== 'all' && ['cash', 'transfer', 'all'].includes(tab)) {
+  if (listMode !== 'all' && ['cash', 'transfer', 'all', 'internal'].includes(tab)) {
     if (tab === 'cash') listToShow = orders.filter(o => inListRange(o) && (o.paymentMethod === 'cash' || (o.paymentMethod === 'split' && (o.cashAmount || 0) > 0)));
     else if (tab === 'transfer') listToShow = orders.filter(o => inListRange(o) && (o.paymentMethod === 'transfer' || (o.paymentMethod === 'split' && (o.transferAmount || 0) > 0)));
-    else listToShow = orders.filter(inListRange);
+    else if (tab === 'internal') listToShow = internalOrders.filter(inListRange);
+    else listToShow = orders.filter(o => !isInternalOrder(o) && inListRange(o));
   }
   const cashPartOf = (o) => o.paymentMethod === 'cash' ? calculateTotal(o, config) : o.paymentMethod === 'split' ? (o.cashAmount || 0) : 0;
   const transferPartOf = (o) => o.paymentMethod === 'transfer' ? calculateTotal(o, config) : o.paymentMethod === 'split' ? (o.transferAmount || 0) : 0;
@@ -6623,6 +6636,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <TabBtn active={tab === 'cash'} onClick={() => setTab('cash')}>💵 สด ({cashCount})</TabBtn>
           <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({transferCount})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
+          <TabBtn active={tab === 'internal'} onClick={() => setTab('internal')}>🔧 งานภายใน ({internalOrders.length})</TabBtn>
           <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
           <TabBtn active={tab === 'credit'} onClick={() => setTab('credit')}>🎟️ เครดิต</TabBtn>
           {config.tokenEnabled !== false && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 {exchangeName(config)} ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
@@ -6638,7 +6652,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
         </div>
         
         {/* กรองรายวัน/รายเดือน สด-โอน */}
-        {['cash', 'transfer', 'all'].includes(tab) && (
+        {['cash', 'transfer', 'all', 'internal'].includes(tab) && (
           <div className="mt-2 space-y-2">
             <div className="flex gap-1.5">
               {[['all', tab === 'all' ? 'ทั้งหมด' : 'รอเก็บ'], ['day', 'รายวัน'], ['month', 'รายเดือน']].map(([m, lb]) => (
@@ -6658,9 +6672,18 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
                   <button onClick={() => shiftListDate(1)} className="px-4 py-1 text-lg font-bold text-slate-600">›</button>
                 </div>
                 <div className="bg-white rounded-xl border border-slate-200 px-3 py-2 flex justify-between items-center text-[11px] font-bold flex-wrap gap-1">
-                  <span className="text-emerald-600">💵 สด {formatMoney(listCashSum)}฿</span>
-                  <span className="text-violet-600">💳 โอน {formatMoney(listTransferSum)}฿</span>
-                  <span className="text-slate-600">{listToShow.length} งาน · รวม {formatMoney(listCashSum + listTransferSum)}฿</span>
+                  {tab === 'internal' ? (
+                    <React.Fragment>
+                      <span className="text-amber-700">🔧 เครดิตที่ใช้ {formatMoney(listToShow.reduce((s, o) => s + calculateTotal(o, config), 0))}฿</span>
+                      <span className="text-slate-600">{listToShow.length} งาน · ไม่นับเป็นรายได้</span>
+                    </React.Fragment>
+                  ) : (
+                    <React.Fragment>
+                      <span className="text-emerald-600">💵 สด {formatMoney(listCashSum)}฿</span>
+                      <span className="text-violet-600">💳 โอน {formatMoney(listTransferSum)}฿</span>
+                      <span className="text-slate-600">{listToShow.length} งาน · รวม {formatMoney(listCashSum + listTransferSum)}฿</span>
+                    </React.Fragment>
+                  )}
                 </div>
               </React.Fragment>
             )}
