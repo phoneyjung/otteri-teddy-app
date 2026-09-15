@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v99-2026-09-15';
+  window.APP_VERSION = 'v100-2026-09-15';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -3982,7 +3982,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
         )}
 
         {/* ปุ่มงานจาก Line - ใช้ได้ทั้ง Otteri และ Teddy (ใช้ร่วมกับเคฟไม่ได้) */}
-        <button 
+        {!isInternal && <button 
           onClick={() => !fromKev && setFromLine(!fromLine)}
           disabled={fromKev}
           className={`w-full rounded-2xl p-4 shadow-lg transition ${fromKev ? 'opacity-40 cursor-not-allowed' : 'active:scale-[0.98]'} ${fromLine ? 'shadow-green-300' : ''}`}
@@ -4004,7 +4004,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
               {fromLine && <Icon name="check" className="w-4 h-4 text-green-600" strokeWidth={4} />}
             </div>
           </div>
-        </button>
+        </button>}
 
 
         {!isInternal && <Section iconName="user" title={tr(config, "ข้อมูลลูกค้า")}>
@@ -4018,7 +4018,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           </Field>
         </Section>}
 
-        <Section iconName="camera" title={tr(config, "รูปตะกร้าผ้า")}>
+        {!isInternal && <Section iconName="camera" title={tr(config, "รูปตะกร้าผ้า")}>
           <input ref={basketInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
           <input ref={basketCameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
           {basketPhoto ? (
@@ -4046,7 +4046,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           <Field label={tr(config, "⏰ เวลานัดรับ (สะดวกมารับ)")}>
             <input type="text" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} placeholder={tr(config, "เช่น 18:00 วันนี้ / พรุ่งนี้เช้า")} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition" />
           </Field>
-        </Section>
+        </Section>}
 
         <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
           <div className="space-y-3">
@@ -4086,7 +4086,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           </div>
         </Section>
 
-        <Section iconName="sparkles" title={tr(config, "รายการเสริม / ขายแยก")}>
+        {!isInternal && <Section iconName="sparkles" title={tr(config, "รายการเสริม / ขายแยก")}>
           <p className="text-[11px] text-slate-500 -mt-2 mb-2">{tr(config, "💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ")}</p>
           <CounterRow iconEmoji="🧴" label={tr(config, "น้ำยาซัก")} sublabel={`฿${config.detergentPrice} / ซอง`} unit={tr(config, "ซอง")} qty={detergentQty} onAdd={() => setDetergentQty(q => q + 1)} onRemove={() => setDetergentQty(q => Math.max(0, q - 1))} colorActive="bg-purple-500" />
           <CounterRow iconEmoji="🌸" label={tr(config, "น้ำยาปรับผ้านุ่ม")} sublabel={`฿${config.softenerPrice} / ซอง`} unit={tr(config, "ซอง")} qty={softenerQty} onAdd={() => setSoftenerQty(q => q + 1)} onRemove={() => setSoftenerQty(q => Math.max(0, q - 1))} colorActive="bg-pink-500" />
@@ -4117,9 +4117,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
               </button>
             </div>
           )}
-        </Section>
+        </Section>}
 
-        {config.hasDelivery && (
+        {!isInternal && config.hasDelivery && (
           <Section iconName="truck" title={tr(config, "บริการ Delivery")}>
             <p className="text-xs text-slate-500 mb-2">{tr(config, "ถ้ามีบริการส่งให้เลือกโซนตามแผนที่")}</p>
             <div className="grid grid-cols-2 gap-2">
