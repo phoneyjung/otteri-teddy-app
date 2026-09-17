@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v113-2026-09-17';
+  window.APP_VERSION = 'v114-2026-09-17';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -5581,23 +5581,37 @@ function CoinCountView({ config }) {
               {[['wash', '💧 เครื่องซัก'], ['dry', '💨 เครื่องอบ']].map(([key, title]) => (
                 <div key={key}>
                   <p className="text-xs font-bold text-slate-500 mb-1.5">{title} — ผังหน้าร้าน (ขนาดการ์ด = ขนาดเครื่อง)</p>
-                  <div className={cp.layout.fit ? '' : 'overflow-x-auto -mx-5 px-5 pb-1'}>
-                    <div className="space-y-1.5" style={cp.layout.fit ? {} : {width: 'max-content'}}>
-                      {(cp.layout[key] || []).map((row, ri) => (
-                        <div key={ri} className="flex items-end" style={{gap: '3px'}}>
-                          {row.map((id, ci) => {
-                            const m = id ? cp.machines.find(x => x.id === id) : null;
-                            const kg = m ? (parseInt(m.size, 10) || 12) : 12;
-                            const w = Math.pow(kg, 0.55); // ยิ่ง kg เยอะ การ์ดยิ่งกว้าง (เหมือนตู้จริง)
-                            const style = cp.layout.fit
-                              ? {flex: w + ' 1 0', minWidth: 0}
-                              : {width: '86px', flex: '0 0 86px'};
-                            return <div key={ci} style={style}>{m ? pointCard(m, 'machine') : null}</div>;
-                          })}
+                  {(() => {
+                    const rows = cp.layout[key] || [];
+                    // ขนาดการ์ดต่อ kg ต้องเท่ากันทุกแถวในบล็อกเดียวกัน → ใช้มาตราส่วนร่วม
+                    const unitOf = (ci) => {
+                      for (const r of rows) {
+                        const id = r[ci];
+                        const mm = id ? cp.machines.find(x => x.id === id) : null;
+                        if (mm) return Math.pow(parseInt(mm.size, 10) || 12, 0.55);
+                      }
+                      return Math.pow(12, 0.55);
+                    };
+                    const maxTotal = Math.max(...rows.map(r => r.reduce((s, _, ci) => s + unitOf(ci), 0)), 1);
+                    return (
+                      <div className={cp.layout.fit ? '' : 'overflow-x-auto -mx-5 px-5 pb-1'}>
+                        <div className="space-y-1.5" style={cp.layout.fit ? {} : {width: 'max-content'}}>
+                          {rows.map((row, ri) => (
+                            <div key={ri} className="flex items-end" style={{gap: '3px'}}>
+                              {row.map((id, ci) => {
+                                const m = id ? cp.machines.find(x => x.id === id) : null;
+                                const pct = (unitOf(ci) / maxTotal) * 100;
+                                const style = cp.layout.fit
+                                  ? {flex: `0 0 calc(${pct.toFixed(3)}% - 3px)`, minWidth: 0}
+                                  : {width: '86px', flex: '0 0 86px'};
+                                return <div key={ci} style={style}>{m ? pointCard(m, 'machine') : null}</div>;
+                              })}
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </React.Fragment>
