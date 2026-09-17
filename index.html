@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v112-2026-09-17';
+  window.APP_VERSION = 'v113-2026-09-17';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -5482,11 +5482,11 @@ function CoinCountView({ config }) {
     const ring = status === 'miss' ? '#F43F5E' : status === 'match' ? '#10B981' : status === 'over' ? '#0EA5E9' : '#E2E8F0';
     return (
       <button key={p.id} onClick={() => openForm(p, type, type === 'changer' ? 'collect' : 'count')}
-        className="rounded-xl overflow-hidden text-left active:scale-95 transition bg-white"
+        className="w-full rounded-lg overflow-hidden text-left active:scale-95 transition bg-white"
         style={{border: '2px solid ' + ring}}>
-        <div className="flex items-center justify-between px-2 py-1" style={{background: head}}>
-          <span className="text-white text-xs font-extrabold">{p.label}</span>
-          <span className="text-white text-[9px] font-bold opacity-80">{p.size || ''}</span>
+        <div className="px-1 py-1 text-center leading-none" style={{background: head}}>
+          <div className="text-white text-[11px] font-extrabold truncate">{p.label.replace(/^(ซัก|อบ)\s*/, '')}</div>
+          {p.size && <div className="text-white text-[9px] font-bold opacity-85">{p.size}</div>}
         </div>
         <div className="flex items-center justify-center py-1.5 bg-slate-50">
           {type === 'changer' ? (
@@ -5584,11 +5584,11 @@ function CoinCountView({ config }) {
                   <div className={cp.layout.fit ? '' : 'overflow-x-auto -mx-5 px-5 pb-1'}>
                     <div className="space-y-1.5" style={cp.layout.fit ? {} : {width: 'max-content'}}>
                       {(cp.layout[key] || []).map((row, ri) => (
-                        <div key={ri} className="flex gap-1.5 items-end">
+                        <div key={ri} className="flex items-end" style={{gap: '3px'}}>
                           {row.map((id, ci) => {
                             const m = id ? cp.machines.find(x => x.id === id) : null;
                             const kg = m ? (parseInt(m.size, 10) || 12) : 12;
-                            const w = 1 + Math.min(0.75, (kg - 9) * 0.045); // 9kg=1.0 → 28kg=1.75
+                            const w = Math.pow(kg, 0.55); // ยิ่ง kg เยอะ การ์ดยิ่งกว้าง (เหมือนตู้จริง)
                             const style = cp.layout.fit
                               ? {flex: w + ' 1 0', minWidth: 0}
                               : {width: '86px', flex: '0 0 86px'};
