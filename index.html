@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v115-2026-09-18';
+  window.APP_VERSION = 'v116-2026-09-19';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -6062,9 +6062,11 @@ function ChecklistView({ config, currentStaff, isOwner, onBack }) {
 
   // งานค้าง: งานพิเศษที่ถึงกำหนดใน 7 วันก่อนหน้าแต่ยังไม่ติ๊ก (แม่บ้านติ๊กเองไม่ได้ — เจ้าของติ๊กย้อนหลัง)
   const overdue = [];
+  const firstLogKey = logs.reduce((m, l) => (l.dateKey && (!m || l.dateKey < m)) ? l.dateKey : m, null);
   for (let i = 1; i <= 7; i++) {
     const d = new Date(today); d.setDate(d.getDate() - i);
     const k = dateKeyOf(d);
+    if (!firstLogKey || k < firstLogKey) continue; // ก่อนเริ่มใช้ระบบ — ไม่ถือว่าค้าง
     const lg = logs.find(l => l.dateKey === k);
     tasks.filter(t => t.cadence !== 'daily' && taskDueOn(t, d)).forEach(t => {
       if (!(lg && lg.entries && lg.entries[t.id] && lg.entries[t.id].done)) overdue.push({ task: t, dateKey: k });
@@ -6139,19 +6141,19 @@ function ChecklistView({ config, currentStaff, isOwner, onBack }) {
   };
 
   const buildSummary = () => {
-    const dt = today.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' });
-    const lines = [`📋 งานประจำวัน ${config.name} — ${dt}`, `🧕 แม่บ้าน: ${staffName || '-'}`, ''];
+    const dt = `${DOW_TH[today.getDay()]} ${today.getDate()} ${today.toLocaleDateString('th-TH', { month: 'short' })}`;
+    const lines = [`📋 ${config.name} · ${dt} · ${staffName || '-'}`];
     const dd = daily.filter(t => entries[t.id] && entries[t.id].done).length;
-    lines.push(`${dd === daily.length ? '✅' : '⚠️'} รายวัน ${dd}/${daily.length}`);
+    const dNot = daily.filter(t => !(entries[t.id] && entries[t.id].done)).map(t => t.title);
+    lines.push(dd === daily.length ? `✅ รายวัน ${dd}/${daily.length}` : `⚠️ รายวัน ${dd}/${daily.length} — ยังไม่ทำ: ${dNot.join(', ')}`);
     if (special.length) {
       const sd = special.filter(t => entries[t.id] && entries[t.id].done).length;
-      lines.push(`${sd === special.length ? '✅' : '⚠️'} งานพิเศษวันนี้ ${sd}/${special.length} (มีรูป ${special.filter(t => entries[t.id] && entries[t.id].hasPhoto).length})`);
-      special.forEach(t => lines.push(`  ${entries[t.id] && entries[t.id].done ? '✓' : '✗'} ${t.title}`));
+      const sNot = special.filter(t => !(entries[t.id] && entries[t.id].done)).map(t => t.title);
+      const label = special[0].cadence === 'monthly' ? 'รายเดือน' : CADENCE_LABEL[special[0].cadence];
+      lines.push(sd === special.length ? `✅ ${label} ${sd}/${special.length} 📷${special.filter(t => entries[t.id] && entries[t.id].hasPhoto).length}` : `⚠️ ${label} ${sd}/${special.length} — ยังไม่ทำ: ${sNot.join(', ')}`);
     }
-    const notDone = daily.filter(t => !(entries[t.id] && entries[t.id].done));
-    if (notDone.length) { lines.push('', '❌ รายวันที่ยังไม่ทำ:'); notDone.forEach(t => lines.push(`  • ${t.title}`)); }
-    if (overdue.length) { lines.push('', '🔴 งานค้าง (รอเจ้าของติ๊ก):'); overdue.forEach(o => lines.push(`  • ${o.task.title} (จาก ${dateFromKey(o.dateKey).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`)); }
-    if (issues.trim()) lines.push('', `📝 ปัญหาที่พบ: ${issues.trim()}`);
+    if (overdue.length) lines.push(`🔴 ค้าง ${overdue.length}: ` + overdue.map(o => `${o.task.title} (${DOW_TH[dateFromKey(o.dateKey).getDay()]}${dateFromKey(o.dateKey).getDate()})`).join(', '));
+    if (issues.trim()) lines.push(`📝 ${issues.trim()}`);
     return lines.join('\n');
   };
 
