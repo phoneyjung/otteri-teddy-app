@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v111-2026-09-17';
+  window.APP_VERSION = 'v112-2026-09-17';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -444,8 +444,8 @@ const COIN_POINTS = {
       { id: 'D7', label: 'อบ D7', size: '15kg' },
     ],
     changers: [
-      { id: 'CH1', label: 'ตู้แลกเหรียญ 1' },
-      { id: 'CH2', label: 'ตู้แลกเหรียญ 2' },
+      { id: 'CH1', label: 'ตู้แลกซ้าย', note: 'แบงก์ + เหรียญ', kinds: ['bill', 'coin'] },
+      { id: 'CH2', label: 'ตู้แลกขวา', note: 'สแกนจ่าย (ไม่รับเหรียญ)', kinds: ['qr'] },
     ],
     vending: [{ id: 'VD1', label: 'ตู้น้ำยา' }],
   },
@@ -492,17 +492,21 @@ const COIN_POINTS = {
 };
 // ผังเครื่องจริงหน้าร้าน — ใช้จัดเรียงการ์ดในหน้านับเหรียญให้ตรงกับที่ยืนนับจริง
 // rows = แถวบน/ล่างตามที่ยืนมองหน้าร้าน (null = ช่องว่าง) — เลื่อนซ้าย-ขวาเหมือนเดินดูเครื่องจริง
+// fit: true = บีบให้พอดีจอ (ไม่ต้องเลื่อน) · ขนาดการ์ดสัมพันธ์กับ kg ของเครื่อง
 COIN_POINTS.otteri.layout = {
-  wash: [['W1', 'W2', 'W3', 'W4', 'W6', 'W7', 'W8']],
+  fit: true,
+  wash: [['W1', 'W2', 'W3', 'W4'], ['W6', 'W7', 'W8']],
   dry: [[null, 'D4', 'D6'], ['D1', 'D5', 'D7']], // D4 ซ้อนบน D5 · D6 ซ้อนบน D7
 };
 COIN_POINTS.teddy2.layout = {
-  wash: [['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8']],
-  dry: [['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8']],
+  fit: true,
+  wash: [['w1', 'w2', 'w3', 'w4'], ['w5', 'w6', 'w7', 'w8']],
+  dry: [['d1', 'd2', 'd3', 'd4'], ['d5', 'd6', 'd7', 'd8']],
 };
 COIN_POINTS.teddy.layout = {
-  wash: [['w1', 'w2', 'w3', 'w4', 'w5', 'w6']],
-  dry: [['d1', 'd2', 'd3', 'd4']],
+  fit: true,
+  wash: [['w1', 'w2', 'w3'], ['w4', 'w5', 'w6']],
+  dry: [['d1', 'd2'], ['d3', 'd4']],
 };
 COIN_POINTS.trainee = COIN_POINTS.teddy;
 
@@ -5576,18 +5580,19 @@ function CoinCountView({ config }) {
             <React.Fragment>
               {[['wash', '💧 เครื่องซัก'], ['dry', '💨 เครื่องอบ']].map(([key, title]) => (
                 <div key={key}>
-                  <p className="text-xs font-bold text-slate-500 mb-1.5">{title} — เรียงตามผังหน้าร้าน · เลื่อนซ้าย-ขวา</p>
-                  <div className="overflow-x-auto -mx-5 px-5 pb-1">
-                    <div className="space-y-1.5" style={{width: 'max-content'}}>
+                  <p className="text-xs font-bold text-slate-500 mb-1.5">{title} — ผังหน้าร้าน (ขนาดการ์ด = ขนาดเครื่อง)</p>
+                  <div className={cp.layout.fit ? '' : 'overflow-x-auto -mx-5 px-5 pb-1'}>
+                    <div className="space-y-1.5" style={cp.layout.fit ? {} : {width: 'max-content'}}>
                       {(cp.layout[key] || []).map((row, ri) => (
-                        <div key={ri} className="flex gap-1.5">
+                        <div key={ri} className="flex gap-1.5 items-end">
                           {row.map((id, ci) => {
                             const m = id ? cp.machines.find(x => x.id === id) : null;
-                            return (
-                              <div key={ci} style={{width: '86px', flex: '0 0 86px'}}>
-                                {m ? pointCard(m, 'machine') : null}
-                              </div>
-                            );
+                            const kg = m ? (parseInt(m.size, 10) || 12) : 12;
+                            const w = 1 + Math.min(0.75, (kg - 9) * 0.045); // 9kg=1.0 → 28kg=1.75
+                            const style = cp.layout.fit
+                              ? {flex: w + ' 1 0', minWidth: 0}
+                              : {width: '86px', flex: '0 0 86px'};
+                            return <div key={ci} style={style}>{m ? pointCard(m, 'machine') : null}</div>;
                           })}
                         </div>
                       ))}
@@ -5604,16 +5609,20 @@ function CoinCountView({ config }) {
           )}
           <div>
             <p className="text-xs font-bold text-slate-500 mb-1.5">🏧 {cp.tokenMode ? 'ตู้แลกโทเคน (จุดรับเงินสดจริง)' : 'ตู้แลกเหรียญ'}</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2" style={{gridTemplateColumns: `repeat(${Math.min(2, cp.changers.length)}, minmax(0, 1fr))`}}>
               {cp.changers.map(p => (
-                <React.Fragment key={p.id}>
+                <div key={p.id}>
                   {pointCard(p, 'changer')}
+                  {p.note && (
+                    <p className="text-[10px] text-center font-bold mt-1" style={{color: (p.kinds || []).includes('coin') ? '#B45309' : '#0369A1'}}>
+                      {(p.kinds || []).includes('coin') ? '💵🪙' : '📱'} {p.note}
+                    </p>
+                  )}
                   <button onClick={() => openForm(p, 'changer', 'refill')}
-                    className="bg-amber-50 rounded-xl p-3 text-left border border-amber-200 active:scale-95 transition">
-                    <p className="text-sm font-bold text-amber-800">➕ เติม{cp.unitName}</p>
-                    <p className="text-[11px] text-amber-600 mt-1">{p.label}</p>
+                    className="w-full mt-1 py-1.5 rounded-lg bg-amber-100 text-amber-800 text-[11px] font-bold border border-amber-200 active:scale-95 transition">
+                    ➕ เติม{cp.unitName}
                   </button>
-                </React.Fragment>
+                </div>
               ))}
             </div>
           </div>
