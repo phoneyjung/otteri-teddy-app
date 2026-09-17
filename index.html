@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v114-2026-09-17';
+  window.APP_VERSION = 'v115-2026-09-18';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -323,6 +323,8 @@ const TEDDY_LOGO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEB
 
 // ============ CONFIGS ============
 const OTTERI_CONFIG = {
+  hasStaffLogin: true,   // ต้อง login แม่บ้านก่อนใช้ (เพื่อรู้ว่าใครติ๊ก checklist)
+  hasChecklist: true,    // 📋 ระบบบันทึกงานประจำวันแม่บ้าน
   brand: 'otteri',
   name: 'Otteri',
   subtitle: 'Wash & Dry',
@@ -565,6 +567,123 @@ const menuOn = (config, key) => {
   const m = SHOP_MENUS[config.brand];
   return !m || m[key] !== false;
 };
+
+// ============ 📋 งานประจำวันแม่บ้าน (Checklist) — เริ่มที่ Otteri ============
+// cadence: daily | days (ระบุวัน 0=อา..6=ส) | weekly (ทุกจันทร์) | monthly (จันทร์แรกของเดือน)
+const DEFAULT_CHECKLIST = {
+  otteri: [
+    // รายวัน
+    { id: 'd01', title: 'ล้างรางน้ำ', cadence: 'daily' },
+    { id: 'd02', title: 'กวาดถูพื้น', cadence: 'daily' },
+    { id: 'd03', title: 'ล้างถาดเขียว + กรรไกร + ถ้วยน้ำ', cadence: 'daily' },
+    { id: 'd04', title: 'ทำความสะอาดช่องใส่น้ำยา', cadence: 'daily' },
+    { id: 'd05', title: 'ทำความสะอาด + เช็คความเรียบร้อย ภายใน-ภายนอก เครื่องซักและอบ', cadence: 'daily' },
+    { id: 'd06', title: 'ทำความสะอาดรางน้ำทิ้งหน้าเครื่องซัก', cadence: 'daily' },
+    { id: 'd07', title: 'เช็ดหน้าตู้แลกเงิน + ตู้แลกน้ำยา', cadence: 'daily' },
+    { id: 'd08', title: 'ทำความสะอาดอ่างล้างมือ', cadence: 'daily' },
+    { id: 'd09', title: 'เปลี่ยนผ้าเช็ดเท้า + ผ้าเช็ดมือ + ถุงขยะ', cadence: 'daily' },
+    { id: 'd10', title: 'ซักผ้าเช็ดเท้า + ผ้าเช็ดมือ', cadence: 'daily' },
+    { id: 'd11', title: 'เช็ดโต๊ะ เก้าอี้ + จัดให้เรียบร้อย', cadence: 'daily' },
+    { id: 'd12', title: 'เช็ดเคาน์เตอร์', cadence: 'daily' },
+    { id: 'd13', title: 'กวาดถูหลังตู้อบ', cadence: 'daily' },
+    { id: 'd14', title: 'กวาดหลังร้าน แถวศาลตายาย', cadence: 'daily' },
+    { id: 'd15', title: 'ดูแลทำความสะอาดซิงค์ล้างของหลังร้าน', cadence: 'daily' },
+    // อังคาร / ศุกร์
+    { id: 't01', title: 'ล้างฟิลเตอร์เครื่องอบ', cadence: 'days', days: [2, 5], photo: true },
+    { id: 't02', title: 'หย่อน EM', cadence: 'days', days: [2, 5], photo: true },
+    { id: 't03', title: 'ทำความสะอาดเครื่องดูดฝุ่น', cadence: 'days', days: [2, 5], photo: true },
+    { id: 't04', title: 'ล้างที่จอดรถข้างร้าน', cadence: 'days', days: [2, 5], photo: true },
+    { id: 't05', title: 'ล้างที่จอดรถหลังร้าน', cadence: 'days', days: [2, 5], photo: true },
+    // ทุกจันทร์
+    { id: 'w01', title: 'เปลี่ยนน้ำ + ล้างท่อดักฝุ่นเครื่องอบ', cadence: 'weekly', photo: true },
+    { id: 'w02', title: 'เช็ดกำแพงหน้าร้าน + ป้ายไฟ + ธงญี่ปุ่น + กำแพงในร้าน 3 ด้าน', cadence: 'weekly', photo: true },
+    { id: 'w03', title: 'ล้างพัดลม', cadence: 'weekly', photo: true },
+    { id: 'w04', title: 'เช็ดบนตู้อบ', cadence: 'weekly', photo: true },
+    { id: 'w05', title: 'เช็ดบนตู้แลกน้ำยา', cadence: 'weekly', photo: true },
+    { id: 'w06', title: 'ล้างหน้าร้าน', cadence: 'weekly', photo: true },
+    { id: 'w07', title: 'ทำความสะอาดโซนถังแก๊ส', cadence: 'weekly', photo: true },
+    { id: 'w08', title: 'ล้างเครื่องซักด้วยสบู่ + คลอรีน (น้ำร้อน)', cadence: 'weekly', photo: true },
+    // จันทร์แรกของเดือน
+    { id: 'm01', title: 'ทำความสะอาดข้างในตู้แลกน้ำยา', cadence: 'monthly', photo: true },
+    { id: 'm02', title: 'ทำความสะอาดข้างในตู้แลกเงิน', cadence: 'monthly', photo: true },
+    { id: 'm03', title: 'เช็ดบานเกล็ดหลังร้าน', cadence: 'monthly', photo: true },
+  ],
+};
+const CADENCE_LABEL = { daily: 'รายวัน', days: 'อ/ศ', weekly: 'ทุกจันทร์', monthly: 'จันทร์ต้นเดือน' };
+const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
+const dateKeyOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dateFromKey = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+
+// งานนี้ต้องทำในวันที่กำหนดหรือไม่
+function taskDueOn(task, date) {
+  const dow = date.getDay();
+  if (task.cadence === 'daily') return true;
+  if (task.cadence === 'days') return (task.days || []).includes(dow);
+  if (task.cadence === 'weekly') return dow === (task.weekday != null ? task.weekday : 1);
+  if (task.cadence === 'monthly') return dow === (task.weekday != null ? task.weekday : 1) && date.getDate() <= 7;
+  return false;
+}
+
+// รวม default + ที่เจ้าของแก้/เพิ่มจาก Firestore (doc id = brand-taskId)
+function mergeChecklistTasks(brand, cloud) {
+  const base = (DEFAULT_CHECKLIST[brand] || []).map(t => ({ ...t, builtin: true }));
+  const map = {};
+  base.forEach(t => { map[t.id] = t; });
+  (cloud || []).forEach(t => {
+    const id = t.taskId || t.id;
+    map[id] = { ...(map[id] || {}), ...t, id, builtin: !!map[id] && !t.custom };
+  });
+  return Object.values(map).filter(t => t.active !== false);
+}
+
+async function saveChecklistTask(brand, task) {
+  const id = task.id;
+  let data = cleanUndefined({ ...task, taskId: id, brand, updatedAt: Date.now() });
+  delete data.id; delete data.builtin;
+  data = JSON.parse(JSON.stringify(data));
+  await window.db.collection('checklistTasks').doc(`${brand}-${id}`).set(data, { merge: true });
+}
+function subscribeToChecklistTasks(brand, cb) {
+  return window.db.collection('checklistTasks').where('brand', '==', brand).onSnapshot(
+    s => cb(s.docs.map(d => ({ ...d.data() }))), e => console.error('checklistTasks:', e));
+}
+function subscribeToChecklistLogs(brand, cb) {
+  return window.db.collection('checklistLogs').where('brand', '==', brand).onSnapshot(
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error('checklistLogs:', e));
+}
+// ติ๊ก/ยกเลิก 1 งาน ใน log ของวันนั้น (set merge — ไม่ทับงานอื่น)
+async function setChecklistEntry(brand, dateKey, taskId, entry) {
+  const data = { brand, dateKey, updatedAt: Date.now(), entries: { [taskId]: entry == null ? firebase.firestore.FieldValue.delete() : entry } };
+  await window.db.collection('checklistLogs').doc(`${brand}-${dateKey}`).set(data, { merge: true });
+}
+async function patchChecklistLog(brand, dateKey, partial) {
+  await window.db.collection('checklistLogs').doc(`${brand}-${dateKey}`).set({ brand, dateKey, updatedAt: Date.now(), ...partial }, { merge: true });
+}
+// รูป: doc แยก โหลดเฉพาะเมื่อกดดู (ไม่ subscribe)
+async function saveChecklistPhoto(brand, dateKey, taskId, photo, by) {
+  await window.db.collection('checklistPhotos').doc(`${brand}-${dateKey}-${taskId}`).set({ brand, dateKey, taskId, photo, by: by || '', createdAt: Date.now() });
+}
+async function getChecklistPhoto(brand, dateKey, taskId) {
+  const d = await window.db.collection('checklistPhotos').doc(`${brand}-${dateKey}-${taskId}`).get();
+  return d.exists ? d.data() : null;
+}
+async function deleteChecklistPhoto(brand, dateKey, taskId) {
+  try { await window.db.collection('checklistPhotos').doc(`${brand}-${dateKey}-${taskId}`).delete(); } catch (e) {}
+}
+// ลบข้อมูลเก่ากว่า 45 วัน (log + รูป) — เรียกตอนเจ้าของเปิดแท็บ
+async function cleanupChecklist(brand) {
+  try {
+    const cutoff = dateKeyOf(new Date(Date.now() - 45 * 86400000));
+    const logs = await window.db.collection('checklistLogs').where('brand', '==', brand).get();
+    const old = logs.docs.filter(d => (d.data().dateKey || '') < cutoff);
+    for (const d of old) await d.ref.delete();
+    const photos = await window.db.collection('checklistPhotos').where('brand', '==', brand).get();
+    const oldP = photos.docs.filter(d => (d.data().dateKey || '') < cutoff);
+    for (const d of oldP) await d.ref.delete();
+    return old.length + oldP.length;
+  } catch (e) { console.error('cleanupChecklist:', e); return 0; }
+}
 
 const OWNER_PASSWORD = '1303';
 
@@ -2480,9 +2599,10 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
           🔄 กำลังเชื่อมต่อ cloud...
         </div>
       )}
-      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setInternalMode(false); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setView('newOrder'); }} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={() => { setInternalMode(false); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setView('newOrder'); }} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} onCancel={() => { setInternalMode(false); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
+      {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
@@ -2750,7 +2870,7 @@ function DeliveryCheckerView({ onBack }) {
   );
 }
 
-function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer }) {
+function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [tokenAmount, setTokenAmount] = useState('');
   const [tokenPayment, setTokenPayment] = useState('cash'); // cash | transfer
@@ -3174,6 +3294,21 @@ function HomeView({ onToggleLang, config, orders, tokenExchanges, onAddToken, on
           {config.lang === 'mm' ? '🇹🇭 ภาษาไทย' : '🇲🇲 မြန်မာဘာသာ'}
         </button>
       </div>
+
+      {/* 📋 งานประจำวันแม่บ้าน (Checklist) */}
+      {config.hasChecklist && (
+        <div className="px-5 mt-3">
+          <button onClick={onOpenChecklist}
+            className="w-full rounded-2xl p-3 border-2 border-emerald-300 bg-emerald-50 active:scale-95 transition flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-xl flex-shrink-0">📋</div>
+            <div className="text-left flex-1 min-w-0">
+              <p className="font-bold text-emerald-900 text-sm">งานประจำวัน — ติ๊กก่อนกลับบ้าน</p>
+              <p className="text-xs text-emerald-700">{DOW_TH[new Date().getDay()] === 'อ' || DOW_TH[new Date().getDay()] === 'ศ' ? 'วันนี้มีงานพิเศษ อ/ศ ต้องถ่ายรูป' : new Date().getDay() === 1 ? (new Date().getDate() <= 7 ? 'วันนี้จันทร์ต้นเดือน มีงานรายเดือนด้วย' : 'วันนี้จันทร์ มีงานรายสัปดาห์') : 'รายวัน 15 ข้อ'}</p>
+            </div>
+            <Icon name="chevron-right" className="w-5 h-5 text-emerald-700" />
+          </button>
+        </div>
+      )}
 
       {/* 🔧 งานภายในร้าน — ล้าง/ทดสอบเครื่อง (ไม่ใช่รายได้) */}
       {menuOn(config, 'internal') && <div className="px-5 mt-3">
@@ -5888,6 +6023,494 @@ function FoldReportView({ config, orders, onSelectOrder }) {
   );
 }
 
+// ============ 📋 งานประจำวันแม่บ้าน — หน้าติ๊ก (แม่บ้าน) ============
+function ChecklistView({ config, currentStaff, isOwner, onBack }) {
+  const [cloudTasks, setCloudTasks] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [issues, setIssues] = useState('');
+  const [issuesDirty, setIssuesDirty] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [photoTask, setPhotoTask] = useState(null);
+  const [viewPhoto, setViewPhoto] = useState(null);
+  const [thumbs, setThumbs] = useState({});
+  const camRef = useRef(null);
+  const galRef = useRef(null);
+
+  useEffect(() => {
+    if (!window.db) return;
+    const u1 = subscribeToChecklistTasks(config.brand, setCloudTasks);
+    const u2 = subscribeToChecklistLogs(config.brand, setLogs);
+    return () => { u1 && u1(); u2 && u2(); };
+  }, [config.brand]);
+
+  const today = new Date();
+  const todayKey = dateKeyOf(today);
+  const tasks = mergeChecklistTasks(config.brand, cloudTasks);
+  const todayLog = logs.find(l => l.dateKey === todayKey) || { entries: {} };
+  const entries = todayLog.entries || {};
+  const staffName = currentStaff ? currentStaff.name : (isOwner ? 'เจ้าของ' : '');
+
+  useEffect(() => {
+    if (!issuesDirty) setIssues(todayLog.issues || '');
+  }, [todayLog.issues, issuesDirty]);
+
+  const dueToday = tasks.filter(t => taskDueOn(t, today));
+  const daily = dueToday.filter(t => t.cadence === 'daily');
+  const special = dueToday.filter(t => t.cadence !== 'daily');
+  const doneCount = dueToday.filter(t => entries[t.id] && entries[t.id].done).length;
+  const allDone = dueToday.length > 0 && doneCount === dueToday.length;
+
+  // งานค้าง: งานพิเศษที่ถึงกำหนดใน 7 วันก่อนหน้าแต่ยังไม่ติ๊ก (แม่บ้านติ๊กเองไม่ได้ — เจ้าของติ๊กย้อนหลัง)
+  const overdue = [];
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const k = dateKeyOf(d);
+    const lg = logs.find(l => l.dateKey === k);
+    tasks.filter(t => t.cadence !== 'daily' && taskDueOn(t, d)).forEach(t => {
+      if (!(lg && lg.entries && lg.entries[t.id] && lg.entries[t.id].done)) overdue.push({ task: t, dateKey: k });
+    });
+  }
+
+  const toggle = async (t) => {
+    if (busy) return;
+    const cur = entries[t.id];
+    if (cur && cur.done) {
+      if (!window.confirm(`ยกเลิกติ๊ก "${t.title}" ?`)) return;
+      setBusy(t.id);
+      await setChecklistEntry(config.brand, todayKey, t.id, null);
+      setBusy('');
+      return;
+    }
+    if (t.photo && !(cur && cur.hasPhoto)) { setPhotoTask(t); return; }
+    setBusy(t.id);
+    await setChecklistEntry(config.brand, todayKey, t.id, { done: true, by: staffName, at: Date.now(), hasPhoto: !!(cur && cur.hasPhoto) });
+    setBusy('');
+  };
+
+  const handlePhoto = (e) => {
+    const file = e.target.files && e.target.files[0];
+    const t = photoTask;
+    e.target.value = '';
+    if (!file || !t) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const ratio = Math.min(1, 520 / img.width);
+        canvas.width = img.width * ratio; canvas.height = img.height * ratio;
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        setBusy(t.id);
+        try {
+          await saveChecklistPhoto(config.brand, todayKey, t.id, dataUrl, staffName);
+          await setChecklistEntry(config.brand, todayKey, t.id, { done: true, by: staffName, at: Date.now(), hasPhoto: true });
+          setThumbs(prev => ({ ...prev, [t.id]: dataUrl }));
+          playSuccessSound();
+        } catch (err) { alert('บันทึกรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจ Firestore Rules: checklistPhotos'); }
+        setBusy(''); setPhotoTask(null);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const openPhoto = async (t) => {
+    if (thumbs[t.id]) { setViewPhoto({ task: t, photo: thumbs[t.id] }); return; }
+    setBusy(t.id);
+    const p = await getChecklistPhoto(config.brand, todayKey, t.id);
+    setBusy('');
+    if (p) { setThumbs(prev => ({ ...prev, [t.id]: p.photo })); setViewPhoto({ task: t, photo: p.photo }); }
+    else alert('ไม่พบรูป');
+  };
+
+  const removePhoto = async (t) => {
+    if (!window.confirm(`ลบรูป "${t.title}" และยกเลิกติ๊ก?`)) return;
+    setBusy(t.id);
+    await deleteChecklistPhoto(config.brand, todayKey, t.id);
+    await setChecklistEntry(config.brand, todayKey, t.id, null);
+    setThumbs(prev => { const n = { ...prev }; delete n[t.id]; return n; });
+    setBusy(''); setViewPhoto(null);
+  };
+
+  const saveIssues = async () => {
+    await patchChecklistLog(config.brand, todayKey, { issues: issues.trim(), issuesBy: staffName });
+    setIssuesDirty(false);
+  };
+
+  const buildSummary = () => {
+    const dt = today.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' });
+    const lines = [`📋 งานประจำวัน ${config.name} — ${dt}`, `🧕 แม่บ้าน: ${staffName || '-'}`, ''];
+    const dd = daily.filter(t => entries[t.id] && entries[t.id].done).length;
+    lines.push(`${dd === daily.length ? '✅' : '⚠️'} รายวัน ${dd}/${daily.length}`);
+    if (special.length) {
+      const sd = special.filter(t => entries[t.id] && entries[t.id].done).length;
+      lines.push(`${sd === special.length ? '✅' : '⚠️'} งานพิเศษวันนี้ ${sd}/${special.length} (มีรูป ${special.filter(t => entries[t.id] && entries[t.id].hasPhoto).length})`);
+      special.forEach(t => lines.push(`  ${entries[t.id] && entries[t.id].done ? '✓' : '✗'} ${t.title}`));
+    }
+    const notDone = daily.filter(t => !(entries[t.id] && entries[t.id].done));
+    if (notDone.length) { lines.push('', '❌ รายวันที่ยังไม่ทำ:'); notDone.forEach(t => lines.push(`  • ${t.title}`)); }
+    if (overdue.length) { lines.push('', '🔴 งานค้าง (รอเจ้าของติ๊ก):'); overdue.forEach(o => lines.push(`  • ${o.task.title} (จาก ${dateFromKey(o.dateKey).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`)); }
+    if (issues.trim()) lines.push('', `📝 ปัญหาที่พบ: ${issues.trim()}`);
+    return lines.join('\n');
+  };
+
+  const handleSend = async () => {
+    if (issuesDirty) await saveIssues();
+    const text = buildSummary();
+    await patchChecklistLog(config.brand, todayKey, { sentAt: Date.now(), sentBy: staffName });
+    try {
+      if (navigator.share) await navigator.share({ text, title: 'งานประจำวัน' });
+      else { await navigator.clipboard.writeText(text); alert('คัดลอกสรุปแล้ว — วางในกลุ่ม LINE ได้เลย'); }
+    } catch (e) {}
+  };
+
+  const row = (t, locked) => {
+    const en = entries[t.id];
+    const done = !!(en && en.done);
+    return (
+      <div key={t.id} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 ${done ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
+        <button onClick={() => !locked && toggle(t)} disabled={!!busy || locked}
+          className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center flex-shrink-0 text-lg font-bold ${done ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-transparent'}`}>
+          ✓
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm ${done ? 'text-emerald-800 line-through' : 'text-slate-800'}`}>{t.title}</p>
+          {done && en.by && <p className="text-[10px] text-slate-400">{en.by} · {new Date(en.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</p>}
+        </div>
+        {t.photo && (
+          en && en.hasPhoto
+            ? <button onClick={() => openPhoto(t)} className="text-[11px] font-bold text-sky-600 bg-sky-50 rounded-lg px-2 py-1 flex-shrink-0">🖼️ ดูรูป</button>
+            : <button onClick={() => !locked && setPhotoTask(t)} disabled={locked} className="text-[11px] font-bold text-rose-600 bg-rose-50 rounded-lg px-2 py-1 flex-shrink-0">📷 ต้องถ่าย</button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-100 pb-32">
+      <div className="bg-white px-5 py-4 flex items-center gap-3 sticky top-0 z-10 border-b border-slate-200">
+        <button onClick={onBack} className="text-slate-600 font-bold">‹ กลับ</button>
+        <div className="flex-1">
+          <p className="font-extrabold text-slate-900">📋 งานประจำวัน</p>
+          <p className="text-xs text-slate-500">{today.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })} · 🧕 {staffName || 'ไม่ระบุ'}</p>
+        </div>
+        <div className={`text-sm font-extrabold px-3 py-1.5 rounded-xl ${allDone ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-700'}`}>{doneCount}/{dueToday.length}</div>
+      </div>
+
+      <div className="px-4 py-4 space-y-4">
+        {overdue.length > 0 && (
+          <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-3">
+            <p className="text-sm font-extrabold text-rose-700 mb-1">🔴 งานค้าง {overdue.length} รายการ — ทำแล้วแจ้งเจ้าของติ๊กย้อนหลัง</p>
+            {overdue.map(o => (
+              <p key={o.task.id + o.dateKey} className="text-xs text-rose-800">• {o.task.title} <span className="text-rose-500">(จาก {DOW_TH[dateFromKey(o.dateKey).getDay()]} {dateFromKey(o.dateKey).getDate()})</span></p>
+            ))}
+          </div>
+        )}
+
+        {special.length > 0 && (
+          <div>
+            <p className="text-xs font-bold text-amber-700 mb-1.5">⭐ งานพิเศษวันนี้ ({special.filter(t => entries[t.id] && entries[t.id].done).length}/{special.length}) — ต้องถ่ายรูปประกอบ</p>
+            <div className="space-y-1.5">{special.map(t => row(t, false))}</div>
+          </div>
+        )}
+
+        <div>
+          <p className="text-xs font-bold text-slate-500 mb-1.5">🧹 รายวัน ({daily.filter(t => entries[t.id] && entries[t.id].done).length}/{daily.length})</p>
+          <div className="space-y-1.5">{daily.map(t => row(t, false))}</div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-3 border border-slate-200">
+          <p className="text-xs font-bold text-slate-600 mb-1">📝 ปัญหาที่พบวันนี้ (ถ้ามี)</p>
+          <textarea value={issues} onChange={e => { setIssues(e.target.value); setIssuesDirty(true); }} onBlur={() => issuesDirty && saveIssues()} rows={2}
+            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm resize-none" placeholder="เช่น เครื่องอบ D5 มีเสียงดัง / น้ำยาหมด" />
+        </div>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3">
+        <div className="max-w-md mx-auto">
+          <button onClick={handleSend} disabled={!allDone}
+            className={`w-full py-3.5 rounded-2xl font-bold text-base active:scale-95 transition ${allDone ? 'text-white' : 'bg-slate-200 text-slate-400'}`}
+            style={allDone ? { background: 'linear-gradient(135deg, #06C755, #00B900)' } : {}}>
+            {allDone ? '📤 ส่งสรุปเข้ากลุ่ม (ก่อนกลับบ้าน)' : `ติ๊กให้ครบก่อน (เหลือ ${dueToday.length - doneCount})`}
+          </button>
+          {todayLog.sentAt && <p className="text-center text-[11px] text-emerald-600 mt-1">✓ ส่งแล้ว {new Date(todayLog.sentAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} — ส่งซ้ำได้ถ้าแก้เพิ่ม</p>}
+        </div>
+      </div>
+
+      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={handlePhoto} className="hidden" />
+      <input ref={galRef} type="file" accept="image/*" onChange={handlePhoto} className="hidden" />
+
+      {photoTask && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => setPhotoTask(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold text-slate-800 mb-1">📷 ถ่ายรูปประกอบ</p>
+            <p className="text-sm text-slate-600 mb-4">{photoTask.title}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => camRef.current && camRef.current.click()} className="py-5 rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 text-rose-700 font-bold">📷 ถ่ายรูป</button>
+              <button onClick={() => galRef.current && galRef.current.click()} className="py-5 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-700 font-bold">🖼️ อัลบั้ม</button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-3 text-center">ถ่ายแล้วจะติ๊กให้อัตโนมัติ</p>
+          </div>
+        </div>
+      )}
+
+      {viewPhoto && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex flex-col items-center justify-center p-4" onClick={() => setViewPhoto(null)}>
+          <img src={viewPhoto.photo} className="max-w-full max-h-[70vh] rounded-xl" alt="" />
+          <p className="text-white text-sm mt-3">{viewPhoto.task.title}</p>
+          <div className="flex gap-2 mt-3" onClick={e => e.stopPropagation()}>
+            <button onClick={() => { setViewPhoto(null); setPhotoTask(viewPhoto.task); }} className="px-4 py-2 rounded-xl bg-white text-slate-800 text-sm font-bold">📷 ถ่ายใหม่</button>
+            <button onClick={() => removePhoto(viewPhoto.task)} className="px-4 py-2 rounded-xl bg-rose-500 text-white text-sm font-bold">🗑️ ลบรูป</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ 📋 งานประจำวันแม่บ้าน — หน้าเจ้าของ (ประวัติ 45 วัน + ติ๊กย้อนหลัง + จัดการรายการ) ============
+function ChecklistAdminView({ config }) {
+  const [cloudTasks, setCloudTasks] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [mode, setMode] = useState('history');
+  const [openDay, setOpenDay] = useState(null);
+  const [viewPhoto, setViewPhoto] = useState(null);
+  const [lateFor, setLateFor] = useState(null);
+  const [lateReason, setLateReason] = useState('');
+  const [busy, setBusy] = useState('');
+  const [editTask, setEditTask] = useState(null);
+  const [cleaned, setCleaned] = useState(null);
+
+  useEffect(() => {
+    if (!window.db) return;
+    const u1 = subscribeToChecklistTasks(config.brand, setCloudTasks);
+    const u2 = subscribeToChecklistLogs(config.brand, setLogs);
+    cleanupChecklist(config.brand).then(n => setCleaned(n));
+    return () => { u1 && u1(); u2 && u2(); };
+  }, [config.brand]);
+
+  const tasks = mergeChecklistTasks(config.brand, cloudTasks);
+  const allTasksIncl = (() => {
+    const base = (DEFAULT_CHECKLIST[config.brand] || []).map(t => ({ ...t, builtin: true }));
+    const map = {}; base.forEach(t => { map[t.id] = t; });
+    cloudTasks.forEach(t => { const id = t.taskId || t.id; map[id] = { ...(map[id] || {}), ...t, id, builtin: !!(base.find(b => b.id === id)) }; });
+    return Object.values(map);
+  })();
+
+  // 45 วันล่าสุด
+  const days = [];
+  for (let i = 0; i < 45; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const k = dateKeyOf(d);
+    const lg = logs.find(l => l.dateKey === k);
+    const due = tasks.filter(t => taskDueOn(t, d));
+    const en = (lg && lg.entries) || {};
+    const done = due.filter(t => en[t.id] && en[t.id].done).length;
+    const late = due.filter(t => en[t.id] && en[t.id].late).length;
+    const by = [...new Set(due.map(t => en[t.id] && en[t.id].by).filter(Boolean))];
+    days.push({ d, k, lg, due, done, late, by, issues: lg && lg.issues, sentAt: lg && lg.sentAt });
+  }
+
+  const dayData = openDay ? days.find(x => x.k === openDay) : null;
+
+  const tick = async (dayKey, t, on) => {
+    if (busy) return;
+    const isToday = dayKey === dateKeyOf(new Date());
+    if (on && !isToday) { setLateFor({ dayKey, task: t }); setLateReason(''); return; }
+    setBusy(t.id);
+    await setChecklistEntry(config.brand, dayKey, t.id, on ? { done: true, by: 'เจ้าของ', at: Date.now() } : null);
+    setBusy('');
+  };
+  const confirmLate = async () => {
+    if (!lateFor) return;
+    setBusy(lateFor.task.id);
+    await setChecklistEntry(config.brand, lateFor.dayKey, lateFor.task.id, { done: true, by: 'เจ้าของ (ย้อนหลัง)', at: Date.now(), late: true, lateReason: lateReason.trim() });
+    setBusy(''); setLateFor(null);
+  };
+  const showPhoto = async (dayKey, t) => {
+    setBusy(t.id);
+    const p = await getChecklistPhoto(config.brand, dayKey, t.id);
+    setBusy('');
+    if (p) setViewPhoto({ dayKey, task: t, photo: p.photo, by: p.by });
+    else alert('ไม่มีรูปของงานนี้');
+  };
+  const delPhoto = async () => {
+    if (!viewPhoto || !window.confirm('ลบรูปนี้?')) return;
+    await deleteChecklistPhoto(config.brand, viewPhoto.dayKey, viewPhoto.task.id);
+    await setChecklistEntry(config.brand, viewPhoto.dayKey, viewPhoto.task.id, null);
+    setViewPhoto(null);
+  };
+
+  const openNewTask = () => setEditTask({ id: 'c' + Date.now().toString(36), title: '', cadence: 'daily', days: [2, 5], weekday: 1, photo: false, custom: true, active: true });
+  const saveTask = async () => {
+    if (!editTask.title.trim()) { alert('ใส่ชื่องาน'); return; }
+    setBusy('task');
+    try { await saveChecklistTask(config.brand, { ...editTask, title: editTask.title.trim() }); setEditTask(null); }
+    catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message + '\nตรวจ Firestore Rules: checklistTasks'); }
+    setBusy('');
+  };
+
+  const cadenceDesc = (t) => t.cadence === 'days' ? (t.days || []).map(d => DOW_TH[d]).join('/') : t.cadence === 'weekly' ? 'ทุก' + DOW_TH[t.weekday != null ? t.weekday : 1] : t.cadence === 'monthly' ? DOW_TH[t.weekday != null ? t.weekday : 1] + 'แรกของเดือน' : 'ทุกวัน';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1.5">
+        <button onClick={() => setMode('history')} className={`flex-1 py-2 rounded-xl text-xs font-bold ${mode === 'history' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>📅 ประวัติ 45 วัน</button>
+        <button onClick={() => setMode('tasks')} className={`flex-1 py-2 rounded-xl text-xs font-bold ${mode === 'tasks' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>📝 จัดการรายการงาน</button>
+      </div>
+      {cleaned > 0 && <p className="text-[11px] text-slate-400 text-center">🧹 ลบข้อมูลเก่ากว่า 45 วันแล้ว {cleaned} รายการ</p>}
+
+      {mode === 'history' && !openDay && (
+        <div className="space-y-1.5">
+          {days.map(x => {
+            const pct = x.due.length ? Math.round(x.done / x.due.length * 100) : 0;
+            const full = x.due.length > 0 && x.done === x.due.length;
+            const isToday = x.k === dateKeyOf(new Date());
+            return (
+              <button key={x.k} onClick={() => setOpenDay(x.k)} className={`w-full text-left rounded-xl border px-3 py-2.5 ${full ? 'bg-emerald-50 border-emerald-200' : x.done > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-slate-800">{DOW_TH[x.d.getDay()]} {x.d.getDate()} {x.d.toLocaleDateString('th-TH', { month: 'short' })}{isToday ? ' · วันนี้' : ''}</p>
+                  <p className={`text-sm font-extrabold ${full ? 'text-emerald-600' : x.done > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{x.done}/{x.due.length}</p>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-100 mt-1.5 overflow-hidden"><div className={`h-full ${full ? 'bg-emerald-500' : 'bg-amber-400'}`} style={{ width: pct + '%' }} /></div>
+                <div className="flex gap-2 mt-1 text-[10px] text-slate-500 flex-wrap">
+                  {x.by.length > 0 && <span>🧕 {x.by.join(', ')}</span>}
+                  {x.late > 0 && <span className="text-rose-600 font-bold">⏰ ย้อนหลัง {x.late}</span>}
+                  {x.sentAt && <span className="text-emerald-600">📤 ส่งแล้ว</span>}
+                  {x.issues && <span className="text-amber-700">📝 มีปัญหา</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {mode === 'history' && dayData && (
+        <div className="space-y-3">
+          <button onClick={() => setOpenDay(null)} className="text-sm font-bold text-slate-600">‹ กลับรายการวัน</button>
+          <div className="bg-white rounded-2xl p-3 border border-slate-200">
+            <p className="font-extrabold text-slate-800">{dayData.d.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: '2-digit' })}</p>
+            <p className="text-xs text-slate-500">ทำแล้ว {dayData.done}/{dayData.due.length} · {dayData.by.join(', ') || 'ยังไม่มีคนติ๊ก'}</p>
+            {dayData.issues && <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">📝 {dayData.issues}</p>}
+          </div>
+          {['daily', 'days', 'weekly', 'monthly'].map(cd => {
+            const list = dayData.due.filter(t => t.cadence === cd);
+            if (!list.length) return null;
+            const en = (dayData.lg && dayData.lg.entries) || {};
+            return (
+              <div key={cd}>
+                <p className="text-xs font-bold text-slate-500 mb-1.5">{CADENCE_LABEL[cd]}</p>
+                <div className="space-y-1.5">
+                  {list.map(t => {
+                    const e = en[t.id]; const done = !!(e && e.done);
+                    return (
+                      <div key={t.id} className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${done ? (e.late ? 'bg-amber-50 border-amber-300' : 'bg-emerald-50 border-emerald-200') : 'bg-white border-slate-200'}`}>
+                        <button onClick={() => tick(dayData.k, t, !done)} disabled={!!busy}
+                          className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center flex-shrink-0 text-sm font-bold ${done ? (e.late ? 'bg-amber-500 border-amber-500' : 'bg-emerald-500 border-emerald-500') + ' text-white' : 'bg-white border-slate-300 text-transparent'}`}>✓</button>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm ${done ? 'text-slate-700' : 'text-slate-800'}`}>{t.title}</p>
+                          {done && <p className="text-[10px] text-slate-400">{e.by} · {new Date(e.at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}{e.late ? ` · ⏰ ย้อนหลัง${e.lateReason ? ': ' + e.lateReason : ''}` : ''}</p>}
+                        </div>
+                        {t.photo && e && e.hasPhoto && <button onClick={() => showPhoto(dayData.k, t)} className="text-[11px] font-bold text-sky-600 bg-sky-50 rounded-lg px-2 py-1">🖼️</button>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {mode === 'tasks' && (
+        <div className="space-y-3">
+          <button onClick={openNewTask} className="w-full py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold active:scale-95 transition">➕ เพิ่มรายการงาน</button>
+          {['daily', 'days', 'weekly', 'monthly'].map(cd => {
+            const list = allTasksIncl.filter(t => t.cadence === cd);
+            if (!list.length) return null;
+            return (
+              <div key={cd}>
+                <p className="text-xs font-bold text-slate-500 mb-1.5">{CADENCE_LABEL[cd]} ({list.filter(t => t.active !== false).length})</p>
+                <div className="space-y-1.5">
+                  {list.map(t => (
+                    <div key={t.id} className={`flex items-center gap-2 rounded-xl border px-3 py-2 bg-white border-slate-200 ${t.active === false ? 'opacity-50' : ''}`}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-800">{t.title}{t.active === false ? ' (ปิด)' : ''}</p>
+                        <p className="text-[10px] text-slate-400">{cadenceDesc(t)}{t.photo ? ' · 📷 ต้องถ่ายรูป' : ''}{t.builtin ? '' : ' · เพิ่มเอง'}</p>
+                      </div>
+                      <button onClick={() => setEditTask({ ...t })} className="text-[11px] font-bold text-sky-600 px-2 py-1">แก้ไข</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {lateFor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center" onClick={() => setLateFor(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold text-slate-800">⏰ ติ๊กย้อนหลัง</p>
+            <p className="text-sm text-slate-600 mt-1">{lateFor.task.title}</p>
+            <p className="text-xs text-slate-500">วันที่ {dateFromKey(lateFor.dayKey).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} — จะบันทึกว่าทำล่าช้า</p>
+            <input type="text" value={lateReason} onChange={e => setLateReason(e.target.value)} className="w-full mt-3 px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="เหตุผล / บทลงโทษ (เช่น ลืม — ตักเตือนครั้งที่ 1)" />
+            <button onClick={confirmLate} disabled={!!busy} className="w-full mt-3 py-3 rounded-2xl bg-amber-500 text-white font-bold active:scale-95 transition">บันทึกย้อนหลัง</button>
+          </div>
+        </div>
+      )}
+
+      {editTask && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center" onClick={() => setEditTask(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold text-slate-800 mb-3">{editTask.custom && !allTasksIncl.find(t => t.id === editTask.id) ? '➕ เพิ่มรายการงาน' : '✏️ แก้ไขรายการงาน'}</p>
+            <input type="text" value={editTask.title} onChange={e => setEditTask({ ...editTask, title: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm mb-3" placeholder="ชื่องาน" />
+            <p className="text-xs font-bold text-slate-600 mb-1.5">รอบการทำ</p>
+            <div className="grid grid-cols-2 gap-1.5 mb-3">
+              {Object.entries(CADENCE_LABEL).map(([k, lb]) => (
+                <button key={k} onClick={() => setEditTask({ ...editTask, cadence: k })} className={`py-2 rounded-xl text-xs font-bold border-2 ${editTask.cadence === k ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300'}`}>{lb}</button>
+              ))}
+            </div>
+            {editTask.cadence === 'days' && (
+              <div className="flex gap-1 mb-3">
+                {DOW_TH.map((d, i) => (
+                  <button key={i} onClick={() => { const s = new Set(editTask.days || []); s.has(i) ? s.delete(i) : s.add(i); setEditTask({ ...editTask, days: [...s].sort() }); }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold border ${(editTask.days || []).includes(i) ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-slate-600 border-slate-300'}`}>{d}</button>
+                ))}
+              </div>
+            )}
+            {(editTask.cadence === 'weekly' || editTask.cadence === 'monthly') && (
+              <div className="flex gap-1 mb-3">
+                {DOW_TH.map((d, i) => (
+                  <button key={i} onClick={() => setEditTask({ ...editTask, weekday: i })}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold border ${(editTask.weekday != null ? editTask.weekday : 1) === i ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-slate-600 border-slate-300'}`}>{d}</button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setEditTask({ ...editTask, photo: !editTask.photo })} className={`w-full py-2.5 rounded-xl text-sm font-bold border-2 mb-2 ${editTask.photo ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white border-slate-300 text-slate-600'}`}>
+              📷 {editTask.photo ? 'ต้องถ่ายรูปประกอบ' : 'ไม่ต้องถ่ายรูป'}
+            </button>
+            <button onClick={() => setEditTask({ ...editTask, active: editTask.active === false })} className={`w-full py-2.5 rounded-xl text-sm font-bold border-2 mb-3 ${editTask.active === false ? 'bg-slate-100 border-slate-300 text-slate-500' : 'bg-emerald-50 border-emerald-300 text-emerald-700'}`}>
+              {editTask.active === false ? '⛔ ปิดใช้งานอยู่ — แตะเพื่อเปิด' : '✅ ใช้งานอยู่ — แตะเพื่อปิด'}
+            </button>
+            <button onClick={saveTask} disabled={busy === 'task'} className="w-full py-3 rounded-2xl bg-slate-800 text-white font-bold active:scale-95 transition disabled:opacity-40">บันทึก</button>
+          </div>
+        </div>
+      )}
+
+      {viewPhoto && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex flex-col items-center justify-center p-4" onClick={() => setViewPhoto(null)}>
+          <img src={viewPhoto.photo} className="max-w-full max-h-[70vh] rounded-xl" alt="" />
+          <p className="text-white text-sm mt-3">{viewPhoto.task.title}</p>
+          <p className="text-slate-300 text-xs">{viewPhoto.by} · {dateFromKey(viewPhoto.dayKey).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</p>
+          <button onClick={(e) => { e.stopPropagation(); delPhoto(); }} className="mt-3 px-4 py-2 rounded-xl bg-rose-500 text-white text-sm font-bold">🗑️ ลบรูป + ยกเลิกติ๊ก</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============ ⚙️ ตั้งค่าเจ้าของ — Token / แม่บ้าน / ไรเดอร์ (เจ้าของเท่านั้น) ============
 function SettingsView({ config, staffList }) {
   const [showAddStaff, setShowAddStaff] = useState(false);
@@ -6787,6 +7410,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <TabBtn active={tab === 'transfer'} onClick={() => setTab('transfer')}>💳 โอน ({transferCount})</TabBtn>
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
           {menuOn(config, 'internal') && <TabBtn active={tab === 'internal'} onClick={() => setTab('internal')}>🔧 งานภายใน ({internalOrders.length})</TabBtn>}
+          {config.hasChecklist && <TabBtn active={tab === 'checklist'} onClick={() => setTab('checklist')}>📋 งานแม่บ้าน</TabBtn>}
           <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
           <TabBtn active={tab === 'credit'} onClick={() => setTab('credit')}>🎟️ เครดิต</TabBtn>
           {config.tokenEnabled !== false && menuOn(config, 'exchange') && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 {exchangeName(config)} ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
@@ -6875,6 +7499,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <SettingsView config={config} staffList={staffList} />
         ) : tab === 'fold' ? (
           <FoldReportView config={config} orders={orders} onSelectOrder={onSelectOrder} />
+        ) : tab === 'checklist' ? (
+          <ChecklistAdminView config={config} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'token' ? (
