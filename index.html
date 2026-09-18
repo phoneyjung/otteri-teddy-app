@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v117-2026-09-19';
+  window.APP_VERSION = 'v118-2026-09-19';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -327,7 +327,8 @@ const OTTERI_CONFIG = {
   hasChecklist: true,    // 📋 ระบบบันทึกงานประจำวันแม่บ้าน
   hasAttendance: true,   // 🕐 เข้า-ออกงานด้วยรูปร้าน
   workHours: { start: '09:00', end: '20:00' },
-  lineGroupUrl: 'https://line.me/R/ti/g/U35e_td5zr', // กลุ่ม "ที่ทำมาหากิน" Otteri
+  lineGroupUrl: 'https://line.me/R/ti/g/U35e_td5zr',
+  lineGroupName: 'งาน Otteri ปากเกร็ด', // กลุ่มทำงานแม่บ้าน
   brand: 'otteri',
   name: 'Otteri',
   subtitle: 'Wash & Dry',
@@ -6237,7 +6238,7 @@ function AttendanceCard({ config, currentStaff }) {
           <div className="bg-white rounded-3xl w-full max-w-sm p-4 text-center" onClick={e => e.stopPropagation()}>
             <p className="text-lg font-extrabold text-slate-800">✅ {done.kind === 'in' ? 'เข้างานแล้ว' : 'ออกงานแล้ว'}</p>
             <img src={done.photo} className="w-full rounded-xl mt-3 border border-slate-200" alt="" />
-            <button onClick={share} className="w-full mt-3 py-3 rounded-2xl text-white font-bold active:scale-95 transition" style={{ background: 'linear-gradient(135deg, #06C755, #00B900)' }}>📤 ส่งรูปเข้ากลุ่ม "ที่ทำมาหากิน"</button>
+            <button onClick={share} className="w-full mt-3 py-3 rounded-2xl text-white font-bold active:scale-95 transition" style={{ background: 'linear-gradient(135deg, #06C755, #00B900)' }}>📤 ส่งรูปเข้ากลุ่ม "{config.lineGroupName || 'LINE'}"</button>
             {config.lineGroupUrl && <a href={config.lineGroupUrl} target="_blank" rel="noopener" className="block mt-2 text-xs text-emerald-700 underline">ยังไม่อยู่ในกลุ่ม? กดเข้ากลุ่มที่นี่</a>}
             <button onClick={() => setDone(null)} className="mt-2 text-xs text-slate-400">ปิด</button>
           </div>
