@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v124-2026-09-19';
+  window.APP_VERSION = 'v125-2026-09-19';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -6503,6 +6503,7 @@ function ChecklistView({ config, currentStaff, isOwner, onBack }) {
   const [photoTask, setPhotoTask] = useState(null);
   const [viewPhoto, setViewPhoto] = useState(null);
   const [thumbs, setThumbs] = useState({});
+  const [webcamTask, setWebcamTask] = useState(null);
   const camRef = useRef(null);
   const galRef = useRef(null);
 
@@ -6559,22 +6560,26 @@ function ChecklistView({ config, currentStaff, isOwner, onBack }) {
     setBusy('');
   };
 
+  const savePhotoFor = async (t, dataUrl) => {
+    setBusy(t.id);
+    try {
+      await saveChecklistPhoto(config.brand, todayKey, t.id, dataUrl, staffName);
+      await setChecklistEntry(config.brand, todayKey, t.id, { done: true, by: staffName, at: Date.now(), hasPhoto: true });
+      setThumbs(prev => ({ ...prev, [t.id]: dataUrl }));
+      playSuccessSound();
+    } catch (err) { alert('บันทึกรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจ Firestore Rules: checklistPhotos'); }
+    setBusy(''); setPhotoTask(null); setWebcamTask(null);
+  };
+
   const handlePhoto = (e) => {
     const file = e.target.files && e.target.files[0];
     const t = photoTask;
     e.target.value = '';
     if (!file || !t) return;
     setBusy(t.id);
-    (async () => {
-      try {
-        const dataUrl = await fileToResizedDataUrl(file, 520, 0.6);
-        await saveChecklistPhoto(config.brand, todayKey, t.id, dataUrl, staffName);
-        await setChecklistEntry(config.brand, todayKey, t.id, { done: true, by: staffName, at: Date.now(), hasPhoto: true });
-        setThumbs(prev => ({ ...prev, [t.id]: dataUrl }));
-        playSuccessSound();
-      } catch (err) { alert('บันทึกรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจ Firestore Rules: checklistPhotos'); }
-      setBusy(''); setPhotoTask(null);
-    })();
+    fileToResizedDataUrl(file, 520, 0.6)
+      .then(dataUrl => savePhotoFor(t, dataUrl))
+      .catch(err => { alert('อ่านรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err)); setBusy(''); setPhotoTask(null); });
   };
 
   const openPhoto = async (t) => {
@@ -6703,14 +6708,24 @@ function ChecklistView({ config, currentStaff, isOwner, onBack }) {
       <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={handlePhoto} className="hidden" />
       <input ref={galRef} type="file" accept="image/*" onChange={handlePhoto} className="hidden" />
 
+      {webcamTask && (
+        <WebCamCapture
+          title={'📷 ' + webcamTask.title}
+          onCancel={() => setWebcamTask(null)}
+          onFallback={() => { const t = webcamTask; setWebcamTask(null); setPhotoTask(t); setTimeout(() => camRef.current && camRef.current.click(), 50); }}
+          onCapture={(raw) => { const t = webcamTask; setWebcamTask(null); savePhotoFor(t, raw); }}
+        />
+      )}
+
       {photoTask && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => setPhotoTask(null)}>
           <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
             <p className="text-base font-bold text-slate-800 mb-1">📷 ถ่ายรูปประกอบ</p>
             <p className="text-sm text-slate-600 mb-4">{photoTask.title}</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => camRef.current && camRef.current.click()} className="py-5 rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 text-rose-700 font-bold">📷 ถ่ายรูป</button>
-              <button onClick={() => galRef.current && galRef.current.click()} className="py-5 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-700 font-bold">🖼️ อัลบั้ม</button>
+            <button onClick={() => { const t = photoTask; setPhotoTask(null); setWebcamTask(t); }} className="w-full py-5 rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-800 font-bold text-base">📷 ถ่ายรูป (กล้องในแอป)</button>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button onClick={() => camRef.current && camRef.current.click()} className="py-3 rounded-xl border border-slate-300 bg-white text-slate-600 text-xs font-bold">แอปกล้องเครื่อง</button>
+              <button onClick={() => galRef.current && galRef.current.click()} className="py-3 rounded-xl border border-slate-300 bg-white text-slate-600 text-xs font-bold">🖼️ อัลบั้ม</button>
             </div>
             <p className="text-[11px] text-slate-400 mt-3 text-center">ถ่ายแล้วจะติ๊กให้อัตโนมัติ</p>
           </div>
