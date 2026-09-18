@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v123-2026-09-19';
+  window.APP_VERSION = 'v124-2026-09-19';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -6093,6 +6093,67 @@ function FoldReportView({ config, orders, onSelectOrder }) {
   );
 }
 
+// ============ 📷 กล้องในเว็บ — ไม่พึ่งแอปกล้องของเครื่อง (แก้ไฟล์เสีย/HEIC/เด้งออก) ============
+function WebCamCapture({ title, onCapture, onCancel, onFallback }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [facing, setFacing] = useState('environment');
+  const [err, setErr] = useState('');
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false); setErr('');
+    const stop = () => { if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; } };
+    stop();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setErr('เบราว์เซอร์นี้ไม่รองรับกล้องในเว็บ'); return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false })
+      .then(s => {
+        if (cancelled) { s.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = s;
+        if (videoRef.current) { videoRef.current.srcObject = s; videoRef.current.play().catch(() => {}); }
+        setReady(true);
+      })
+      .catch(e => setErr((e && e.name === 'NotAllowedError') ? 'ไม่ได้อนุญาตให้ใช้กล้อง — กดอนุญาตแล้วลองใหม่' : 'เปิดกล้องไม่ได้: ' + (e && e.message ? e.message : e)));
+    return () => { cancelled = true; stop(); };
+  }, [facing]);
+
+  const snap = () => {
+    const v = videoRef.current;
+    if (!v || !v.videoWidth) return;
+    const ratio = Math.min(1, 1000 / v.videoWidth);
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(v.videoWidth * ratio); cv.height = Math.round(v.videoHeight * ratio);
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+    const out = cv.toDataURL('image/jpeg', 0.7);
+    cv.width = 1; cv.height = 1;
+    onCapture(out);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black z-[60] flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 text-white">
+        <button onClick={onCancel} className="font-bold">✕ ยกเลิก</button>
+        <p className="text-sm font-bold">{title}</p>
+        <button onClick={() => setFacing(f => f === 'environment' ? 'user' : 'environment')} className="text-sm">🔄 สลับ</button>
+      </div>
+      <div className="flex-1 flex items-center justify-center overflow-hidden">
+        {err ? (
+          <div className="text-center px-6">
+            <p className="text-white text-sm mb-4">{err}</p>
+            {onFallback && <button onClick={onFallback} className="px-4 py-2 rounded-xl bg-white text-slate-800 text-sm font-bold">ใช้แอปกล้องของเครื่องแทน</button>}
+          </div>
+        ) : (
+          <video ref={videoRef} autoPlay playsInline muted className="max-w-full max-h-full" />
+        )}
+      </div>
+      <div className="p-5 flex items-center justify-center gap-6">
+        <button onClick={snap} disabled={!ready || !!err} className="w-20 h-20 rounded-full bg-white border-4 border-slate-300 active:scale-90 transition disabled:opacity-30 flex items-center justify-center text-3xl">📷</button>
+      </div>
+    </div>
+  );
+}
+
 // ============ 🕐 การ์ดเข้า-ออกงาน (แม่บ้าน) — ถ่ายรูปร้าน = ลงเวลา ============
 function AttendanceCard({ config, currentStaff }) {
   const [recs, setRecs] = useState([]);
@@ -6104,6 +6165,7 @@ function AttendanceCard({ config, currentStaff }) {
   const camRef = useRef(null);
   const galRef = useRef(null);
   const [pickSrc, setPickSrc] = useState(null); // 'in' | 'out' — เลือกกล้อง/อัลบั้ม
+  const [webcam, setWebcam] = useState(null);   // kind ที่กำลังถ่ายด้วยกล้องเว็บ
   const srcRef = useRef('camera');
 
   useEffect(() => {
@@ -6119,7 +6181,8 @@ function AttendanceCard({ config, currentStaff }) {
   const wh = config.workHours || { start: '09:00', end: '20:00' };
 
   const startCapture = (kind) => setPickSrc(kind);
-  const pickCamera = () => { const k = pickSrc; setPickSrc(null); setStage(k); srcRef.current = 'camera'; setTimeout(() => camRef.current && camRef.current.click(), 50); };
+  const pickCamera = () => { const k = pickSrc; setPickSrc(null); srcRef.current = 'camera'; setWebcam(k); };
+  const pickDeviceCamera = () => { const k = webcam || pickSrc; setWebcam(null); setPickSrc(null); setStage(k); srcRef.current = 'camera'; setTimeout(() => camRef.current && camRef.current.click(), 50); };
   const pickGallery = () => { const k = pickSrc; setPickSrc(null); setStage(k); srcRef.current = 'gallery'; setTimeout(() => galRef.current && galRef.current.click(), 50); };
 
   const finalize = async (kind, raw, at, extra, outReason) => {
@@ -6145,6 +6208,26 @@ function AttendanceCard({ config, currentStaff }) {
     setBusy(false); setStage(null); setPending(null); setReason('');
   };
 
+  const processRaw = async (kind, raw, at) => {
+    setBusy(true);
+    (async () => {
+      try {
+        if (kind === 'in') {
+          const lateMin = Math.max(0, minOfDate(at) - hhmmToMin(wh.start));
+          await finalize('in', raw, at, { lateMin }, '');
+        } else {
+          const st = await getChecklistStatusToday(config.brand);
+          setBusy(false);
+          setPending({ photo: raw, at, status: st });
+          if (st.done >= st.total) await finalize('out', raw, at, { checklistDone: st.done, checklistTotal: st.total, earlyMin: Math.max(0, hhmmToMin(wh.end) - minOfDate(at)) }, '');
+        }
+      } catch (err) {
+        setBusy(false); setStage(null);
+        alert('อ่านรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nลองถ่ายใหม่อีกครั้ง');
+      }
+    })();
+  };
+
   const onPhoto = (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
@@ -6155,15 +6238,7 @@ function AttendanceCard({ config, currentStaff }) {
     (async () => {
       try {
         const raw = await fileToResizedDataUrl(file, 800, 0.65);
-        if (kind === 'in') {
-          const lateMin = Math.max(0, minOfDate(at) - hhmmToMin(wh.start));
-          await finalize('in', raw, at, { lateMin }, '');
-        } else {
-          const st = await getChecklistStatusToday(config.brand);
-          setBusy(false);
-          setPending({ photo: raw, at, status: st });
-          if (st.done >= st.total) await finalize('out', raw, at, { checklistDone: st.done, checklistTotal: st.total, earlyMin: Math.max(0, hhmmToMin(wh.end) - minOfDate(at)) }, '');
-        }
+        await processRaw(kind, raw, at);
       } catch (err) {
         setBusy(false); setStage(null);
         alert('อ่านรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nลองถ่ายใหม่อีกครั้ง');
@@ -6215,15 +6290,25 @@ function AttendanceCard({ config, currentStaff }) {
       <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} className="hidden" />
       <input ref={galRef} type="file" accept="image/*" onChange={onPhoto} className="hidden" />
 
+      {webcam && (
+        <WebCamCapture
+          title={webcam === 'in' ? '📸 เข้างาน — ถ่ายรูปร้าน' : '🚪 ออกงาน — ถ่ายรูปร้าน'}
+          onCancel={() => setWebcam(null)}
+          onFallback={pickDeviceCamera}
+          onCapture={(raw) => { const k = webcam; setWebcam(null); processRaw(k, raw, Date.now()); }}
+        />
+      )}
+
       {busy && <p className="text-center text-xs text-slate-500 mt-2">⏳ กำลังบันทึก…</p>}
 
       {pickSrc && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => setPickSrc(null)}>
           <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
             <p className="text-base font-bold text-slate-800 mb-3">{pickSrc === 'in' ? '📸 เข้างาน' : '🚪 ออกงาน'} — ถ่ายรูปร้าน</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={pickCamera} className="py-5 rounded-xl border-2 border-dashed border-sky-300 bg-sky-50 text-sky-700 font-bold">📷 ถ่ายรูป</button>
-              <button onClick={pickGallery} className="py-5 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-700 font-bold">🖼️ อัลบั้ม</button>
+            <button onClick={pickCamera} className="w-full py-5 rounded-xl border-2 border-sky-400 bg-sky-50 text-sky-800 font-bold text-base">📷 ถ่ายรูป (กล้องในแอป)</button>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button onClick={pickDeviceCamera} className="py-3 rounded-xl border border-slate-300 bg-white text-slate-600 text-xs font-bold">แอปกล้องเครื่อง</button>
+              <button onClick={pickGallery} className="py-3 rounded-xl border border-slate-300 bg-white text-slate-600 text-xs font-bold">🖼️ อัลบั้ม</button>
             </div>
             <p className="text-[11px] text-slate-400 mt-3 text-center">เวลาบันทึกจากตอนกด ไม่ใช่เวลาในรูป · รูปจากอัลบั้มจะติดป้ายบอกไว้</p>
           </div>
