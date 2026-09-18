@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v121-2026-09-19';
+  window.APP_VERSION = 'v123-2026-09-19';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1320,7 +1320,14 @@ function fileToResizedDataUrl(file, maxW, quality) {
     r.onerror = () => reject(new Error('อ่านไฟล์ไม่ได้'));
     r.readAsDataURL(file);
   });
-  return viaBitmap().catch(() => viaBlob()).catch(() => viaReader());
+  const errs = [];
+  return viaBitmap().catch(e1 => { errs.push('bitmap:' + (e1 && e1.message)); return viaBlob(); })
+    .catch(e2 => { errs.push('blob:' + (e2 && e2.message)); return viaReader(); })
+    .catch(e3 => {
+      errs.push('reader:' + (e3 && e3.message));
+      const info = `ไฟล์ ${file.type || 'ไม่ทราบชนิด'} ${Math.round((file.size || 0) / 1024)}KB · ${navigator.userAgent.match(/(Chrome|Safari|SamsungBrowser)\/[\d.]+/) ? navigator.userAgent.match(/(Chrome|Safari|SamsungBrowser)\/[\d.]+/)[0] : 'browser?'}`;
+      throw new Error(info + '\n' + errs.join(' | '));
+    });
 }
 
 function playSuccessSound() {
@@ -6095,6 +6102,9 @@ function AttendanceCard({ config, currentStaff }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);      // { kind, photo, text }
   const camRef = useRef(null);
+  const galRef = useRef(null);
+  const [pickSrc, setPickSrc] = useState(null); // 'in' | 'out' — เลือกกล้อง/อัลบั้ม
+  const srcRef = useRef('camera');
 
   useEffect(() => {
     if (!window.db) return;
@@ -6108,14 +6118,16 @@ function AttendanceCard({ config, currentStaff }) {
   const rec = recs.find(r => r.dateKey === today && r.staffKey === sk) || null;
   const wh = config.workHours || { start: '09:00', end: '20:00' };
 
-  const startCapture = (kind) => { setStage(kind); setTimeout(() => camRef.current && camRef.current.click(), 50); };
+  const startCapture = (kind) => setPickSrc(kind);
+  const pickCamera = () => { const k = pickSrc; setPickSrc(null); setStage(k); srcRef.current = 'camera'; setTimeout(() => camRef.current && camRef.current.click(), 50); };
+  const pickGallery = () => { const k = pickSrc; setPickSrc(null); setStage(k); srcRef.current = 'gallery'; setTimeout(() => galRef.current && galRef.current.click(), 50); };
 
   const finalize = async (kind, raw, at, extra, outReason) => {
     setBusy(true);
     try {
       const d = new Date(at);
       const dt = `${DOW_TH[d.getDay()]} ${d.getDate()} ${d.toLocaleDateString('th-TH', { month: 'short', year: '2-digit' })} ${fmtTime(at)}`;
-      const lines = [`${config.name} · ${kind === 'in' ? '📸 เข้างาน' : '🚪 ออกงาน'}`, `🧕 ${staffName} · ${dt}`];
+      const lines = [`${config.name} · ${kind === 'in' ? '📸 เข้างาน' : '🚪 ออกงาน'}${srcRef.current === 'gallery' ? ' · 🖼️ รูปจากอัลบั้ม' : ''}`, `🧕 ${staffName} · ${dt}`];
       if (kind === 'in') lines.push(extra.lateMin > 0 ? `⏰ สาย ${extra.lateMin} นาที` : '✓ ตรงเวลา');
       else {
         if (rec && rec.inAt) lines.push(`ทำงาน ${fmtDur(at - rec.inAt)}${extra.earlyMin > 0 ? ` · ออกก่อน ${extra.earlyMin} นาที` : ''}`);
@@ -6124,7 +6136,7 @@ function AttendanceCard({ config, currentStaff }) {
       const stamped = await stampPhoto(raw, lines);
       await saveAttendancePhoto(config.brand, today, sk, kind, stamped);
       const patch = kind === 'in'
-        ? { staffName, inAt: at, lateMin: extra.lateMin }
+        ? { staffName, inAt: at, lateMin: extra.lateMin, inFromGallery: srcRef.current === 'gallery' }
         : { staffName, outAt: at, earlyMin: extra.earlyMin, checklistDone: extra.checklistDone, checklistTotal: extra.checklistTotal, outReason: outReason || '' };
       await saveAttendance(config.brand, today, sk, patch);
       playSuccessSound();
@@ -6201,8 +6213,22 @@ function AttendanceCard({ config, currentStaff }) {
         </div>
       )}
       <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} className="hidden" />
+      <input ref={galRef} type="file" accept="image/*" onChange={onPhoto} className="hidden" />
 
       {busy && <p className="text-center text-xs text-slate-500 mt-2">⏳ กำลังบันทึก…</p>}
+
+      {pickSrc && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => setPickSrc(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold text-slate-800 mb-3">{pickSrc === 'in' ? '📸 เข้างาน' : '🚪 ออกงาน'} — ถ่ายรูปร้าน</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={pickCamera} className="py-5 rounded-xl border-2 border-dashed border-sky-300 bg-sky-50 text-sky-700 font-bold">📷 ถ่ายรูป</button>
+              <button onClick={pickGallery} className="py-5 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-700 font-bold">🖼️ อัลบั้ม</button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-3 text-center">เวลาบันทึกจากตอนกด ไม่ใช่เวลาในรูป · รูปจากอัลบั้มจะติดป้ายบอกไว้</p>
+          </div>
+        </div>
+      )}
 
       {pending && pending.status && pending.status.done < pending.status.total && !busy && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => { setPending(null); setStage(null); }}>
@@ -6320,7 +6346,7 @@ function AttendanceAdminView({ config }) {
           <p className="text-xs font-bold text-slate-600">{r.inAt && r.outAt ? fmtDur(r.outAt - r.inAt) : noOut ? '⚠️ ไม่ได้กดออก' : r.inAt ? 'กำลังทำงาน' : '-'}</p>
         </div>
         <div className="flex items-center gap-2 mt-1.5 text-xs flex-wrap">
-          <button onClick={() => r.inAt && openPhoto(r, 'in')} className={`px-2 py-1 rounded-lg font-bold ${r.lateMin > 0 ? 'bg-rose-100 text-rose-700' : 'bg-sky-50 text-sky-700'}`}>📸 {r.inAt ? fmtTime(r.inAt) : '-'}{r.lateMin > 0 ? ` สาย ${r.lateMin}น.` : ''}</button>
+          <button onClick={() => r.inAt && openPhoto(r, 'in')} className={`px-2 py-1 rounded-lg font-bold ${r.lateMin > 0 ? 'bg-rose-100 text-rose-700' : 'bg-sky-50 text-sky-700'}`}>📸 {r.inAt ? fmtTime(r.inAt) : '-'}{r.lateMin > 0 ? ` สาย ${r.lateMin}น.` : ''}{r.inFromGallery ? ' 🖼️' : ''}</button>
           <button onClick={() => r.outAt && openPhoto(r, 'out')} className={`px-2 py-1 rounded-lg font-bold ${!r.outAt ? 'bg-slate-100 text-slate-400' : r.earlyMin > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>🚪 {r.outAt ? fmtTime(r.outAt) : '-'}{r.earlyMin > 0 ? ` ก่อน ${r.earlyMin}น.` : ''}{(r.outByOwner || r.editedByOwner) ? ' ✏️' : ''}</button>
           {r.checklistTotal != null && <span className={`px-2 py-1 rounded-lg ${r.checklistDone >= r.checklistTotal ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>📋 {r.checklistDone}/{r.checklistTotal}</span>}
           <button onClick={() => { setEditRec(r); setEditIn(r.inAt ? fmtTime(r.inAt) : wh.start); setEditOut(r.outAt ? fmtTime(r.outAt) : ''); }} className={`px-2 py-1 rounded-lg font-bold ${noOut ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>✏️ แก้ไข</button>
