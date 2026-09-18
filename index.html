@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v119-2026-09-19';
+  window.APP_VERSION = 'v120-2026-09-19';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -1291,6 +1291,28 @@ function saveCollections(brand, items) { try { localStorage.setItem(getCollectio
 const formatMoney = (n) => new Intl.NumberFormat('th-TH').format(n || 0);
 
 // 🔔 เสียงติ๊งตอนบันทึกสำเร็จ (สร้างเสียงเอง ไม่ต้องมีไฟล์)
+// 📷 ย่อรูปจากกล้องแบบประหยัด memory (iPhone รูป 12MP ถ้าอ่านเป็น base64 ทั้งรูปจะโดน iOS ฆ่าหน้าเว็บ)
+function fileToResizedDataUrl(file, maxW, quality) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const ratio = Math.min(1, (maxW || 800) / img.width);
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * ratio); cv.height = Math.round(img.height * ratio);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        const out = cv.toDataURL('image/jpeg', quality || 0.65);
+        cv.width = 1; cv.height = 1; // คืน memory
+        resolve(out);
+      } catch (e) { URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('อ่านรูปไม่ได้')); };
+    img.src = url;
+  });
+}
+
 function playSuccessSound() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -3005,22 +3027,8 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   const handlePromoPhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxW = 600;
-        const ratio = Math.min(1, maxW / img.width);
-        canvas.width = img.width * ratio;
-        canvas.height = img.height * ratio;
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        setPromoPhoto(canvas.toDataURL('image/jpeg', 0.6));
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
+    fileToResizedDataUrl(file, 600, 0.6).then(setPromoPhoto).catch(err => alert('อ่านรูปไม่ได้: ' + err.message));
   };
 
   const handleSubmitPromo = async () => {
@@ -3116,21 +3124,8 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   const handleTokenPhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxW = 600;
-        const ratio = Math.min(1, maxW / img.width);
-        canvas.width = img.width * ratio;
-        canvas.height = img.height * ratio;
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        setTokenPhoto(canvas.toDataURL('image/jpeg', 0.6));
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+    e.target.value = '';
+    fileToResizedDataUrl(file, 600, 0.6).then(setTokenPhoto).catch(err => alert('อ่านรูปไม่ได้: ' + err.message));
   };
 
   const handleSubmitToken = async () => {
@@ -3861,33 +3856,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
 
   const handlePhotoUpload = (e, setter) => {
     const file = e.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        // ย่อรูปเป็น 600px กว้าง — เก็บใน Firestore ได้ (~50KB)
-        const ratio = Math.min(1, 600 / img.width);
-        canvas.width = img.width * ratio; canvas.height = img.height * ratio;
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        // คุณภาพ 0.6 = ~50KB
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-        // เช็คขนาด (Firestore document max 1MB)
-        const sizeKB = Math.round(dataUrl.length / 1024);
-        if (sizeKB > 700) {
-          // ถ้ายังใหญ่ ย่อลงอีก
-          const ratio2 = Math.min(1, 400 / canvas.width);
-          canvas.width = canvas.width * ratio2;
-          canvas.height = canvas.height * ratio2;
-          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-          setter(canvas.toDataURL('image/jpeg', 0.5));
-        } else {
-          setter(dataUrl);
-        }
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+    e.target.value = '';
+    // ย่อ 600px q0.6 (~50KB) — ประหยัด memory บน iPhone; ถ้ายังใหญ่เกิน 700KB ย่อซ้ำ 400px
+    fileToResizedDataUrl(file, 600, 0.6).then(async (d) => {
+      if (Math.round(d.length / 1024) > 700) d = await fileToResizedDataUrl(file, 400, 0.5);
+      setter(d);
+    }).catch(err => alert('อ่านรูปไม่ได้: ' + err.message));
   };
 
   const updateItem = (list, setter, size, delta, temp) => {
@@ -6154,29 +6128,25 @@ function AttendanceCard({ config, currentStaff }) {
     e.target.value = '';
     if (!file || !stage) { setStage(null); return; }
     const at = Date.now();
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = async () => {
-        const cv = document.createElement('canvas');
-        const ratio = Math.min(1, 800 / img.width);
-        cv.width = img.width * ratio; cv.height = img.height * ratio;
-        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-        const raw = cv.toDataURL('image/jpeg', 0.65);
-        if (stage === 'in') {
+    const kind = stage;
+    setBusy(true);
+    (async () => {
+      try {
+        const raw = await fileToResizedDataUrl(file, 800, 0.65);
+        if (kind === 'in') {
           const lateMin = Math.max(0, minOfDate(at) - hhmmToMin(wh.start));
           await finalize('in', raw, at, { lateMin }, '');
         } else {
-          setBusy(true);
           const st = await getChecklistStatusToday(config.brand);
           setBusy(false);
           setPending({ photo: raw, at, status: st });
           if (st.done >= st.total) await finalize('out', raw, at, { checklistDone: st.done, checklistTotal: st.total, earlyMin: Math.max(0, hhmmToMin(wh.end) - minOfDate(at)) }, '');
         }
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+      } catch (err) {
+        setBusy(false); setStage(null);
+        alert('อ่านรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nลองถ่ายใหม่อีกครั้ง');
+      }
+    })();
   };
 
   const confirmOutWithReason = () => {
@@ -6473,27 +6443,17 @@ function ChecklistView({ config, currentStaff, isOwner, onBack }) {
     const t = photoTask;
     e.target.value = '';
     if (!file || !t) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = async () => {
-        const canvas = document.createElement('canvas');
-        const ratio = Math.min(1, 520 / img.width);
-        canvas.width = img.width * ratio; canvas.height = img.height * ratio;
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-        setBusy(t.id);
-        try {
-          await saveChecklistPhoto(config.brand, todayKey, t.id, dataUrl, staffName);
-          await setChecklistEntry(config.brand, todayKey, t.id, { done: true, by: staffName, at: Date.now(), hasPhoto: true });
-          setThumbs(prev => ({ ...prev, [t.id]: dataUrl }));
-          playSuccessSound();
-        } catch (err) { alert('บันทึกรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจ Firestore Rules: checklistPhotos'); }
-        setBusy(''); setPhotoTask(null);
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+    setBusy(t.id);
+    (async () => {
+      try {
+        const dataUrl = await fileToResizedDataUrl(file, 520, 0.6);
+        await saveChecklistPhoto(config.brand, todayKey, t.id, dataUrl, staffName);
+        await setChecklistEntry(config.brand, todayKey, t.id, { done: true, by: staffName, at: Date.now(), hasPhoto: true });
+        setThumbs(prev => ({ ...prev, [t.id]: dataUrl }));
+        playSuccessSound();
+      } catch (err) { alert('บันทึกรูปไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจ Firestore Rules: checklistPhotos'); }
+      setBusy(''); setPhotoTask(null);
+    })();
   };
 
   const openPhoto = async (t) => {
