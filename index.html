@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v116-2026-09-19';
+  window.APP_VERSION = 'v117-2026-09-19';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -325,6 +325,9 @@ const TEDDY_LOGO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEB
 const OTTERI_CONFIG = {
   hasStaffLogin: true,   // ต้อง login แม่บ้านก่อนใช้ (เพื่อรู้ว่าใครติ๊ก checklist)
   hasChecklist: true,    // 📋 ระบบบันทึกงานประจำวันแม่บ้าน
+  hasAttendance: true,   // 🕐 เข้า-ออกงานด้วยรูปร้าน
+  workHours: { start: '09:00', end: '20:00' },
+  lineGroupUrl: 'https://line.me/R/ti/g/U35e_td5zr', // กลุ่ม "ที่ทำมาหากิน" Otteri
   brand: 'otteri',
   name: 'Otteri',
   subtitle: 'Wash & Dry',
@@ -683,6 +686,72 @@ async function cleanupChecklist(brand) {
     for (const d of oldP) await d.ref.delete();
     return old.length + oldP.length;
   } catch (e) { console.error('cleanupChecklist:', e); return 0; }
+}
+
+// ============ 🕐 เข้า-ออกงานด้วยรูปร้าน (Attendance) ============
+const staffKeyOf = (staff) => staff ? (staff.id || staff.name || 'unknown') : 'unknown';
+const hhmmToMin = (s) => { const [h, m] = (s || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+const minOfDate = (ts) => { const d = new Date(ts); return d.getHours() * 60 + d.getMinutes(); };
+const fmtDur = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); return `${Math.floor(m / 60)} ชม. ${m % 60} นาที`; };
+const fmtTime = (ts) => new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+function subscribeToAttendance(brand, cb) {
+  return window.db.collection('attendance').where('brand', '==', brand).onSnapshot(
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error('attendance:', e));
+}
+async function saveAttendance(brand, dateKey, staffKey, partial) {
+  await window.db.collection('attendance').doc(`${brand}-${dateKey}-${staffKey}`).set({ brand, dateKey, staffKey, updatedAt: Date.now(), ...partial }, { merge: true });
+}
+async function saveAttendancePhoto(brand, dateKey, staffKey, kind, photo) {
+  await window.db.collection('attendancePhotos').doc(`${brand}-${dateKey}-${staffKey}-${kind}`).set({ brand, dateKey, staffKey, kind, photo, createdAt: Date.now() });
+}
+async function getAttendancePhoto(brand, dateKey, staffKey, kind) {
+  const d = await window.db.collection('attendancePhotos').doc(`${brand}-${dateKey}-${staffKey}-${kind}`).get();
+  return d.exists ? d.data().photo : null;
+}
+async function cleanupAttendance(brand) {
+  try {
+    const cutoff = dateKeyOf(new Date(Date.now() - 45 * 86400000));
+    let n = 0;
+    for (const col of ['attendance', 'attendancePhotos']) {
+      const s = await window.db.collection(col).where('brand', '==', brand).get();
+      for (const d of s.docs) if ((d.data().dateKey || '') < cutoff) { await d.ref.delete(); n++; }
+    }
+    return n;
+  } catch (e) { console.error('cleanupAttendance:', e); return 0; }
+}
+// ประทับข้อมูลลงบนรูป (แผงด้านล่าง) — เวลาเอาจากตอนกดปุ่ม ไม่ใช่จากไฟล์
+function stampPhoto(dataUrl, lines) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const W = img.width;
+      const lineH = Math.round(W * 0.055), pad = Math.round(W * 0.035);
+      const panelH = pad * 2 + lineH * lines.length;
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = img.height + panelH;
+      const ctx = cv.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      ctx.fillStyle = '#0F172A'; ctx.fillRect(0, img.height, W, panelH);
+      lines.forEach((ln, i) => {
+        ctx.fillStyle = i === 0 ? '#FBBF24' : '#FFFFFF';
+        ctx.font = (i === 0 ? 'bold ' : '') + Math.round(lineH * 0.7) + 'px sans-serif';
+        ctx.fillText(ln, pad, img.height + pad + lineH * i + Math.round(lineH * 0.72));
+      });
+      resolve(cv.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+// เช็ค checklist วันนี้ (อ่านครั้งเดียวตอนกดออกงาน)
+async function getChecklistStatusToday(brand) {
+  const today = new Date(); const k = dateKeyOf(today);
+  const ts = await window.db.collection('checklistTasks').where('brand', '==', brand).get();
+  const tasks = mergeChecklistTasks(brand, ts.docs.map(d => d.data())).filter(t => taskDueOn(t, today));
+  const lg = await window.db.collection('checklistLogs').doc(`${brand}-${k}`).get();
+  const en = (lg.exists && lg.data().entries) || {};
+  const done = tasks.filter(t => en[t.id] && en[t.id].done).length;
+  return { done, total: tasks.length, missing: tasks.filter(t => !(en[t.id] && en[t.id].done)).map(t => t.title) };
 }
 
 const OWNER_PASSWORD = '1303';
@@ -3294,6 +3363,9 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
           {config.lang === 'mm' ? '🇹🇭 ภาษาไทย' : '🇲🇲 မြန်မာဘာသာ'}
         </button>
       </div>
+
+      {/* 🕐 เข้า-ออกงานด้วยรูปร้าน */}
+      {config.hasAttendance && <AttendanceCard config={config} currentStaff={currentStaff} />}
 
       {/* 📋 งานประจำวันแม่บ้าน (Checklist) */}
       {config.hasChecklist && (
@@ -6023,6 +6095,274 @@ function FoldReportView({ config, orders, onSelectOrder }) {
   );
 }
 
+// ============ 🕐 การ์ดเข้า-ออกงาน (แม่บ้าน) — ถ่ายรูปร้าน = ลงเวลา ============
+function AttendanceCard({ config, currentStaff }) {
+  const [recs, setRecs] = useState([]);
+  const [stage, setStage] = useState(null);   // 'in' | 'out'
+  const [pending, setPending] = useState(null); // { photo, at, status }
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);      // { kind, photo, text }
+  const camRef = useRef(null);
+
+  useEffect(() => {
+    if (!window.db) return;
+    const u = subscribeToAttendance(config.brand, setRecs);
+    return () => u && u();
+  }, [config.brand]);
+
+  const today = dateKeyOf(new Date());
+  const sk = staffKeyOf(currentStaff);
+  const staffName = currentStaff ? currentStaff.name : 'ไม่ระบุ';
+  const rec = recs.find(r => r.dateKey === today && r.staffKey === sk) || null;
+  const wh = config.workHours || { start: '09:00', end: '20:00' };
+
+  const startCapture = (kind) => { setStage(kind); setTimeout(() => camRef.current && camRef.current.click(), 50); };
+
+  const finalize = async (kind, raw, at, extra, outReason) => {
+    setBusy(true);
+    try {
+      const d = new Date(at);
+      const dt = `${DOW_TH[d.getDay()]} ${d.getDate()} ${d.toLocaleDateString('th-TH', { month: 'short', year: '2-digit' })} ${fmtTime(at)}`;
+      const lines = [`${config.name} · ${kind === 'in' ? '📸 เข้างาน' : '🚪 ออกงาน'}`, `🧕 ${staffName} · ${dt}`];
+      if (kind === 'in') lines.push(extra.lateMin > 0 ? `⏰ สาย ${extra.lateMin} นาที` : '✓ ตรงเวลา');
+      else {
+        if (rec && rec.inAt) lines.push(`ทำงาน ${fmtDur(at - rec.inAt)}${extra.earlyMin > 0 ? ` · ออกก่อน ${extra.earlyMin} นาที` : ''}`);
+        lines.push(extra.checklistDone >= extra.checklistTotal ? `📋 งานประจำวัน ${extra.checklistDone}/${extra.checklistTotal} ✓` : `⚠️ งานประจำวัน ${extra.checklistDone}/${extra.checklistTotal} — ${outReason}`);
+      }
+      const stamped = await stampPhoto(raw, lines);
+      await saveAttendancePhoto(config.brand, today, sk, kind, stamped);
+      const patch = kind === 'in'
+        ? { staffName, inAt: at, lateMin: extra.lateMin }
+        : { staffName, outAt: at, earlyMin: extra.earlyMin, checklistDone: extra.checklistDone, checklistTotal: extra.checklistTotal, outReason: outReason || '' };
+      await saveAttendance(config.brand, today, sk, patch);
+      playSuccessSound();
+      setDone({ kind, photo: stamped, text: lines.join('\n') });
+    } catch (err) { alert('บันทึกไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\nตรวจ Firestore Rules: attendance / attendancePhotos'); }
+    setBusy(false); setStage(null); setPending(null); setReason('');
+  };
+
+  const onPhoto = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file || !stage) { setStage(null); return; }
+    const at = Date.now();
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = async () => {
+        const cv = document.createElement('canvas');
+        const ratio = Math.min(1, 800 / img.width);
+        cv.width = img.width * ratio; cv.height = img.height * ratio;
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        const raw = cv.toDataURL('image/jpeg', 0.65);
+        if (stage === 'in') {
+          const lateMin = Math.max(0, minOfDate(at) - hhmmToMin(wh.start));
+          await finalize('in', raw, at, { lateMin }, '');
+        } else {
+          setBusy(true);
+          const st = await getChecklistStatusToday(config.brand);
+          setBusy(false);
+          setPending({ photo: raw, at, status: st });
+          if (st.done >= st.total) await finalize('out', raw, at, { checklistDone: st.done, checklistTotal: st.total, earlyMin: Math.max(0, hhmmToMin(wh.end) - minOfDate(at)) }, '');
+        }
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const confirmOutWithReason = () => {
+    if (!reason.trim()) { alert('ต้องใส่เหตุผลที่ติ๊กงานไม่ครบ'); return; }
+    const st = pending.status;
+    finalize('out', pending.photo, pending.at, { checklistDone: st.done, checklistTotal: st.total, earlyMin: Math.max(0, hhmmToMin(wh.end) - minOfDate(pending.at)) }, reason.trim());
+  };
+
+  const share = async () => {
+    if (!done) return;
+    try {
+      const b64 = done.photo.split(',')[1]; const bin = atob(b64); const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], `${done.kind}-${today}.jpg`, { type: 'image/jpeg' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], text: done.text });
+      else if (navigator.share) await navigator.share({ text: done.text });
+    } catch (e) {}
+  };
+
+  const state = !rec || !rec.inAt ? 'none' : !rec.outAt ? 'in' : 'out';
+
+  return (
+    <div className="px-5 mt-3">
+      {state === 'none' && (
+        <button onClick={() => startCapture('in')} disabled={busy} className="w-full rounded-2xl p-3 border-2 border-sky-300 bg-sky-50 active:scale-95 transition flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center text-xl flex-shrink-0">📸</div>
+          <div className="text-left flex-1"><p className="font-bold text-sky-900 text-sm">เข้างาน — ถ่ายรูปร้าน</p><p className="text-xs text-sky-700">เวลางาน {wh.start}–{wh.end} · 🧕 {staffName}</p></div>
+          <Icon name="chevron-right" className="w-5 h-5 text-sky-700" />
+        </button>
+      )}
+      {state === 'in' && (
+        <button onClick={() => startCapture('out')} disabled={busy} className="w-full rounded-2xl p-3 border-2 border-orange-300 bg-orange-50 active:scale-95 transition flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center text-xl flex-shrink-0">🚪</div>
+          <div className="text-left flex-1"><p className="font-bold text-orange-900 text-sm">ออกงาน — ถ่ายรูปร้านก่อนกลับ</p><p className="text-xs text-orange-700">เข้างาน {fmtTime(rec.inAt)}{rec.lateMin > 0 ? ` (สาย ${rec.lateMin} นาที)` : ''} · ต้องติ๊กงานประจำวันให้ครบ</p></div>
+          <Icon name="chevron-right" className="w-5 h-5 text-orange-700" />
+        </button>
+      )}
+      {state === 'out' && (
+        <div className="w-full rounded-2xl p-3 border-2 border-emerald-200 bg-emerald-50 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-xl flex-shrink-0">✓</div>
+          <div className="text-left flex-1"><p className="font-bold text-emerald-900 text-sm">ออกงานแล้ว {fmtTime(rec.outAt)}</p><p className="text-xs text-emerald-700">เข้า {fmtTime(rec.inAt)} · ทำงาน {fmtDur(rec.outAt - rec.inAt)} · งาน {rec.checklistDone}/{rec.checklistTotal}</p></div>
+        </div>
+      )}
+      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} className="hidden" />
+
+      {busy && <p className="text-center text-xs text-slate-500 mt-2">⏳ กำลังบันทึก…</p>}
+
+      {pending && pending.status && pending.status.done < pending.status.total && !busy && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => { setPending(null); setStage(null); }}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold text-rose-700">⚠️ งานประจำวันยังไม่ครบ ({pending.status.done}/{pending.status.total})</p>
+            <p className="text-xs text-slate-500 mt-1">ยังไม่ทำ: {pending.status.missing.slice(0, 5).join(', ')}{pending.status.missing.length > 5 ? ' …' : ''}</p>
+            <p className="text-sm font-bold text-slate-700 mt-3 mb-1">เหตุผลที่ทำไม่ครบ <span className="text-rose-600">*บังคับ</span></p>
+            <input type="text" value={reason} onChange={e => setReason(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border-2 border-rose-300 bg-rose-50 text-sm" placeholder="เช่น ต้องกลับก่อน ลูกไม่สบาย" />
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <button onClick={() => { setPending(null); setStage(null); }} className="py-3 rounded-xl bg-slate-100 text-slate-700 font-bold">กลับไปติ๊กให้ครบ</button>
+              <button onClick={confirmOutWithReason} className="py-3 rounded-xl bg-orange-500 text-white font-bold">ออกงานพร้อมเหตุผล</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {done && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-5" onClick={() => setDone(null)}>
+          <div className="bg-white rounded-3xl w-full max-w-sm p-4 text-center" onClick={e => e.stopPropagation()}>
+            <p className="text-lg font-extrabold text-slate-800">✅ {done.kind === 'in' ? 'เข้างานแล้ว' : 'ออกงานแล้ว'}</p>
+            <img src={done.photo} className="w-full rounded-xl mt-3 border border-slate-200" alt="" />
+            <button onClick={share} className="w-full mt-3 py-3 rounded-2xl text-white font-bold active:scale-95 transition" style={{ background: 'linear-gradient(135deg, #06C755, #00B900)' }}>📤 ส่งรูปเข้ากลุ่ม "ที่ทำมาหากิน"</button>
+            {config.lineGroupUrl && <a href={config.lineGroupUrl} target="_blank" rel="noopener" className="block mt-2 text-xs text-emerald-700 underline">ยังไม่อยู่ในกลุ่ม? กดเข้ากลุ่มที่นี่</a>}
+            <button onClick={() => setDone(null)} className="mt-2 text-xs text-slate-400">ปิด</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ 🕐 เข้า-ออกงาน — หน้าเจ้าของ (45 วัน + สรุปเดือน + แก้ย้อนหลัง) ============
+function AttendanceAdminView({ config }) {
+  const [recs, setRecs] = useState([]);
+  const [viewPhoto, setViewPhoto] = useState(null);
+  const [editRec, setEditRec] = useState(null);
+  const [editOut, setEditOut] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [cleaned, setCleaned] = useState(null);
+  const [month, setMonth] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!window.db) return;
+    const u = subscribeToAttendance(config.brand, setRecs);
+    cleanupAttendance(config.brand).then(setCleaned);
+    return () => u && u();
+  }, [config.brand]);
+
+  const wh = config.workHours || { start: '09:00', end: '20:00' };
+  const todayKey = dateKeyOf(new Date());
+  const sorted = [...recs].sort((a, b) => (b.dateKey || '').localeCompare(a.dateKey || '') || (a.staffName || '').localeCompare(b.staffName || ''));
+
+  // สรุปเดือน
+  const mk = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+  const inMonth = recs.filter(r => (r.dateKey || '').startsWith(mk));
+  const byStaff = {};
+  inMonth.forEach(r => {
+    const k = r.staffName || r.staffKey;
+    if (!byStaff[k]) byStaff[k] = { name: k, days: 0, ms: 0, late: 0, lateMin: 0, early: 0, noOut: 0, incomplete: 0 };
+    const s = byStaff[k];
+    if (r.inAt) s.days++;
+    if (r.inAt && r.outAt) s.ms += r.outAt - r.inAt;
+    if (r.lateMin > 0) { s.late++; s.lateMin += r.lateMin; }
+    if (r.earlyMin > 0) s.early++;
+    if (r.inAt && !r.outAt && r.dateKey < todayKey) s.noOut++;
+    if (r.outReason) s.incomplete++;
+  });
+
+  const openPhoto = async (r, kind) => {
+    setBusy(true);
+    const p = await getAttendancePhoto(config.brand, r.dateKey, r.staffKey, kind);
+    setBusy(false);
+    if (p) setViewPhoto({ r, kind, photo: p }); else alert('ไม่มีรูป');
+  };
+
+  const saveEdit = async () => {
+    if (!editRec) return;
+    const [h, m] = editOut.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) { alert('ใส่เวลาแบบ 20:05'); return; }
+    const d = dateFromKey(editRec.dateKey); d.setHours(h, m, 0, 0);
+    setBusy(true);
+    await saveAttendance(config.brand, editRec.dateKey, editRec.staffKey, { outAt: d.getTime(), outByOwner: true, earlyMin: Math.max(0, hhmmToMin(wh.end) - (h * 60 + m)) });
+    setBusy(false); setEditRec(null);
+  };
+
+  const row = (r) => {
+    const d = dateFromKey(r.dateKey);
+    const noOut = r.inAt && !r.outAt && r.dateKey < todayKey;
+    return (
+      <div key={r.id} className={`rounded-xl border px-3 py-2.5 ${noOut ? 'bg-rose-50 border-rose-200' : r.outReason ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold text-slate-800">{DOW_TH[d.getDay()]} {d.getDate()} {d.toLocaleDateString('th-TH', { month: 'short' })} · 🧕 {r.staffName || r.staffKey}</p>
+          <p className="text-xs font-bold text-slate-600">{r.inAt && r.outAt ? fmtDur(r.outAt - r.inAt) : noOut ? '⚠️ ไม่ได้กดออก' : r.inAt ? 'กำลังทำงาน' : '-'}</p>
+        </div>
+        <div className="flex items-center gap-2 mt-1.5 text-xs flex-wrap">
+          <button onClick={() => r.inAt && openPhoto(r, 'in')} className={`px-2 py-1 rounded-lg font-bold ${r.lateMin > 0 ? 'bg-rose-100 text-rose-700' : 'bg-sky-50 text-sky-700'}`}>📸 {r.inAt ? fmtTime(r.inAt) : '-'}{r.lateMin > 0 ? ` สาย ${r.lateMin}น.` : ''}</button>
+          <button onClick={() => r.outAt && openPhoto(r, 'out')} className={`px-2 py-1 rounded-lg font-bold ${!r.outAt ? 'bg-slate-100 text-slate-400' : r.earlyMin > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>🚪 {r.outAt ? fmtTime(r.outAt) : '-'}{r.earlyMin > 0 ? ` ก่อน ${r.earlyMin}น.` : ''}{r.outByOwner ? ' ✏️' : ''}</button>
+          {r.checklistTotal != null && <span className={`px-2 py-1 rounded-lg ${r.checklistDone >= r.checklistTotal ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>📋 {r.checklistDone}/{r.checklistTotal}</span>}
+          {(noOut || r.outByOwner) && <button onClick={() => { setEditRec(r); setEditOut(r.outAt ? fmtTime(r.outAt) : wh.end); }} className="px-2 py-1 rounded-lg bg-slate-800 text-white font-bold">✏️ เวลาออก</button>}
+        </div>
+        {r.outReason && <p className="text-[11px] text-amber-800 mt-1">⚠️ เหตุผลติ๊กไม่ครบ: {r.outReason}</p>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded-2xl p-3 border border-slate-200">
+        <div className="flex items-center justify-between mb-2">
+          <button onClick={() => { const d = new Date(month); d.setMonth(d.getMonth() - 1); setMonth(d); }} className="px-3 text-lg font-bold text-slate-600">‹</button>
+          <p className="text-sm font-bold text-slate-800">🕐 สรุป {month.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</p>
+          <button onClick={() => { const d = new Date(month); d.setMonth(d.getMonth() + 1); setMonth(d); }} className="px-3 text-lg font-bold text-slate-600">›</button>
+        </div>
+        {Object.values(byStaff).length === 0 && <p className="text-xs text-slate-400 text-center py-2">ยังไม่มีข้อมูลเดือนนี้</p>}
+        {Object.values(byStaff).map(s => (
+          <div key={s.name} className="flex items-center justify-between py-1.5 border-t border-slate-100 text-xs">
+            <p className="font-bold text-slate-800">🧕 {s.name}</p>
+            <p className="text-slate-600">{s.days} วัน · {fmtDur(s.ms)}{s.late > 0 ? <span className="text-rose-600"> · สาย {s.late} ครั้ง</span> : ''}{s.noOut > 0 ? <span className="text-rose-600"> · ไม่กดออก {s.noOut}</span> : ''}{s.incomplete > 0 ? <span className="text-amber-700"> · งานไม่ครบ {s.incomplete}</span> : ''}</p>
+          </div>
+        ))}
+        <p className="text-[10px] text-slate-400 mt-1">เวลางาน {wh.start}–{wh.end} · เก็บ 45 วัน{cleaned > 0 ? ` · ลบเก่าแล้ว ${cleaned}` : ''}</p>
+      </div>
+
+      <div className="space-y-1.5">{sorted.map(row)}</div>
+      {busy && <p className="text-center text-xs text-slate-400">⏳ กำลังโหลด…</p>}
+
+      {editRec && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center" onClick={() => setEditRec(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold text-slate-800">✏️ ใส่เวลาออกย้อนหลัง</p>
+            <p className="text-xs text-slate-500 mt-1">{editRec.staffName} · {dateFromKey(editRec.dateKey).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} — จะติดป้าย ✏️ ว่าเจ้าของแก้</p>
+            <input type="time" value={editOut} onChange={e => setEditOut(e.target.value)} className="w-full mt-3 px-3 py-2.5 rounded-xl border border-slate-300 text-lg font-bold text-center" />
+            <button onClick={saveEdit} disabled={busy} className="w-full mt-3 py-3 rounded-2xl bg-slate-800 text-white font-bold">บันทึก</button>
+          </div>
+        </div>
+      )}
+
+      {viewPhoto && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex flex-col items-center justify-center p-3" onClick={() => setViewPhoto(null)}>
+          <img src={viewPhoto.photo} className="max-w-full max-h-[85vh] rounded-xl" alt="" />
+          <p className="text-white text-xs mt-2">แตะเพื่อปิด</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============ 📋 งานประจำวันแม่บ้าน — หน้าติ๊ก (แม่บ้าน) ============
 function ChecklistView({ config, currentStaff, isOwner, onBack }) {
   const [cloudTasks, setCloudTasks] = useState([]);
@@ -7413,6 +7753,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <TabBtn active={tab === 'all'} onClick={() => setTab('all')}>ทั้งหมด</TabBtn>
           {menuOn(config, 'internal') && <TabBtn active={tab === 'internal'} onClick={() => setTab('internal')}>🔧 งานภายใน ({internalOrders.length})</TabBtn>}
           {config.hasChecklist && <TabBtn active={tab === 'checklist'} onClick={() => setTab('checklist')}>📋 งานแม่บ้าน</TabBtn>}
+          {config.hasAttendance && <TabBtn active={tab === 'attendance'} onClick={() => setTab('attendance')}>🕐 เข้า-ออก</TabBtn>}
           <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
           <TabBtn active={tab === 'credit'} onClick={() => setTab('credit')}>🎟️ เครดิต</TabBtn>
           {config.tokenEnabled !== false && menuOn(config, 'exchange') && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 {exchangeName(config)} ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
@@ -7503,6 +7844,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <FoldReportView config={config} orders={orders} onSelectOrder={onSelectOrder} />
         ) : tab === 'checklist' ? (
           <ChecklistAdminView config={config} />
+        ) : tab === 'attendance' ? (
+          <AttendanceAdminView config={config} />
         ) : tab === 'topup' ? (
           <TopUpReportView orders={orders} config={config} />
         ) : tab === 'token' ? (
