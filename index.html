@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v126-2026-09-19';
+  window.APP_VERSION = 'v127-2026-09-19';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -6219,7 +6219,7 @@ function AttendanceCard({ config, currentStaff }) {
       const lines = [`${config.name} · ${kind === 'in' ? '📸 เข้างาน' : '🚪 ออกงาน'}${srcRef.current === 'gallery' ? ' · 🖼️ รูปจากอัลบั้ม' : ''}`, `🧕 ${staffName} · ${dt}`];
       if (kind === 'in') lines.push(extra.lateMin > 0 ? `⏰ สาย ${extra.lateMin} นาที` : '✓ ตรงเวลา');
       else {
-        if (rec && rec.inAt) lines.push(`ทำงาน ${fmtDur(at - rec.inAt)}${extra.earlyMin > 0 ? ` · ออกก่อน ${extra.earlyMin} นาที` : ''}`);
+        if (extra.earlyMin > 0) lines.push(`⏰ ออกก่อนเวลา ${extra.earlyMin} นาที`);
         lines.push(extra.checklistDone >= extra.checklistTotal ? `📋 งานประจำวัน ${extra.checklistDone}/${extra.checklistTotal} ✓` : `⚠️ งานประจำวัน ${extra.checklistDone}/${extra.checklistTotal} — ${outReason}`);
       }
       const stamped = await stampPhoto(raw, lines);
