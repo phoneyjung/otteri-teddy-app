@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v127-2026-09-19';
+  window.APP_VERSION = 'v128-2026-09-20';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -760,6 +760,17 @@ async function getChecklistStatusToday(brand) {
   const done = tasks.filter(t => en[t.id] && en[t.id].done).length;
   return { done, total: tasks.length, missing: tasks.filter(t => !(en[t.id] && en[t.id].done)).map(t => t.title) };
 }
+
+// ============ 📥 งานที่ลูกค้าสั่งผ่านเว็บ (webOrders) — ดึงเข้าฟอร์มรับงาน ============
+function subscribeToWebOrders(brand, cb) {
+  return window.db.collection('webOrders').where('brand', '==', brand).onSnapshot(
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error('webOrders:', e));
+}
+async function claimWebOrder(id, patch) {
+  try { await window.db.collection('webOrders').doc(id).set({ ...patch, status: 'claimed', claimedAt: Date.now() }, { merge: true }); }
+  catch (e) { console.error('claimWebOrder:', e); }
+}
+const webOrderTs = (w) => w.createdAt && w.createdAt.toMillis ? w.createdAt.toMillis() : (w.createdLocal ? new Date(w.createdLocal).getTime() : 0);
 
 const OWNER_PASSWORD = '1303';
 
@@ -3823,6 +3834,14 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
 }
 
 function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode }) {
+  const [webOrders, setWebOrders] = useState([]);
+  const [showWeb, setShowWeb] = useState(false);
+  const [webPicked, setWebPicked] = useState(null); // { id, code }
+  useEffect(() => {
+    if (!window.db || editingOrder) return;
+    const u = subscribeToWebOrders(config.brand, setWebOrders);
+    return () => u && u();
+  }, [config.brand]);
   const [internalType, setInternalType] = useState(() => editingOrder?.internalType || (internalMode ? 'clean' : ''));
   const [internalReason, setInternalReason] = useState(() => editingOrder?.internalReason || '');
   const [internalCustom, setInternalCustom] = useState(() => editingOrder?.internalCustom != null ? String(editingOrder.internalCustom) : '');
@@ -3975,6 +3994,25 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     setDeliveryZone(zoneId);
   };
 
+  // 📥 เติมฟอร์มจากงานที่ลูกค้าสั่งผ่านเว็บ
+  const applyWebOrder = (w) => {
+    setName(w.customerName || '');
+    setPhone(w.customerPhone || '');
+    setWashItems((w.washItems || []).map(i => ({ size: i.size, qty: i.qty, temp: i.temp || 'cold' })));
+    // เว็บส่ง temp ของอบมาแทน "หยอดเพิ่ม": อุ่น/ร้อน = +10฿ (แก้ในฟอร์มได้)
+    setDryItems((w.dryItems || []).map(i => ({ size: i.size, qty: i.qty, topUp: (i.temp && i.temp !== 'cold') ? 10 : 0 })));
+    setNoFold(w.wantFold === false);
+    setPickupTime(w.pickupTime || '');
+    const extra = [w.address ? `📍 ${w.address}` : '', w.mapUrl || '', w.wantSeparate ? 'แยกซัก' : ''].filter(Boolean).join('\n');
+    setNote([w.note || '', extra].filter(Boolean).join('\n'));
+    setFromLine(true); setFromKev(false);
+    const zone = w.deliveryZone && (config.deliveryZones || []).find(z => z.id === w.deliveryZone);
+    setDeliveryZone(zone ? zone.id : null);
+    setWebPicked({ id: w.id, code: w.code });
+    setShowWeb(false);
+  };
+  const pendingWeb = webOrders.filter(w => w.status === 'new').sort((a, b) => webOrderTs(b) - webOrderTs(a));
+
   // Clear rider when delivery cancelled (คูปองแอดไลน์ใช้ได้ทั้งหน้าร้าน/เดลิเวอรี่แล้ว)
   useEffect(() => {
     if (!deliveryZone && riderId) {
@@ -4066,6 +4104,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       fromLine: fromLine || false,
       useLinePromo: useLinePromo || false,
       noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false),
+      webCode: webPicked ? webPicked.code : (editingOrder && editingOrder.webCode) || null,
       internalType: internalType || null,
       internalReason: internalType ? internalReason.trim() : '',
       internalMachines: internalType ? internalMachines : null,
@@ -4083,7 +4122,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     }
     submittingRef.current = true;
     setSubmitting(true);
-    Promise.resolve(onSubmit(order)).finally(() => {
+    Promise.resolve(onSubmit(order)).then(() => {
+      if (webPicked) claimWebOrder(webPicked.id, { orderClientId: order.clientId || null, claimedBy: (order.staffName || '') });
+    }).finally(() => {
       submittingRef.current = false;
       setSubmitting(false);
     });
@@ -4207,6 +4248,51 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
             ) : (
               <p className="text-[11px] text-slate-700">เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา</p>
             )}
+          </div>
+        )}
+
+        {!isInternal && !isEdit && (
+          <div>
+            <button onClick={() => setShowWeb(true)}
+              className={`w-full rounded-2xl p-3 border-2 flex items-center gap-3 active:scale-95 transition ${webPicked ? 'border-emerald-400 bg-emerald-50' : pendingWeb.length ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white'}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${webPicked ? 'bg-emerald-500' : 'bg-sky-500'}`}>📥</div>
+              <div className="text-left flex-1 min-w-0">
+                {webPicked ? (
+                  <React.Fragment><p className="font-bold text-emerald-900 text-sm">ดึงงานเว็บแล้ว · {webPicked.code}</p><p className="text-xs text-emerald-700">ตรวจข้อมูลด้านล่างแล้วบันทึกได้เลย</p></React.Fragment>
+                ) : (
+                  <React.Fragment><p className="font-bold text-slate-900 text-sm">งานที่ลูกค้าสั่งผ่านเว็บ {pendingWeb.length > 0 && <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-500 text-white text-xs">{pendingWeb.length} รอรับ</span>}</p><p className="text-xs text-slate-500">{pendingWeb.length ? 'แตะเลือกรหัสงาน → เติมฟอร์มให้อัตโนมัติ' : 'ยังไม่มีงานค้างจากเว็บ'}</p></React.Fragment>
+                )}
+              </div>
+              <Icon name="chevron-right" className="w-5 h-5 text-slate-400" />
+            </button>
+          </div>
+        )}
+
+        {showWeb && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => setShowWeb(false)}>
+            <div className="bg-white rounded-t-3xl w-full max-w-md p-4 pb-8 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-base font-bold text-slate-800">📥 งานจากเว็บ ({pendingWeb.length})</p>
+                <button onClick={() => setShowWeb(false)} className="text-slate-400 text-xl px-2">✕</button>
+              </div>
+              {pendingWeb.length === 0 && <p className="text-sm text-slate-400 text-center py-6">ยังไม่มีงานรอรับ</p>}
+              <div className="space-y-2">
+                {pendingWeb.map(w => (
+                  <button key={w.id} onClick={() => applyWebOrder(w)} className="w-full text-left rounded-xl border border-slate-200 p-3 active:bg-slate-50">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-extrabold text-slate-800">🎫 {w.code}</p>
+                      <p className="text-xs text-slate-400">{webOrderTs(w) ? new Date(webOrderTs(w)).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                    </div>
+                    <p className="text-sm text-slate-700 mt-0.5">👤 {w.customerName || '-'} · {w.customerPhone || '-'}</p>
+                    <p className="text-xs text-slate-500">
+                      {(w.washItems || []).map(i => `ซัก ${i.size}กก.×${i.qty}`).join(', ')}{(w.washItems || []).length && (w.dryItems || []).length ? ' · ' : ''}{(w.dryItems || []).map(i => `อบ ${i.size}กก.×${i.qty}`).join(', ')}
+                      {w.deliveryZone ? ` · 🚚 ${w.deliveryZone}` : ' · 🏪 มารับเอง'}{w.grandTotal ? ` · ~${formatMoney(w.grandTotal)}฿` : ''}
+                    </p>
+                    {w.address && <p className="text-[11px] text-slate-400 truncate">📍 {w.address}</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -4971,7 +5057,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
           )}
 
           {!internal && <div className="px-6 py-4" style={{background: 'linear-gradient(to bottom, ' + headerColor + '15, white)'}}>
-            <p className="text-xs font-bold tracking-wider mb-2" style={{color: headerColor}}>▎ ข้อมูลลูกค้า</p>
+            <p className="text-xs font-bold tracking-wider mb-2" style={{color: headerColor}}>▎ ข้อมูลลูกค้า{order.webCode ? <span className="ml-2 px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 text-[10px]">🎫 {order.webCode}</span> : null}</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               <div>
                 <p className="text-xs text-slate-500">ชื่อลูกค้า</p>
