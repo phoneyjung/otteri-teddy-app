@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v128-2026-09-20';
+  window.APP_VERSION = 'v129-2026-09-20';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4011,7 +4011,13 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     setWebPicked({ id: w.id, code: w.code });
     setShowWeb(false);
   };
-  const pendingWeb = webOrders.filter(w => w.status === 'new').sort((a, b) => webOrderTs(b) - webOrderTs(a));
+  const todayStartTs = new Date().setHours(0, 0, 0, 0);
+  const pendingWeb = webOrders.filter(w => w.status === 'new' && webOrderTs(w) >= todayStartTs).sort((a, b) => webOrderTs(b) - webOrderTs(a));
+  // งานเก่าที่ข้ามวันแล้วยังไม่รับ → ปิดอัตโนมัติ (สถานะ expired) ไม่ให้โผล่อีก
+  useEffect(() => {
+    const stale = webOrders.filter(w => w.status === 'new' && webOrderTs(w) > 0 && webOrderTs(w) < todayStartTs);
+    stale.forEach(w => window.db.collection('webOrders').doc(w.id).set({ status: 'expired', expiredAt: Date.now() }, { merge: true }).catch(() => {}));
+  }, [webOrders.length]);
 
   // Clear rider when delivery cancelled (คูปองแอดไลน์ใช้ได้ทั้งหน้าร้าน/เดลิเวอรี่แล้ว)
   useEffect(() => {
