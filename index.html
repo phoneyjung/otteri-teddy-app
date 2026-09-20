@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v129-2026-09-20';
+  window.APP_VERSION = 'v130-2026-09-20';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4857,14 +4857,31 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
     return new File([blob], filename, { type: blob.type });
   };
 
+  // iOS Safari ไม่รองรับ link.download — ต้องใช้ share sheet (กด "บันทึกรูปภาพ") หรือเปิดแท็บใหม่ให้กดค้าง
   const handleSaveImage = async () => {
     if (!receiptRef.current) return;
     setSaving(true);
     try {
       const canvas = await html2canvas(receiptRef.current, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+      const dataUrl = canvas.toDataURL('image/png');
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const toFile = async (url, filename, type) => {
+        const res = await fetch(url); const blob = await res.blob();
+        return new File([blob], filename, { type: type || blob.type });
+      };
+      const files = [await toFile(dataUrl, `${config.brand}-receipt-${order.id}.png`, 'image/png')];
+      if (order.basketPhoto) { try { files.push(await toFile(order.basketPhoto, `${config.brand}-basket-${order.id}.jpg`, 'image/jpeg')); } catch (e) {} }
+
+      // iOS: ใช้ share sheet (มีปุ่ม "บันทึกรูปภาพ") — ต้องเรียกในจังหวะที่ผู้ใช้กด
+      if (isIOS && navigator.canShare && navigator.canShare({ files })) {
+        await navigator.share({ files, title: 'ใบเสร็จ' });
+        setSaving(false);
+        return;
+      }
+      // Android/เดสก์ท็อป: ดาวน์โหลดตรง
       const link = document.createElement('a');
       link.download = `${config.brand}-receipt-${order.id}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.href = dataUrl;
       link.click();
       if (order.basketPhoto) {
         await new Promise(r => setTimeout(r, 300));
@@ -4873,7 +4890,16 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
         link2.href = order.basketPhoto;
         link2.click();
       }
-    } catch (e) { alert('ไม่สามารถบันทึกรูปได้'); }
+    } catch (e) {
+      if (e && e.name === 'AbortError') { setSaving(false); return; } // ผู้ใช้กดยกเลิกเอง
+      // สำรองสุดท้าย (iOS เก่า): เปิดรูปแท็บใหม่ให้กดค้างเพื่อบันทึก
+      try {
+        const canvas = await html2canvas(receiptRef.current, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+        const w = window.open('');
+        if (w) { w.document.write(`<img src="${canvas.toDataURL('image/png')}" style="width:100%">`); w.document.title = 'กดค้างที่รูป → บันทึกรูปภาพ'; }
+        else alert('บันทึกรูปไม่ได้ — ลองใช้ปุ่ม "ส่งเข้า Line" แล้วบันทึกจากแชทแทน');
+      } catch (e2) { alert('ไม่สามารถบันทึกรูปได้'); }
+    }
     setSaving(false);
   };
 
