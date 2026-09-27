@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v130-2026-09-20';
+  window.APP_VERSION = 'v131-2026-09-28';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -676,6 +676,25 @@ async function deleteChecklistPhoto(brand, dateKey, taskId) {
   try { await window.db.collection('checklistPhotos').doc(`${brand}-${dateKey}-${taskId}`).delete(); } catch (e) {}
 }
 // ลบข้อมูลเก่ากว่า 45 วัน (log + รูป) — เรียกตอนเจ้าของเปิดแท็บ
+// 🧹 ลบ "เฉพาะรูป" ในออเดอร์เก่ากว่า 31 วัน (ข้อมูลบิล ยอดเงิน ยังอยู่ครบ) — ประหยัดพื้นที่ Firestore
+async function cleanupOrderPhotos(brand) {
+  try {
+    const cutoff = Date.now() - 31 * 86400000;
+    const snap = await window.db.collection('orders').where('brand', '==', brand).get();
+    let n = 0;
+    for (const d of snap.docs) {
+      const o = d.data();
+      if (!(o.createdAt && o.createdAt < cutoff)) continue;
+      if (o.photosPurged) continue;
+      const hasPhoto = (o.basketPhoto || o.moneyPhoto || o.linePromoPhoto);
+      if (!hasPhoto) continue;
+      await d.ref.set({ basketPhoto: '', moneyPhoto: '', linePromoPhoto: '', photosPurged: true, photosPurgedAt: Date.now() }, { merge: true });
+      n++;
+    }
+    return n;
+  } catch (e) { console.error('cleanupOrderPhotos:', e); return 0; }
+}
+
 async function cleanupChecklist(brand) {
   try {
     const cutoff = dateKeyOf(new Date(Date.now() - 45 * 86400000));
@@ -3017,6 +3036,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   const [savedPromo, setSavedPromo] = useState(null);
   const promoCameraRef = useRef(null);
   const promoGalleryRef = useRef(null); // เลือกรูปจากอัลบั้ม (ไม่บังคับกล้อง)
+  const [zoomPhoto, setZoomPhoto] = useState(null); // ดูรูปตะกร้าจากรายการล่าสุด
   const [promoMachine, setPromoMachine] = useState('');
   
   // จำนวน token ของร้าน (เฉพาะ Teddy) + จำนวนเหรียญ 10 จริง (ทั้ง 2 แบรนด์)
@@ -3805,9 +3825,17 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
           <div className="space-y-2">
             {orders.slice(0, 10).map(o => (
               <button key={o.id} onClick={() => onSelectOrder(o)} className="w-full bg-white rounded-2xl p-4 border border-slate-100 active:scale-95 transition flex items-center gap-3 text-left">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${o.collected ? 'bg-emerald-50' : (o.paymentMethod === 'transfer' ? 'bg-violet-50' : 'bg-sky-50')}`}>
-                  <Icon name={o.collected ? "check" : (o.deliveryZone ? 'truck' : (o.paymentMethod === 'transfer' ? 'smartphone' : 'banknote'))} className={`w-6 h-6 ${o.collected ? 'text-emerald-500' : (o.paymentMethod === 'transfer' ? 'text-violet-500' : 'text-sky-500')}`} strokeWidth={o.collected ? 3 : 2} />
-                </div>
+                {o.basketPhoto ? (
+                  <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-slate-200 relative"
+                    onClick={(e) => { e.stopPropagation(); setZoomPhoto({ src: o.basketPhoto, name: o.customerName }); }}>
+                    <img src={o.basketPhoto} alt="" className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0 right-0 bg-black bg-opacity-50 text-white text-[8px] px-1 rounded-tl">🔍</span>
+                  </div>
+                ) : (
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${o.collected ? 'bg-emerald-50' : (o.paymentMethod === 'transfer' ? 'bg-violet-50' : 'bg-sky-50')}`}>
+                    <Icon name={o.collected ? "check" : (o.deliveryZone ? 'truck' : (o.paymentMethod === 'transfer' ? 'smartphone' : 'banknote'))} className={`w-6 h-6 ${o.collected ? 'text-emerald-500' : (o.paymentMethod === 'transfer' ? 'text-violet-500' : 'text-sky-500')}`} strokeWidth={o.collected ? 3 : 2} />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <p className="font-semibold text-slate-900 truncate">{o.customerName}</p>
@@ -3829,6 +3857,14 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
           </div>
         )}
       </div>
+
+      {zoomPhoto && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex flex-col items-center justify-center p-4" onClick={() => setZoomPhoto(null)}>
+          <img src={zoomPhoto.src} className="max-w-full max-h-[80vh] rounded-xl" alt="" />
+          <p className="text-white text-sm mt-3">{zoomPhoto.name}</p>
+          <p className="text-slate-400 text-xs mt-1">แตะเพื่อปิด</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -6908,6 +6944,7 @@ function ChecklistAdminView({ config }) {
     const u1 = subscribeToChecklistTasks(config.brand, setCloudTasks);
     const u2 = subscribeToChecklistLogs(config.brand, setLogs);
     cleanupChecklist(config.brand).then(n => setCleaned(n));
+    cleanupOrderPhotos(config.brand); // ลบรูปในออเดอร์เก่ากว่า 31 วัน
     return () => { u1 && u1(); u2 && u2(); };
   }, [config.brand]);
 
