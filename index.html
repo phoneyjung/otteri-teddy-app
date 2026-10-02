@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v132-2026-10-02';
+  window.APP_VERSION = 'v133-2026-10-02';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4994,12 +4994,20 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
   const handleSaveJobTicket = async () => {
     setSaving(true);
     try {
-      const canvas = await captureJobTicket();
-      const link = document.createElement('a');
-      link.download = `${config.brand}-jobticket-${queueNo}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    } catch (e) { alert('สร้างใบงานไม่สำเร็จ'); }
+      const dataUrl = ticketPreview || (await captureJobTicket()).toDataURL('image/png');
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (isIOS) {
+        // iOS ดาวน์โหลดตรงไม่ได้ → เปิดรูปแท็บใหม่ กดค้างเพื่อบันทึก
+        const w = window.open('');
+        if (w) { w.document.write(`<title>กดค้างที่รูป → บันทึกรูปภาพ</title><img src="${dataUrl}" style="width:100%">`); }
+        else alert('เปิดรูปไม่ได้ — ปิดตัวบล็อกป๊อปอัปใน Safari แล้วลองใหม่');
+      } else {
+        const link = document.createElement('a');
+        link.download = `${config.brand}-jobticket-${queueNo}.png`;
+        link.href = dataUrl;
+        link.click();
+      }
+    } catch (e) { alert('สร้างใบงานไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
     setSaving(false);
   };
 
@@ -5015,18 +5023,22 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
 
   const handleShareJobTicket = async () => {
     // ใช้รูปที่สร้างไว้ตอนเปิดใบงาน — เรียกหน้าแชร์ได้ทันที iOS จึงยอมเปิดให้
-    if (ticketPreview && navigator.share) {
-      try {
-        const file = dataUrlToFile(ticketPreview, `jobticket-${queueNo}.png`);
-        if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], title: `ใบงาน ${queueNo}` });
-          return;
-        }
-      } catch (e) {
-        if (e && e.name === 'AbortError') return; // ผู้ใช้กดยกเลิกเอง
-      }
+    if (!ticketPreview) { alert('ใบงานยังสร้างไม่เสร็จ — รอสักครู่แล้วกดใหม่'); return; }
+    if (!navigator.share) {
+      alert('เบราว์เซอร์นี้เปิดหน้าแชร์ไม่ได้\niPhone: ต้องเปิดแอปผ่าน Safari (ไม่ใช่ Chrome/ในแอป LINE)');
+      handleSaveJobTicket(); return;
     }
-    handleSaveJobTicket();
+    try {
+      const file = dataUrlToFile(ticketPreview, `jobticket-${queueNo}.png`);
+      if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+        alert('เครื่องนี้แชร์ไฟล์รูปไม่ได้ — จะเปิดรูปให้กดค้างบันทึกแทน');
+        handleSaveJobTicket(); return;
+      }
+      await navigator.share({ files: [file], title: `ใบงาน ${queueNo}` });
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // ผู้ใช้กดยกเลิกเอง
+      alert('เปิดหน้าแชร์ไม่สำเร็จ: ' + (e && e.message ? e.message : e) + '\nลองกด 💾 บันทึกรูป แล้วเปิด Thermer เลือกรูปแทน');
+    }
   };
 
 
