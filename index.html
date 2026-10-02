@@ -31,7 +31,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v131-2026-09-28';
+  window.APP_VERSION = 'v132-2026-10-02';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -5458,13 +5458,13 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
                 </button>
               )}
               {btStatus && <p className="text-center text-xs font-bold text-teal-600 mb-2">{btStatus}</p>}
-              {!canPrintDirect && <p className="text-center text-[11px] text-slate-500 mb-2">กดแล้วเลือก <b>POS Printer</b> เพื่อพิมพ์</p>}
+              {!canPrintDirect && <p className="text-center text-[11px] text-slate-500 mb-2">กดแล้วเลือกแอป <b>Thermer</b> ในหน้าแชร์ → กดพิมพ์<br/><span className="text-slate-400">(ยังไม่มีแอป? ติดตั้ง "Thermer" จาก App Store ก่อน)</span></p>}
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => setShowJobTicket(false)} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">ปิด</button>
                 <button onClick={handleSaveJobTicket} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">💾 บันทึกรูป</button>
               </div>
             </div>
-            <p className="text-center text-white text-opacity-80 text-xs mt-2">แชร์เข้าแอปพิมพ์ Bluetooth เพื่อออกใบงาน 80mm</p>
+            <p className="text-center text-white text-opacity-80 text-xs mt-2">{canPrintDirect ? 'พิมพ์ตรงเข้าเครื่อง Bluetooth 80mm' : 'iPhone: แชร์เข้าแอป Thermer เพื่อออกใบงาน 80mm'}</p>
           </div>
         </div>
       )}
