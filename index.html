@@ -13,6 +13,7 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <!-- Firebase SDK (compat mode for non-module use) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -31,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v134-2026-10-02';
+  window.APP_VERSION = 'v135-2026-10-04';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -790,6 +791,119 @@ async function claimWebOrder(id, patch) {
   catch (e) { console.error('claimWebOrder:', e); }
 }
 const webOrderTs = (w) => w.createdAt && w.createdAt.toMillis ? w.createdAt.toMillis() : (w.createdLocal ? new Date(w.createdLocal).getTime() : 0);
+
+// ============ 📊 วิเคราะห์ยอด + 📑 Export Excel รายเดือน ============
+const MONTH_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const DOW_FULL_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+
+// แยกยอดของ 1 ออเดอร์ให้ครบทุกหมวด (ใช้ทั้งกราฟและ Excel)
+function orderBreakout(o, config) {
+  const b = calculateBreakdown(o, config);
+  const total = b.total || 0;
+  const isSplit = o.paymentMethod === 'split';
+  const cash = o.paymentMethod === 'cash' ? total : (isSplit ? (o.cashAmount || 0) : 0);
+  const transfer = o.paymentMethod === 'transfer' ? total : (isSplit ? (o.transferAmount || 0) : 0);
+  const foldBaskets = o.foldBaskets || 0;
+  const isFold = foldBaskets > 0 || (config.freeService && !o.noFold);
+  return {
+    total, cash, transfer,
+    promoDiscount: b.promoDiscount || 0,
+    lineDiscount: b.lineDiscount || 0,
+    totalDiscount: (b.promoDiscount || 0) + (b.lineDiscount || 0),
+    delivery: b.deliveryTotal || 0,
+    fold: b.foldTotal || 0,
+    foldBaskets, isFold,
+    wash: b.washSubtotal || 0,
+    dry: (b.drySubtotal || 0) + (b.dryTopUpTotal || 0),
+    extras: (b.detergentTotal || 0) + (b.softenerTotal || 0),
+  };
+}
+
+// สรุปยอดของรายการออเดอร์
+function sumBreakout(orders, config) {
+  const s = { count: 0, total: 0, cash: 0, transfer: 0, promoDiscount: 0, lineDiscount: 0, totalDiscount: 0, delivery: 0, fold: 0, foldJobs: 0, foldBaskets: 0, wash: 0, dry: 0, extras: 0 };
+  orders.forEach(o => {
+    const x = orderBreakout(o, config);
+    s.count++; s.total += x.total; s.cash += x.cash; s.transfer += x.transfer;
+    s.promoDiscount += x.promoDiscount; s.lineDiscount += x.lineDiscount; s.totalDiscount += x.totalDiscount;
+    s.delivery += x.delivery; s.fold += x.fold; s.wash += x.wash; s.dry += x.dry; s.extras += x.extras;
+    if (x.isFold) { s.foldJobs++; s.foldBaskets += x.foldBaskets; }
+  });
+  return s;
+}
+
+function exportMonthlyExcel(orders, config, year, month) {
+  if (!window.XLSX) { alert('ไฟล์ Excel ยังโหลดไม่เสร็จ — รอสักครู่แล้วลองใหม่'); return; }
+  const inMonth = orders.filter(o => {
+    if (isInternalOrder(o)) return false;
+    const d = new Date(o.createdAt);
+    return d.getFullYear() === year && d.getMonth() === month;
+  }).sort((a, b) => a.createdAt - b.createdAt);
+  if (!inMonth.length) { alert('เดือนนี้ยังไม่มีงาน'); return; }
+
+  const label = `${MONTH_TH[month]} ${year + 543}`;
+  const sum = sumBreakout(inMonth, config);
+
+  // ชีต 1: สรุปรวม
+  const sheetSummary = [
+    [`สรุปรายเดือน — ${config.name}`, label],
+    [],
+    ['จำนวนงาน', sum.count],
+    ['ยอดรวมทั้งหมด', sum.total],
+    [],
+    ['💵 เงินสด', sum.cash],
+    ['💳 เงินโอน', sum.transfer],
+    [],
+    ['🎫 ส่วนลดคูปองแอดไลน์', sum.lineDiscount],
+    ['🎉 ส่วนลดโปรโมชั่น', sum.promoDiscount],
+    ['ส่วนลดรวม', sum.totalDiscount],
+    [],
+    ['🚚 ค่าส่งเดลิเวอรี่', sum.delivery],
+    ['🧺 ค่าบริการพับ', sum.fold],
+    ['🧺 จำนวนงานฝากพับ', sum.foldJobs],
+    ['🧺 จำนวนตะกร้าพับ', sum.foldBaskets],
+    [],
+    ['💧 ค่าซัก', sum.wash],
+    ['💨 ค่าอบ (รวมหยอดเพิ่ม)', sum.dry],
+    ['🧴 น้ำยา/ปรับผ้านุ่ม', sum.extras],
+  ];
+
+  // ชีต 2: รายวัน
+  const byDay = {};
+  inMonth.forEach(o => {
+    const d = new Date(o.createdAt); const k = d.getDate();
+    (byDay[k] = byDay[k] || []).push(o);
+  });
+  const sheetDaily = [['วันที่', 'วัน', 'จำนวนงาน', 'ยอดรวม', 'เงินสด', 'เงินโอน', 'ส่วนลดคูปอง', 'ส่วนลดโปร', 'ค่าส่ง', 'ค่าพับ', 'งานฝากพับ']];
+  Object.keys(byDay).map(Number).sort((a, b) => a - b).forEach(day => {
+    const s = sumBreakout(byDay[day], config);
+    const d = new Date(year, month, day);
+    sheetDaily.push([day, DOW_FULL_TH[d.getDay()], s.count, s.total, s.cash, s.transfer, s.lineDiscount, s.promoDiscount, s.delivery, s.fold, s.foldJobs]);
+  });
+  sheetDaily.push(['รวม', '', sum.count, sum.total, sum.cash, sum.transfer, sum.lineDiscount, sum.promoDiscount, sum.delivery, sum.fold, sum.foldJobs]);
+
+  // ชีต 3: รายการงานทั้งหมด
+  const sheetOrders = [['วันที่', 'เวลา', 'ลูกค้า', 'เบอร์โทร', 'แม่บ้าน', 'วิธีจ่าย', 'ยอดรวม', 'เงินสด', 'เงินโอน', 'ค่าซัก', 'ค่าอบ', 'น้ำยา', 'ค่าพับ', 'ตะกร้าพับ', 'ค่าส่ง', 'โซนส่ง', 'ส่วนลดคูปอง', 'ส่วนลดโปร', 'เก็บเงินแล้ว', 'หมายเหตุ']];
+  inMonth.forEach(o => {
+    const x = orderBreakout(o, config);
+    const d = new Date(o.createdAt);
+    const zone = o.deliveryZone ? ((config.deliveryZones || []).find(z => z.id === o.deliveryZone) || {}).label || o.deliveryZone : '';
+    sheetOrders.push([
+      `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`,
+      d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+      o.customerName || '', o.customerPhone || '', o.staffName || '',
+      o.paymentMethod === 'transfer' ? 'โอน' : o.paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด',
+      x.total, x.cash, x.transfer, x.wash, x.dry, x.extras, x.fold, x.foldBaskets, x.delivery, zone,
+      x.lineDiscount, x.promoDiscount, o.collected ? 'เก็บแล้ว' : 'รอเก็บ', o.note || '',
+    ]);
+  });
+
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(sheetSummary), 'สรุปรวม');
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(sheetDaily), 'รายวัน');
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(sheetOrders), 'รายการงาน');
+  window.XLSX.writeFile(wb, `${config.brand}-${year}-${String(month + 1).padStart(2, '0')}.xlsx`);
+}
 
 const OWNER_PASSWORD = '1303';
 
@@ -8160,7 +8274,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
 
       <div className="px-5 py-4 pb-8">
         {tab === 'stats' ? (
-          <StatsView stats={stats} config={config} onResetAll={onResetAll} />
+          <StatsView stats={stats} config={config} orders={orders} onResetAll={onResetAll} />
         ) : tab === 'discount' ? (
           <DiscountReportView orders={orders} config={config} />
         ) : tab === 'coins' ? (
@@ -8328,7 +8442,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
   );
 }
 
-function StatsView({ stats, config, onResetAll }) {
+function StatsView({ stats, config, orders, onResetAll }) {
+  const [anaMonth, setAnaMonth] = useState(() => new Date());
   const [showReset, setShowReset] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [resetting, setResetting] = useState(false);
@@ -8347,8 +8462,90 @@ function StatsView({ stats, config, onResetAll }) {
     setResetting(false);
   };
 
+  const realOrders = (orders || []).filter(o => !isInternalOrder(o));
+  const y = anaMonth.getFullYear(), m = anaMonth.getMonth();
+  const monthOrders = realOrders.filter(o => { const d = new Date(o.createdAt); return d.getFullYear() === y && d.getMonth() === m; });
+  const monthSum = sumBreakout(monthOrders, config);
+
+  // 12 เดือนย้อนหลังจากเดือนที่เลือก
+  const monthSeries = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(y, m - i, 1);
+    const list = realOrders.filter(o => { const t = new Date(o.createdAt); return t.getFullYear() === d.getFullYear() && t.getMonth() === d.getMonth(); });
+    const s = sumBreakout(list, config);
+    monthSeries.push({ label: MONTH_TH[d.getMonth()], year: d.getFullYear(), total: s.total, count: s.count, cash: s.cash, transfer: s.transfer });
+  }
+  const maxMonth = Math.max(...monthSeries.map(x => x.total), 1);
+
+  // แยกตามวันในสัปดาห์ (ของเดือนที่เลือก)
+  const dowSeries = [0, 1, 2, 3, 4, 5, 6].map(dow => {
+    const list = monthOrders.filter(o => new Date(o.createdAt).getDay() === dow);
+    const s = sumBreakout(list, config);
+    const days = new Set(list.map(o => new Date(o.createdAt).getDate())).size;
+    return { dow, label: DOW_TH[dow], total: s.total, count: s.count, days, avg: days ? Math.round(s.total / days) : 0 };
+  });
+  const order = [1, 2, 3, 4, 5, 6, 0]; // จ→อา
+  const dowOrdered = order.map(i => dowSeries[i]);
+  const maxDow = Math.max(...dowOrdered.map(x => x.total), 1);
+  const bestDow = dowOrdered.reduce((a, b) => (b.avg > a.avg ? b : a), dowOrdered[0]);
+
   return (
     <div className="space-y-3">
+      {/* 📑 Export Excel + เลือกเดือน */}
+      <div className="bg-white rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setAnaMonth(new Date(y, m - 1, 1))} className="px-3 text-xl font-bold text-slate-400">‹</button>
+          <p className="text-sm font-extrabold text-slate-800">📊 {MONTH_TH[m]} {y + 543}</p>
+          <button onClick={() => setAnaMonth(new Date(y, m + 1, 1))} className="px-3 text-xl font-bold text-slate-400">›</button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <div className="bg-slate-50 rounded-xl p-2.5 text-center"><p className="text-[11px] text-slate-500">ยอดรวม</p><p className="text-lg font-extrabold text-slate-900">฿{formatMoney(monthSum.total)}</p></div>
+          <div className="bg-slate-50 rounded-xl p-2.5 text-center"><p className="text-[11px] text-slate-500">จำนวนงาน</p><p className="text-lg font-extrabold text-slate-900">{monthSum.count}</p></div>
+          <div className="bg-emerald-50 rounded-xl p-2.5 text-center"><p className="text-[11px] text-emerald-600">💵 เงินสด</p><p className="text-base font-extrabold text-emerald-700">฿{formatMoney(monthSum.cash)}</p></div>
+          <div className="bg-violet-50 rounded-xl p-2.5 text-center"><p className="text-[11px] text-violet-600">💳 เงินโอน</p><p className="text-base font-extrabold text-violet-700">฿{formatMoney(monthSum.transfer)}</p></div>
+          <div className="bg-rose-50 rounded-xl p-2.5 text-center"><p className="text-[11px] text-rose-600">🎫 ส่วนลดรวม</p><p className="text-base font-extrabold text-rose-700">฿{formatMoney(monthSum.totalDiscount)}</p></div>
+          <div className="bg-orange-50 rounded-xl p-2.5 text-center"><p className="text-[11px] text-orange-600">🚚 ค่าส่ง</p><p className="text-base font-extrabold text-orange-700">฿{formatMoney(monthSum.delivery)}</p></div>
+          <div className="col-span-2 bg-sky-50 rounded-xl p-2.5 text-center"><p className="text-[11px] text-sky-600">🧺 งานฝากพับ</p><p className="text-base font-extrabold text-sky-700">{monthSum.foldJobs} งาน · {monthSum.foldBaskets} ตะกร้า · ฿{formatMoney(monthSum.fold)}</p></div>
+        </div>
+        <button onClick={() => exportMonthlyExcel(realOrders, config, y, m)}
+          className="w-full py-3 rounded-xl font-bold text-white active:scale-95 transition" style={{ background: 'linear-gradient(135deg, #16A34A, #15803D)' }}>
+          📑 ดาวน์โหลด Excel เดือนนี้
+        </button>
+        <p className="text-[11px] text-slate-400 text-center mt-1.5">3 ชีต: สรุปรวม · รายวัน · รายการงานทั้งหมด</p>
+      </div>
+
+      {/* 📈 กราฟรายเดือน 12 เดือน */}
+      <div className="bg-white rounded-2xl p-4">
+        <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-3">📈 ยอดขายรายเดือน (12 เดือน)</p>
+        <div className="flex items-end gap-1" style={{ height: '130px' }}>
+          {monthSeries.map((x, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+              <span className="text-[8px] text-slate-400 mb-0.5">{x.total > 0 ? Math.round(x.total / 1000) + 'k' : ''}</span>
+              <div className="w-full rounded-t" style={{ height: `${Math.max(2, (x.total / maxMonth) * 100)}%`, background: i === monthSeries.length - 1 ? '#0EA5E9' : '#CBD5E1' }} />
+              <span className="text-[8px] text-slate-500 mt-1">{x.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 📅 แยกตามวันในสัปดาห์ */}
+      <div className="bg-white rounded-2xl p-4">
+        <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1">📅 ยอดขายตามวัน (จ–อา) · {MONTH_TH[m]}</p>
+        <p className="text-[11px] text-slate-400 mb-3">วันที่ขายดีที่สุด: <b className="text-slate-700">วัน{DOW_FULL_TH[bestDow.dow]}</b> เฉลี่ย ฿{formatMoney(bestDow.avg)}/วัน</p>
+        <div className="space-y-1.5">
+          {dowOrdered.map(x => (
+            <div key={x.dow} className="flex items-center gap-2">
+              <span className={`w-7 text-xs font-bold ${x.dow === 0 ? 'text-rose-500' : x.dow === 6 ? 'text-violet-500' : 'text-slate-600'}`}>{x.label}</span>
+              <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden relative">
+                <div className="h-full rounded-full" style={{ width: `${Math.max(2, (x.total / maxDow) * 100)}%`, background: x.dow === bestDow.dow ? 'linear-gradient(90deg,#10B981,#059669)' : '#94A3B8' }} />
+                <span className="absolute inset-0 flex items-center px-2 text-[10px] font-bold text-slate-700">฿{formatMoney(x.total)} · {x.count} งาน</span>
+              </div>
+              <span className="w-14 text-right text-[10px] text-slate-400">฿{formatMoney(x.avg)}/วัน</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="bg-white rounded-2xl p-4">
         <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-3">📊 ภาพรวมลูกค้า</p>
         <div className="grid grid-cols-2 gap-2">
