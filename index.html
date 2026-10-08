@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v135-2026-10-04';
+  window.APP_VERSION = 'v136-2026-10-08';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   (async function clearStaleQueue() {
@@ -4149,16 +4149,18 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     setName(w.customerName || '');
     setPhone(w.customerPhone || '');
     setWashItems((w.washItems || []).map(i => ({ size: i.size, qty: i.qty, temp: i.temp || 'cold' })));
-    // เว็บส่ง temp ของอบมาแทน "หยอดเพิ่ม": อุ่น/ร้อน = +10฿ (แก้ในฟอร์มได้)
-    setDryItems((w.dryItems || []).map(i => ({ size: i.size, qty: i.qty, topUp: (i.temp && i.temp !== 'cold') ? 10 : 0 })));
+    // เว็บคิดค่าอบราคาเดียวทุกอุณหภูมิ → ไม่มีหยอดเพิ่ม (อุณหภูมิอบเป็นแค่การตั้งเครื่อง — ใส่ในหมายเหตุ)
+    setDryItems((w.dryItems || []).map(i => ({ size: i.size, qty: i.qty, topUp: 0 })));
     setNoFold(w.wantFold === false);
     setPickupTime(w.pickupTime || '');
-    const extra = [w.address ? `📍 ${w.address}` : '', w.mapUrl || '', w.wantSeparate ? 'แยกซัก' : ''].filter(Boolean).join('\n');
+    const TEMP_TH = { cold: 'เย็น', warm: 'อุ่น', hot: 'ร้อน' };
+    const dryTemp = (w.dryItems || []).map(i => `อบ ${i.size}กก. ${TEMP_TH[i.temp] || i.temp || ''}`.trim()).join(', ');
+    const extra = [dryTemp ? `🔥 ${dryTemp}` : '', w.address ? `📍 ${w.address}` : '', w.mapUrl || '', w.wantSeparate ? 'แยกซัก' : ''].filter(Boolean).join('\n');
     setNote([w.note || '', extra].filter(Boolean).join('\n'));
     setFromLine(true); setFromKev(false);
     const zone = w.deliveryZone && (config.deliveryZones || []).find(z => z.id === w.deliveryZone);
     setDeliveryZone(zone ? zone.id : null);
-    setWebPicked({ id: w.id, code: w.code });
+    setWebPicked({ id: w.id, code: w.code, webTotal: w.grandTotal || 0 });
     setShowWeb(false);
   };
   const todayStartTs = new Date().setHours(0, 0, 0, 0);
@@ -4414,7 +4416,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${webPicked ? 'bg-emerald-500' : 'bg-sky-500'}`}>📥</div>
               <div className="text-left flex-1 min-w-0">
                 {webPicked ? (
-                  <React.Fragment><p className="font-bold text-emerald-900 text-sm">ดึงงานเว็บแล้ว · {webPicked.code}</p><p className="text-xs text-emerald-700">ตรวจข้อมูลด้านล่างแล้วบันทึกได้เลย</p></React.Fragment>
+                  <React.Fragment><p className="font-bold text-emerald-900 text-sm">ดึงงานเว็บแล้ว · {webPicked.code}</p>{webPicked.webTotal > 0 && webPicked.webTotal !== total ? <p className="text-xs font-bold text-amber-700">⚠️ ลูกค้าเห็นยอด ~฿{formatMoney(webPicked.webTotal)} แต่ในฟอร์ม ฿{formatMoney(total)} — เช็คก่อนบันทึก</p> : <p className="text-xs text-emerald-700">ยอดตรงกับที่ลูกค้าสั่ง{webPicked.webTotal ? ` ฿${formatMoney(webPicked.webTotal)}` : ''} ✓</p>}</React.Fragment>
                 ) : (
                   <React.Fragment><p className="font-bold text-slate-900 text-sm">งานที่ลูกค้าสั่งผ่านเว็บ {pendingWeb.length > 0 && <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-500 text-white text-xs">{pendingWeb.length} รอรับ</span>}</p><p className="text-xs text-slate-500">{pendingWeb.length ? 'แตะเลือกรหัสงาน → เติมฟอร์มให้อัตโนมัติ' : 'ยังไม่มีงานค้างจากเว็บ'}</p></React.Fragment>
                 )}
