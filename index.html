@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v137-2026-10-24';
+  window.APP_VERSION = 'v139-2026-10-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -677,26 +677,143 @@ async function deleteChecklistPhoto(brand, dateKey, taskId) {
   try { await window.db.collection('checklistPhotos').doc(`${brand}-${dateKey}-${taskId}`).delete(); } catch (e) {}
 }
 // ลบข้อมูลเก่ากว่า 45 วัน (log + รูป) — เรียกตอนเจ้าของเปิดแท็บ
-// 🧹 ลบ "เฉพาะรูป" ในออเดอร์เก่ากว่า 31 วัน (ข้อมูลบิล ยอดเงิน ยังอยู่ครบ) — ประหยัดพื้นที่ Firestore
-async function cleanupOrderPhotos(brand) {
+// ============ 📷 รูปในออเดอร์ — แยกเก็บที่ collection orderPhotos (โหลดเฉพาะตอนเปิดดู) ============
+// เดิมฝังรูปเต็มไว้ในออเดอร์ → เปิดแอปต้องโหลดรูปทุกออเดอร์ (ช้ามาก) · ตอนนี้ออเดอร์เก็บแค่รูปย่อเล็กๆ (basketThumb)
+const ORDER_PHOTO_DAYS = 10; // เก็บรูปกี่วัน (ข้อมูลบิล/ยอดเงินอยู่ครบตลอด)
+const ORDER_PHOTO_FIELDS = ['basketPhoto', 'moneyPhoto', 'linePromoPhoto'];
+const HAS_PHOTO_KEY = { basketPhoto: 'hasBasketPhoto', moneyPhoto: 'hasMoneyPhoto', linePromoPhoto: 'hasLinePromoPhoto' };
+const ORDER_PHOTO_CACHE = {};
+let PHOTO_MAINT_RUNNING = false;
+
+function makeThumb(dataUrl, w = 140, q = 0.55) {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(''), 4000); // กันค้าง
+    try {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const k = Math.min(1, w / (img.width || w));
+          const cv = document.createElement('canvas');
+          cv.width = Math.max(1, Math.round(img.width * k)); cv.height = Math.max(1, Math.round(img.height * k));
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          resolve(cv.toDataURL('image/jpeg', q));
+        } catch (e) { resolve(''); }
+      };
+      img.onerror = () => resolve('');
+      img.src = dataUrl;
+    } catch (e) { resolve(''); }
+  });
+}
+
+// เช็คว่า Rules เปิด orderPhotos แล้ว (ยังไม่เปิด = ใช้แบบเดิม ฝังรูปในออเดอร์ — รูปไม่หาย)
+async function checkPhotoSplit(brand) {
+  if (window.__photoSplitOK) return true;
+  try { if (localStorage.getItem('photoSplitOK') === '1') { window.__photoSplitOK = true; return true; } } catch (e) {}
   try {
-    const cutoff = Date.now() - 31 * 86400000;
-    // อ่านจากแคชในเครื่อง (แอปฟังออเดอร์ทั้งหมดอยู่แล้ว) — ไม่เสียโควต้าอ่านฐานข้อมูล
-    let snap;
-    try { snap = await window.db.collection('orders').where('brand', '==', brand).get({ source: 'cache' }); }
-    catch (e) { return 0; }
-    let n = 0;
-    for (const d of snap.docs) {
-      const o = d.data();
-      if (!(o.createdAt && o.createdAt < cutoff)) continue;
-      if (o.photosPurged) continue;
-      const hasPhoto = (o.basketPhoto || o.moneyPhoto || o.linePromoPhoto);
-      if (!hasPhoto) continue;
-      await d.ref.set({ basketPhoto: '', moneyPhoto: '', linePromoPhoto: '', photosPurged: true, photosPurgedAt: Date.now() }, { merge: true });
-      n++;
+    await Promise.race([
+      window.db.collection('orderPhotos').doc('_probe-' + brand).set({ brand, probe: true, at: Date.now() }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000)),
+    ]);
+    window.__photoSplitOK = true;
+    try { localStorage.setItem('photoSplitOK', '1'); } catch (e) {}
+    return true;
+  } catch (e) { console.warn('orderPhotos ยังใช้ไม่ได้:', e.message); return false; }
+}
+
+async function getOrderPhotos(order) {
+  const empty = { basketPhoto: '', moneyPhoto: '', linePromoPhoto: '' };
+  if (!order) return empty;
+  if (!order.photoRef) return { basketPhoto: order.basketPhoto || '', moneyPhoto: order.moneyPhoto || '', linePromoPhoto: order.linePromoPhoto || '' };
+  if (ORDER_PHOTO_CACHE[order.id]) return { ...empty, ...ORDER_PHOTO_CACHE[order.id] };
+  const d = await window.db.collection('orderPhotos').doc(order.id).get();
+  const p = d.exists ? d.data() : {};
+  const r = { basketPhoto: p.basketPhoto || '', moneyPhoto: p.moneyPhoto || '', linePromoPhoto: p.linePromoPhoto || '' };
+  ORDER_PHOTO_CACHE[order.id] = r;
+  return r;
+}
+
+// hook: รูปเต็มของออเดอร์ (ระหว่างโหลดใช้รูปย่อแทน)
+function useOrderPhotos(order) {
+  const quick = () => {
+    if (!order) return {};
+    if (!order.photoRef) return { basketPhoto: order.basketPhoto || '', moneyPhoto: order.moneyPhoto || '', linePromoPhoto: order.linePromoPhoto || '' };
+    return ORDER_PHOTO_CACHE[order.id] ? { ...ORDER_PHOTO_CACHE[order.id] } : { loading: true };
+  };
+  const [photos, setPhotos] = useState(quick);
+  const oid = order ? order.id : null, oref = order ? !!order.photoRef : false, oup = order ? (order.updatedAt || 0) : 0;
+  useEffect(() => {
+    let alive = true;
+    setPhotos(quick());
+    if (order && order.photoRef) {
+      getOrderPhotos(order).then(r => { if (alive) setPhotos(r); }).catch(() => { if (alive) setPhotos({ error: true }); });
     }
-    return n;
-  } catch (e) { console.error('cleanupOrderPhotos:', e); return 0; }
+    return () => { alive = false; };
+  }, [oid, oref, oup]);
+  return photos;
+}
+
+// ทำเป็นชุด (atomic) — ถ้าชุดล้ม (เช่นออเดอร์ถูกลบไปแล้ว) ทำทีละกลุ่ม · กลุ่มเดียวกันทำตามลำดับ หยุดเมื่อพลาด (กันรูปหาย)
+async function applyPhotoOpGroups(groups) {
+  if (!groups.length) return;
+  const b = window.db.batch();
+  groups.forEach(g => g.forEach(op => op.t === 'del' ? b.delete(op.ref) : op.t === 'upd' ? b.update(op.ref, op.data) : b.set(op.ref, op.data, { merge: true })));
+  try { await b.commit(); return; } catch (e) { console.warn('photo batch fallback:', e.message); }
+  for (const g of groups) {
+    for (const op of g) {
+      try { if (op.t === 'del') await op.ref.delete(); else if (op.t === 'upd') await op.ref.update(op.data); else await op.ref.set(op.data, { merge: true }); }
+      catch (e) { break; }
+    }
+  }
+}
+
+// 🧹 วันละครั้ง/สาขา: (1) ลบรูปออเดอร์เก่ากว่า ORDER_PHOTO_DAYS วัน (2) ย้ายรูปที่ยังฝังในออเดอร์ไป orderPhotos
+// ใช้ข้อมูลออเดอร์ที่โหลดอยู่ในแอป (ไม่อ่านฐานข้อมูลเพิ่ม)
+async function runPhotoMaintenance(brand, getOrders, isCancelled) {
+  if (PHOTO_MAINT_RUNNING || !window.db) return;
+  const key = 'daily-photoMaint' + ORDER_PHOTO_DAYS + '-' + brand, today = dateKeyOf(new Date());
+  try { if (localStorage.getItem(key) === today) return; } catch (e) {}
+  PHOTO_MAINT_RUNNING = true;
+  try {
+    const splitOK = await checkPhotoSplit(brand);
+    const cutoff = Date.now() - ORDER_PHOTO_DAYS * 86400000;
+    const all = (getOrders() || []).filter(o => o && o.id);
+    const isOld = o => o.createdAt && o.createdAt < cutoff;
+    const hasLegacy = o => !!(o.basketPhoto || o.moneyPhoto || o.linePromoPhoto);
+    const ordersCol = window.db.collection('orders'), photosCol = window.db.collection('orderPhotos');
+    // (1) ลบรูปเก่า
+    const purge = all.filter(o => isOld(o) && (hasLegacy(o) || o.photoRef || o.basketThumb));
+    for (let i = 0; i < purge.length; i += 150) {
+      if (isCancelled()) return;
+      await applyPhotoOpGroups(purge.slice(i, i + 150).map(o => {
+        const g = [];
+        if (o.photoRef) g.push({ t: 'del', ref: photosCol.doc(o.id) });
+        g.push({ t: 'upd', ref: ordersCol.doc(o.id), data: { basketPhoto: '', moneyPhoto: '', linePromoPhoto: '', basketThumb: '', photoRef: false, photosPurged: true, photosPurgedAt: Date.now() } });
+        delete ORDER_PHOTO_CACHE[o.id];
+        return g;
+      }));
+    }
+    // (2) ย้ายรูปออกจากออเดอร์ (ต้องเปิด Rules orderPhotos แล้ว)
+    if (splitOK) {
+      const move = all.filter(o => !isOld(o) && !o.photoRef && hasLegacy(o));
+      for (let i = 0; i < move.length; i += 8) {
+        if (isCancelled()) return;
+        const groups = [];
+        for (const o of move.slice(i, i + 8)) {
+          const photos = { basketPhoto: o.basketPhoto || '', moneyPhoto: o.moneyPhoto || '', linePromoPhoto: o.linePromoPhoto || '' };
+          const thumb = photos.basketPhoto ? await makeThumb(photos.basketPhoto) : '';
+          groups.push([
+            { t: 'set', ref: photosCol.doc(o.id), data: { brand, orderId: o.id, createdAt: o.createdAt || Date.now(), ...photos } },
+            { t: 'upd', ref: ordersCol.doc(o.id), data: { basketPhoto: '', moneyPhoto: '', linePromoPhoto: '', basketThumb: thumb, photoRef: true, hasBasketPhoto: !!photos.basketPhoto, hasMoneyPhoto: !!photos.moneyPhoto, hasLinePromoPhoto: !!photos.linePromoPhoto } },
+          ]);
+          ORDER_PHOTO_CACHE[o.id] = photos;
+        }
+        await applyPhotoOpGroups(groups);
+      }
+    }
+    if (splitOK) { try { localStorage.setItem(key, today); } catch (e) {} }
+    console.log(`📷 photo maintenance ${brand}: purge ${purge.length}${splitOK ? '' : ' (orderPhotos rules ยังไม่เปิด)'}`);
+  } catch (e) { console.error('photo maintenance:', e); }
+  finally { PHOTO_MAINT_RUNNING = false; }
 }
 
 async function cleanupChecklist(brand) {
@@ -1095,36 +1212,73 @@ async function saveOrderToCloud(brand, order) {
   try {
     let data = { ...order, brand };
     delete data.id;
+    // 📷 แยกรูปออกจากข้อมูลออเดอร์ (null = ยังโหลดรูปเดิมไม่เสร็จ → ไม่แตะรูปนั้น)
+    const rawPhotos = {};
+    ORDER_PHOTO_FIELDS.forEach(f => { rawPhotos[f] = data[f]; delete data[f]; });
     // Layer 1: Clean undefined recursively
     data = cleanUndefined(data);
     // Layer 2: JSON round-trip — JSON.stringify skips undefined ตาม spec
     // ทำให้รับประกันว่าไม่มี undefined แม้จะมี edge case
     data = JSON.parse(JSON.stringify(data));
-    
+
+    let photoOp = null; // { photos } | { del: true }
+    if (window.__photoSplitOK || order.photoRef) {
+      const given = ORDER_PHOTO_FIELDS.filter(f => typeof rawPhotos[f] === 'string');
+      if (given.length) {
+        const photos = {}; given.forEach(f => { photos[f] = rawPhotos[f]; });
+        const anyPhoto = given.some(f => photos[f]);
+        ORDER_PHOTO_FIELDS.forEach(f => { data[f] = ''; });
+        given.forEach(f => { data[HAS_PHOTO_KEY[f]] = !!photos[f]; });
+        if ('basketPhoto' in photos) data.basketThumb = photos.basketPhoto ? await makeThumb(photos.basketPhoto) : '';
+        if (given.length === ORDER_PHOTO_FIELDS.length && !anyPhoto) { data.photoRef = false; photoOp = order.photoRef ? { del: true } : null; }
+        else { data.photoRef = true; photoOp = { photos }; }
+      } else { delete data.photoRef; }
+    } else {
+      ORDER_PHOTO_FIELDS.forEach(f => { if (typeof rawPhotos[f] === 'string') data[f] = rawPhotos[f]; });
+    }
+
     // ⚡ เขียนแบบ optimistic: ไม่รอเซิร์ฟเวอร์ตอบ (เน็ตแกว่งก็ไปหน้าสรุปได้ทันที)
     // Firestore persistence เก็บงานค้างใน IndexedDB — เน็ตกลับมา/เปิดแอปใหม่ ซิงก์ต่อให้เอง
-    if (isFirestoreId(order.id)) {
-      window.db.collection('orders').doc(order.id).set(data, { merge: true })
-        .catch(e => { console.error('saveOrder sync error:', e); alert('⚠️ ซิงก์ออเดอร์ไม่ผ่าน: ' + e.message); });
+    // ออเดอร์ + รูป เขียนพร้อมกันใน batch เดียว (สำเร็จทั้งคู่ หรือไม่สำเร็จทั้งคู่)
+    const commit = (id) => {
+      const b = window.db.batch();
+      if (photoOp && photoOp.photos) {
+        b.set(window.db.collection('orderPhotos').doc(id), { brand, orderId: id, createdAt: data.createdAt || Date.now(), ...photoOp.photos }, { merge: true });
+        ORDER_PHOTO_CACHE[id] = { ...(ORDER_PHOTO_CACHE[id] || {}), ...photoOp.photos };
+      } else if (photoOp && photoOp.del) {
+        b.delete(window.db.collection('orderPhotos').doc(id));
+        delete ORDER_PHOTO_CACHE[id];
+      }
+      b.set(window.db.collection('orders').doc(id), data, { merge: true });
+      return b.commit();
+    };
+    const fail = (e) => { console.error('saveOrder sync error:', e); alert('⚠️ ซิงก์ออเดอร์ไม่ผ่าน: ' + e.message); };
+    // แก้ไขออเดอร์เดิม → เขียนทับ doc เดิมเสมอ (เดิม id แบบ brand-c... ตกไปสร้างออเดอร์ซ้ำ)
+    if (order.id) {
+      commit(order.id).catch(fail);
       return order.id;
     }
     // มี clientId (จากฟอร์มรับงาน) → ใช้ doc id เดิมเสมอ = กดบันทึกซ้ำไม่เกิดออเดอร์ซ้ำ
     if (data.clientId) {
       const fixedId = brand + '-' + data.clientId;
-      window.db.collection('orders').doc(fixedId).set(data, { merge: true })
-        .catch(e => { console.error('saveOrder sync error:', e); alert('⚠️ ซิงก์ออเดอร์ไม่ผ่าน: ' + e.message); });
+      commit(fixedId).catch(fail);
       return fixedId;
     }
     // ไม่มี id → สร้าง doc ใหม่ใน Firestore
-    const docRef = await window.db.collection('orders').add(data);
-    return docRef.id;
+    const newId = window.db.collection('orders').doc().id;
+    await commit(newId);
+    return newId;
   } catch (e) {
     console.error('saveOrder error:', e);
     throw e;
   }
 }
 async function deleteOrderFromCloud(orderId) {
-  try { await window.db.collection('orders').doc(orderId).delete(); }
+  try {
+    await window.db.collection('orders').doc(orderId).delete();
+    if (window.__photoSplitOK) window.db.collection('orderPhotos').doc(orderId).delete().catch(() => {});
+    delete ORDER_PHOTO_CACHE[orderId];
+  }
   catch (e) { console.error('deleteOrder error:', e); throw e; }
 }
 
@@ -1138,6 +1292,7 @@ async function deleteOrdersBatch(orderIds) {
         batch.delete(window.db.collection('orders').doc(id));
       });
       await batch.commit();
+      if (window.__photoSplitOK) orderIds.slice(i, i + chunkSize).forEach(id => window.db.collection('orderPhotos').doc(id).delete().catch(() => {}));
     }
   } catch (e) {
     console.error('deleteOrdersBatch error:', e);
@@ -1151,9 +1306,11 @@ async function deleteAllForBrand(brand) {
     const ordersSnap = await window.db.collection('orders').where('brand', '==', brand).get();
     const collectionsSnap = await window.db.collection('collections').where('brand', '==', brand).get();
     const tokensSnap = await window.db.collection('tokenExchanges').where('brand', '==', brand).get();
+    let photoDocs = [];
+    try { photoDocs = (await window.db.collection('orderPhotos').where('brand', '==', brand).get()).docs; } catch (e) {}
     
     // ใช้ batch ลบเป็นชุด (Firestore batch limit = 500)
-    const allDocs = [...ordersSnap.docs, ...collectionsSnap.docs, ...tokensSnap.docs];
+    const allDocs = [...ordersSnap.docs, ...collectionsSnap.docs, ...tokensSnap.docs, ...photoDocs];
     const chunkSize = 400;
     for (let i = 0; i < allDocs.length; i += chunkSize) {
       const batch = window.db.batch();
@@ -1200,9 +1357,10 @@ async function batchUpdateOrders(orderIds, updates) {
 // Subscribe — real-time updates
 function subscribeToOrders(brand, callback) {
   return window.db.collection('orders').where('brand', '==', brand).onSnapshot(
+    { includeMetadataChanges: true },
     snapshot => {
       const orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      callback(orders);
+      callback(orders, snapshot.metadata.fromCache);
     },
     error => console.error('subscribe orders error:', error)
   );
@@ -2565,9 +2723,14 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
   // Real-time subscription to Firestore
   useEffect(() => {
     setSyncStatus('connecting');
-    const unsubOrders = subscribeToOrders(config.brand, (newOrders) => {
+    checkPhotoSplit(config.brand); // เปิดโหมดแยกรูป ถ้า Rules พร้อม
+    let latestOrders = [], maintTimer = null, cancelled = false;
+    const unsubOrders = subscribeToOrders(config.brand, (newOrders, fromCache) => {
+      latestOrders = newOrders;
       setOrders(newOrders.sort((a, b) => b.createdAt - a.createdAt));
       setSyncStatus('synced');
+      // ได้ข้อมูลล่าสุดจากเซิร์ฟเวอร์แล้ว → รอ 20 วิ ค่อยจัดการรูปเก่าเบื้องหลัง (วันละครั้ง)
+      if (!fromCache && !maintTimer) maintTimer = setTimeout(() => runPhotoMaintenance(config.brand, () => latestOrders, () => cancelled), 20000);
     });
     const unsubCollections = subscribeToCollections(config.brand, (newCollections) => {
       setCollections(newCollections.sort((a, b) => b.collectedAt - a.collectedAt));
@@ -2594,6 +2757,8 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
       unsubTokens && unsubTokens();
       unsubStaff && unsubStaff();
       staffTimer && clearTimeout(staffTimer);
+      cancelled = true;
+      maintTimer && clearTimeout(maintTimer);
     };
   }, [config.brand]);
 
@@ -3999,10 +4164,14 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
           <div className="space-y-2">
             {orders.slice(0, 10).map(o => (
               <button key={o.id} onClick={() => onSelectOrder(o)} className="w-full bg-white rounded-2xl p-4 border border-slate-100 active:scale-95 transition flex items-center gap-3 text-left">
-                {o.basketPhoto ? (
+                {(o.basketThumb || o.basketPhoto) ? (
                   <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-slate-200 relative"
-                    onClick={(e) => { e.stopPropagation(); setZoomPhoto({ src: o.basketPhoto, name: o.customerName }); }}>
-                    <img src={o.basketPhoto} alt="" className="w-full h-full object-cover" />
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setZoomPhoto({ id: o.id, src: o.basketThumb || o.basketPhoto, name: o.customerName });
+                      if (o.photoRef) getOrderPhotos(o).then(p => { if (p.basketPhoto) setZoomPhoto(z => z && z.id === o.id ? { ...z, src: p.basketPhoto } : z); }).catch(() => {});
+                    }}>
+                    <img src={o.basketThumb || o.basketPhoto} alt="" className="w-full h-full object-cover" />
                     <span className="absolute bottom-0 right-0 bg-black bg-opacity-50 text-white text-[8px] px-1 rounded-tl">🔍</span>
                   </div>
                 ) : (
@@ -4062,9 +4231,28 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const isEdit = !!editingOrder;
   const [name, setName] = useState(editingOrder?.customerName || '');
   const [phone, setPhone] = useState(editingOrder?.customerPhone || '');
-  const [basketPhoto, setBasketPhoto] = useState(editingOrder?.basketPhoto || '');
-  const [moneyPhoto, setMoneyPhoto] = useState(editingOrder?.moneyPhoto || '');
-  const [linePromoPhoto, setLinePromoPhoto] = useState(editingOrder?.linePromoPhoto || '');
+  // รูป: null = รูปเดิมยังโหลดไม่เสร็จ (ออเดอร์ที่แยกรูปไว้) → บันทึกแล้วไม่แตะรูปนั้น
+  const initPhoto = (f) => {
+    if (!editingOrder) return '';
+    if (!editingOrder.photoRef) return editingOrder[f] || '';
+    const c = ORDER_PHOTO_CACHE[editingOrder.id];
+    return c && typeof c[f] === 'string' ? c[f] : null;
+  };
+  const [basketPhoto, setBasketPhoto] = useState(() => initPhoto('basketPhoto'));
+  const [moneyPhoto, setMoneyPhoto] = useState(() => initPhoto('moneyPhoto'));
+  const [linePromoPhoto, setLinePromoPhoto] = useState(() => initPhoto('linePromoPhoto'));
+  useEffect(() => {
+    if (!editingOrder || !editingOrder.photoRef) return;
+    let alive = true;
+    getOrderPhotos(editingOrder).then(p => {
+      if (!alive) return;
+      setBasketPhoto(v => v === null ? p.basketPhoto : v);
+      setMoneyPhoto(v => v === null ? p.moneyPhoto : v);
+      setLinePromoPhoto(v => v === null ? p.linePromoPhoto : v);
+    }).catch(e => console.warn('load photos for edit:', e));
+    return () => { alive = false; };
+  }, [editingOrder && editingOrder.id]);
+  const promoPhotoOk = !!linePromoPhoto || (linePromoPhoto === null && !!(editingOrder && editingOrder.hasLinePromoPhoto));
   const [clothCount, setClothCount] = useState(editingOrder?.clothCount || '');
   const [washItems, setWashItems] = useState(editingOrder?.washItems || []);
   const [dryItems, setDryItems] = useState(editingOrder?.dryItems || []);
@@ -4175,7 +4363,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const internalOk = !isInternal || (internalMachines.length > 0 && (!needInternalDetail || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0))));
   const canSubmit = isInternal
     ? internalOk
-    : (hasAnyItem && nameOk && phoneOk && (!useLinePromo || linePromoPhoto));
+    : (hasAnyItem && nameOk && phoneOk && (!useLinePromo || promoPhotoOk));
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
@@ -4188,7 +4376,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   if (!isInternal && needCustomerInfo && !name.trim()) missingList.push(tr(config, 'ใส่ชื่อลูกค้า'));
   if (needPhone && !phone.trim()) missingList.push(tr(config, 'ใส่เบอร์โทรลูกค้า'));
   else if (needPhone && phone.trim().length < 9) missingList.push(tr(config, 'เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)'));
-  if (useLinePromo && !linePromoPhoto) missingList.push(tr(config, 'ถ่ายรูปคูปองแอดไลน์'));
+  if (useLinePromo && !promoPhotoOk) missingList.push(tr(config, 'ถ่ายรูปคูปองแอดไลน์'));
 
   const hasMultipleTemps = config.washMachines.some(m => m.prices.cold !== m.prices.warm);
 
@@ -4250,7 +4438,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       alert('เลือกบริการอย่างน้อย 1 รายการ\n(เครื่องซัก / เครื่องอบ / น้ำยาซัก / น้ำยานุ่ม / ค่าพับ)');
       return;
     }
-    if (useLinePromo && !linePromoPhoto) {
+    if (useLinePromo && !promoPhotoOk) {
       alert('กรุณาถ่ายรูปคูปองส่วนลดแอดไลน์ก่อน');
       return;
     }
@@ -4301,9 +4489,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       customerName: name.trim() || '(ไม่ระบุชื่อ)',
       customerPhone: phone.trim() || '',
       pickupTime: pickupTime.trim() || '',
-      basketPhoto: basketPhoto || '',
-      moneyPhoto: moneyPhoto || '',
-      linePromoPhoto: linePromoPhoto || '',
+      basketPhoto: basketPhoto === null ? null : (basketPhoto || ''),
+      moneyPhoto: moneyPhoto === null ? null : (moneyPhoto || ''),
+      linePromoPhoto: linePromoPhoto === null ? null : (linePromoPhoto || ''),
+      photoRef: !!(editingOrder && editingOrder.photoRef),
       clothCount: clothCount.trim() || '',
       washItems: washItems || [],
       dryItems: dryItems || [],
@@ -5054,6 +5243,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
   const jobTicketRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const internal = isInternalOrder(order); // 🔧 งานภายใน — ต้องประกาศบนสุด (useEffect ด้านล่างใช้)
+  const orderPhotos = useOrderPhotos(order); // รูปตะกร้า (โหลดไว้ก่อน — iOS ต้องแชร์ทันทีที่กด)
   const [showJobTicket, setShowJobTicket] = useState(false);
   const [ticketPreview, setTicketPreview] = useState(''); // ภาพจริงที่จะพิมพ์ (ใช้แสดงพรีวิว)
   const [btStatus, setBtStatus] = useState(''); // สถานะพิมพ์ตรง Bluetooth
@@ -5082,7 +5272,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
         return new File([blob], filename, { type: type || blob.type });
       };
       const files = [await toFile(dataUrl, `${config.brand}-receipt-${order.id}.png`, 'image/png')];
-      if (order.basketPhoto) { try { files.push(await toFile(order.basketPhoto, `${config.brand}-basket-${order.id}.jpg`, 'image/jpeg')); } catch (e) {} }
+      if (orderPhotos.basketPhoto) { try { files.push(await toFile(orderPhotos.basketPhoto, `${config.brand}-basket-${order.id}.jpg`, 'image/jpeg')); } catch (e) {} }
 
       // iOS: ใช้ share sheet (มีปุ่ม "บันทึกรูปภาพ") — ต้องเรียกในจังหวะที่ผู้ใช้กด
       if (isIOS && navigator.canShare && navigator.canShare({ files })) {
@@ -5095,11 +5285,11 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
       link.download = `${config.brand}-receipt-${order.id}.png`;
       link.href = dataUrl;
       link.click();
-      if (order.basketPhoto) {
+      if (orderPhotos.basketPhoto) {
         await new Promise(r => setTimeout(r, 300));
         const link2 = document.createElement('a');
         link2.download = `${config.brand}-basket-${order.id}.jpg`;
-        link2.href = order.basketPhoto;
+        link2.href = orderPhotos.basketPhoto;
         link2.click();
       }
     } catch (e) {
@@ -5752,6 +5942,8 @@ function OwnerLoginView({ config, onBack, onSuccess }) {
 }
 
 function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceipt }) {
+  const photos = useOrderPhotos(order); // รูปเต็ม — โหลดตอนเปิดดู
+  const basketSrc = photos.basketPhoto || (order.photoRef && order.hasBasketPhoto ? order.basketThumb : '');
   const breakdown = calculateBreakdown(order, config);
   const total = breakdown.total;
   const tempLabels = { cold: 'น้ำเย็น', warm: 'น้ำอุ่น', hot: 'น้ำร้อน' };
@@ -5797,18 +5989,21 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
           {order.note && <p className="text-sm text-slate-600 mt-2 bg-slate-50 rounded-xl p-2">{order.note}</p>}
         </div>
 
-        {order.basketPhoto && (
+        {basketSrc && (
           <div className="bg-white rounded-2xl p-3">
-            <p className="text-xs text-slate-500 mb-2">รูปตะกร้าผ้า</p>
-            <img src={order.basketPhoto} className="w-full rounded-xl" />
+            <p className="text-xs text-slate-500 mb-2">รูปตะกร้าผ้า{!photos.basketPhoto && photos.loading ? ' · กำลังโหลด...' : ''}</p>
+            <img src={basketSrc} className="w-full rounded-xl" />
           </div>
         )}
 
-        {order.linePromoPhoto && (
+        {photos.linePromoPhoto && (
           <div className="bg-white rounded-2xl p-3">
             <p className="text-xs text-green-600 font-bold mb-2">💚 หลักฐานคูปองแอดไลน์</p>
-            <img src={order.linePromoPhoto} className="w-full rounded-xl" />
+            <img src={photos.linePromoPhoto} className="w-full rounded-xl" />
           </div>
+        )}
+        {photos.error && order.photoRef && (
+          <p className="text-xs text-center text-amber-600">โหลดรูปไม่ได้ — เช็คอินเทอร์เน็ต</p>
         )}
 
         <div className="bg-white rounded-2xl p-4 space-y-2">
@@ -5877,7 +6072,7 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
             <span>{order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด'}</span>
             <span className="font-bold text-slate-900">฿{formatMoney(total)}</span>
           </div>
-          {order.moneyPhoto && (<img src={order.moneyPhoto} className="w-full rounded-xl mt-3" />)}
+          {photos.moneyPhoto && (<img src={photos.moneyPhoto} className="w-full rounded-xl mt-3" />)}
         </div>
 
         <button onClick={onViewReceipt} className="w-full bg-slate-900 text-white py-3 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 transition">
@@ -7133,7 +7328,6 @@ function ChecklistAdminView({ config }) {
     const u1 = subscribeToChecklistTasks(config.brand, setCloudTasks);
     const u2 = subscribeToChecklistLogs(config.brand, setLogs);
     if (onceADay('cleanChecklist-' + config.brand)) cleanupChecklist(config.brand).then(n => setCleaned(n));
-    if (onceADay('cleanOrderPhotos-' + config.brand)) cleanupOrderPhotos(config.brand); // ลบรูปในออเดอร์เก่ากว่า 31 วัน
     return () => { u1 && u1(); u2 && u2(); };
   }, [config.brand]);
 
@@ -8415,8 +8609,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
                     {isChecked && <Icon name="check" className="w-4 h-4 text-white" strokeWidth={4} />}
                   </div>
                 )}
-                {o.basketPhoto ? (
-                  <img src={o.basketPhoto} className="w-14 h-14 rounded-xl object-cover" />
+                {(o.basketThumb || o.basketPhoto) ? (
+                  <img src={o.basketThumb || o.basketPhoto} className="w-14 h-14 rounded-xl object-cover" />
                 ) : (
                   <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${o.collected ? 'bg-emerald-50' : (o.paymentMethod === 'transfer' ? 'bg-violet-50' : 'bg-sky-50')}`}>
                     <Icon name={o.deliveryZone ? 'truck' : (o.paymentMethod === 'transfer' ? 'smartphone' : 'banknote')} className={`w-7 h-7 ${o.collected ? 'text-emerald-500' : (o.paymentMethod === 'transfer' ? 'text-violet-500' : 'text-emerald-600')}`} />
