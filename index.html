@@ -32,10 +32,10 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v136-2026-10-08';
+  window.APP_VERSION = 'v137-2026-10-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
-  (async function clearStaleQueue() {
+  window.dbReady = (async function clearStaleQueue() {
     try {
       const lastVersion = localStorage.getItem('app-version');
       if (lastVersion !== window.APP_VERSION) {
@@ -681,7 +681,10 @@ async function deleteChecklistPhoto(brand, dateKey, taskId) {
 async function cleanupOrderPhotos(brand) {
   try {
     const cutoff = Date.now() - 31 * 86400000;
-    const snap = await window.db.collection('orders').where('brand', '==', brand).get();
+    // อ่านจากแคชในเครื่อง (แอปฟังออเดอร์ทั้งหมดอยู่แล้ว) — ไม่เสียโควต้าอ่านฐานข้อมูล
+    let snap;
+    try { snap = await window.db.collection('orders').where('brand', '==', brand).get({ source: 'cache' }); }
+    catch (e) { return 0; }
     let n = 0;
     for (const d of snap.docs) {
       const o = d.data();
@@ -1297,14 +1300,38 @@ async function updateStaffInCloud(id, patch) {
   }
 }
 
+// รายชื่อแม่บ้านสำรองในเครื่อง — ใช้ตอนเน็ต/ฐานข้อมูลมีปัญหา จะได้ยังเลือกชื่อได้
+function loadStaffCache(brand) {
+  try { const a = JSON.parse(localStorage.getItem('staffCache-' + brand) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
+}
 function subscribeToStaff(brand, callback) {
   return window.db.collection('staff').where('brand', '==', brand).onSnapshot(
+    { includeMetadataChanges: true },
     snapshot => {
       const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      callback(items);
+      const fromCache = snapshot.metadata.fromCache;
+      if (!fromCache) { try { localStorage.setItem('staffCache-' + brand, JSON.stringify(items)); } catch {} }
+      callback(items, { fromCache });
     },
-    error => console.error('subscribe staff error:', error)
+    error => { console.error('subscribe staff error:', error); callback(null, { error }); }
   );
+}
+// แปลง error ฐานข้อมูลเป็นข้อความที่แม่บ้านอ่านเข้าใจ
+function staffLoadMessage(status) {
+  if (status === 'slow') return 'โหลดรายชื่อไม่ได้ — เช็คอินเทอร์เน็ต แล้วกดลองใหม่';
+  const code = String(status || '').replace(/^error:/, '');
+  if (code === 'resource-exhausted') return 'ฐานข้อมูลใช้เกินโควต้าฟรีของวันนี้ — จะใช้ได้อีกครั้งประมาณ 14:00–15:00 น.';
+  if (code === 'permission-denied') return 'ฐานข้อมูลไม่อนุญาตให้อ่าน (Rules) — แจ้งเจ้าของร้าน';
+  if (code === 'unavailable') return 'เชื่อมต่อฐานข้อมูลไม่ได้ — เช็คอินเทอร์เน็ต แล้วกดลองใหม่';
+  return 'โหลดรายชื่อไม่สำเร็จ — กดลองใหม่';
+}
+// ทำงานล้างข้อมูลเก่าแค่วันละครั้งต่อเครื่อง (ประหยัดโควต้าอ่านฐานข้อมูล)
+function onceADay(key) {
+  try {
+    const k = 'daily-' + key, today = dateKeyOf(new Date());
+    if (localStorage.getItem(k) === today) return false;
+    localStorage.setItem(k, today); return true;
+  } catch { return true; }
 }
 
 // ============ คิวพิมพ์ (สำหรับ iPhone ที่พิมพ์ตรงไม่ได้) ============
@@ -1554,6 +1581,14 @@ const MM_DICT = {
   'ยอดเครดิตที่สแกนให้ลูกค้า (บาท)': 'ဖောက်သည်အတွက် စကင်န်ပေးသော ခရက်ဒစ် (ဘတ်)',
   'ยังไม่มีรายการ': 'စာရင်း မရှိသေးပါ',
   'ยังไม่มีรายชื่อแม่บ้าน': 'ဝန်ထမ်းစာရင်း မရှိသေးပါ',
+  '⏳ กำลังโหลดรายชื่อแม่บ้าน...': '⏳ ဝန်ထမ်းစာရင်း ဖွင့်နေသည်...',
+  '🔄 ลองใหม่': '🔄 ထပ်ကြိုးစားပါ',
+  '⚠️ ออฟไลน์ — ใช้รายชื่อที่บันทึกไว้ในเครื่อง': '⚠️ အော့ဖ်လိုင်း — ဖုန်းထဲသိမ်းထားသော စာရင်းကို သုံးနေသည်',
+  'โหลดรายชื่อไม่ได้ — เช็คอินเทอร์เน็ต แล้วกดลองใหม่': 'စာရင်း ဖွင့်မရပါ — အင်တာနက်စစ်ပြီး ထပ်ကြိုးစားပါ',
+  'เชื่อมต่อฐานข้อมูลไม่ได้ — เช็คอินเทอร์เน็ต แล้วกดลองใหม่': 'ဒေတာဘေ့စ် ချိတ်မရပါ — အင်တာနက်စစ်ပြီး ထပ်ကြိုးစားပါ',
+  'ฐานข้อมูลใช้เกินโควต้าฟรีของวันนี้ — จะใช้ได้อีกครั้งประมาณ 14:00–15:00 น.': 'ယနေ့ ဒေတာဘေ့စ် ကန့်သတ်ချက်ပြည့်သွားပြီ — နေ့လယ် ၂ နာရီ–၃ နာရီခန့်တွင် ပြန်သုံးနိုင်မည်',
+  'ฐานข้อมูลไม่อนุญาตให้อ่าน (Rules) — แจ้งเจ้าของร้าน': 'ဒေတာဘေ့စ် ခွင့်မပြုပါ — ဆိုင်ပိုင်ရှင်ကို အကြောင်းကြားပါ',
+  'โหลดรายชื่อไม่สำเร็จ — กดลองใหม่': 'စာရင်း ဖွင့်မရပါ — ထပ်ကြိုးစားပါ',
   'ยังไม่มีแม่บ้าน — เพิ่มด้านบน': 'ဝန်ထမ်း မရှိသေး — အပေါ်တွင်ထည့်ပါ',
   'รวมที่ให้ลูกค้า': 'ဖောက်သည်ကိုပေးသည့် စုစုပေါင်း',
   'ราคาเต็ม': 'စျေးအပြည့်',
@@ -2178,7 +2213,7 @@ function AvatarPicker({ value, onChange }) {
 }
 
 // ============ หน้า Login แม่บ้าน (เฟส 1) ============
-function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
+function StaffLoginView({ config, staffList, staffStatus = 'ok', onLogin, onToggleLang }) {
   const [step, setStep] = useState('pick'); // pick | pin
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [pin, setPin] = useState('');
@@ -2396,7 +2431,23 @@ function StaffLoginView({ config, staffList, onLogin, onToggleLang }) {
             <h2 className="font-extrabold text-slate-900 text-center mb-1">{tr(config, 'เลือกชื่อของคุณ')}</h2>
             <p className="text-xs text-slate-400 text-center mb-4">{tr(config, 'แตะชื่อเพื่อเข้าใช้งาน')}</p>
 
-            {activeStaff.length === 0 ? (
+            {activeStaff.length > 0 && staffStatus !== 'ok' && staffStatus !== 'loading' && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 rounded-xl px-3 py-2 mb-3 text-center">{tr(config, '⚠️ ออฟไลน์ — ใช้รายชื่อที่บันทึกไว้ในเครื่อง')}</p>
+            )}
+            {activeStaff.length === 0 && staffStatus === 'loading' ? (
+              <div className="text-center py-8">
+                <p className="text-slate-500 text-sm font-bold">{tr(config, '⏳ กำลังโหลดรายชื่อแม่บ้าน...')}</p>
+              </div>
+            ) : activeStaff.length === 0 && staffStatus !== 'ok' ? (
+              <div className="text-center py-5">
+                <p className="text-3xl mb-2">📶</p>
+                <p className="text-slate-700 text-sm font-bold mb-1">{tr(config, staffLoadMessage(staffStatus))}</p>
+                {staffStatus.startsWith('error:') && <p className="text-[10px] text-slate-400 mb-3 font-mono">{staffStatus.replace('error:', 'code: ')}</p>}
+                <button onClick={() => window.location.reload()} className="mt-2 px-5 py-2.5 rounded-xl text-white font-bold text-sm active:scale-95 transition" style={{ background: config.gradient }}>
+                  {tr(config, '🔄 ลองใหม่')}
+                </button>
+              </div>
+            ) : activeStaff.length === 0 ? (
               <div className="text-center py-6">
                 <p className="text-slate-400 text-sm mb-3">{tr(config, "ยังไม่มีรายชื่อแม่บ้าน")}</p>
                 <button onClick={handleOpenManage} className="text-teal-600 font-bold text-sm underline">
@@ -2501,7 +2552,8 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
   const [currentStaff, setCurrentStaff] = useState(() => {
     try { return JSON.parse(localStorage.getItem('staff-' + config.brand) || 'null'); } catch { return null; }
   });
-  const [staffList, setStaffList] = useState([]);
+  const [staffList, setStaffList] = useState(() => loadStaffCache(config.brand));
+  const [staffStatus, setStaffStatus] = useState('loading'); // loading | ok | slow | error:<code>
   // โหมดเครื่องพิมพ์ — เครื่องนี้จะรับงานจากคิวมาพิมพ์ให้เครื่องอื่น (Android เท่านั้น)
   const [printServer, setPrintServer] = useState(() => {
     try { return localStorage.getItem('printServer-' + config.brand) === '1'; } catch { return false; }
@@ -2523,10 +2575,17 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
     const unsubTokens = subscribeToTokenExchanges(config.brand, (items) => {
       setTokenExchanges(items.sort((a, b) => b.createdAt - a.createdAt));
     });
-    let unsubStaff = null;
+    let unsubStaff = null, staffTimer = null;
     if (config.hasStaffLogin) {
-      unsubStaff = subscribeToStaff(config.brand, (items) => {
-        setStaffList(items.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
+      const byCreated = (a, b) => (a.createdAt || 0) - (b.createdAt || 0);
+      setStaffList(loadStaffCache(config.brand).sort(byCreated));
+      setStaffStatus('loading');
+      staffTimer = setTimeout(() => setStaffStatus(s => s === 'loading' ? 'slow' : s), 10000);
+      unsubStaff = subscribeToStaff(config.brand, (items, meta) => {
+        if (meta.error) { setStaffStatus('error:' + (meta.error.code || 'unknown')); return; }
+        if (meta.fromCache && items.length === 0) return; // ยังไม่ได้ข้อมูลจริง — ใช้รายชื่อสำรองไปก่อน
+        setStaffList(items.sort(byCreated));
+        if (!meta.fromCache) setStaffStatus('ok');
       });
     }
     return () => {
@@ -2534,6 +2593,7 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
       unsubCollections && unsubCollections();
       unsubTokens && unsubTokens();
       unsubStaff && unsubStaff();
+      staffTimer && clearTimeout(staffTimer);
     };
   }, [config.brand]);
 
@@ -2847,7 +2907,7 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
 
   // เฟส 1 — บังคับ login แม่บ้านก่อนใช้งาน (เฉพาะสาขาที่เปิด hasStaffLogin)
   if (config.hasStaffLogin && !currentStaff) {
-    return <StaffLoginView config={config} staffList={staffList} onToggleLang={toggleLang} onLogin={handleStaffLogin} />;
+    return <StaffLoginView config={config} staffList={staffList} staffStatus={staffStatus} onToggleLang={toggleLang} onLogin={handleStaffLogin} />;
   }
 
   return (
@@ -6668,7 +6728,7 @@ function AttendanceAdminView({ config }) {
   useEffect(() => {
     if (!window.db) return;
     const u = subscribeToAttendance(config.brand, setRecs);
-    cleanupAttendance(config.brand).then(setCleaned);
+    if (onceADay('cleanAttendance-' + config.brand)) cleanupAttendance(config.brand).then(setCleaned);
     return () => u && u();
   }, [config.brand]);
 
@@ -7072,8 +7132,8 @@ function ChecklistAdminView({ config }) {
     if (!window.db) return;
     const u1 = subscribeToChecklistTasks(config.brand, setCloudTasks);
     const u2 = subscribeToChecklistLogs(config.brand, setLogs);
-    cleanupChecklist(config.brand).then(n => setCleaned(n));
-    cleanupOrderPhotos(config.brand); // ลบรูปในออเดอร์เก่ากว่า 31 วัน
+    if (onceADay('cleanChecklist-' + config.brand)) cleanupChecklist(config.brand).then(n => setCleaned(n));
+    if (onceADay('cleanOrderPhotos-' + config.brand)) cleanupOrderPhotos(config.brand); // ลบรูปในออเดอร์เก่ากว่า 31 วัน
     return () => { u1 && u1(); u2 && u2(); };
   }, [config.brand]);
 
@@ -10010,12 +10070,16 @@ window.addEventListener('error', function(e) {
   }
 });
 
-try {
-  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  setTimeout(function(){ if(window.__hideBootStatus) window.__hideBootStatus(); }, 500);
-} catch (err) {
-  document.getElementById('root').innerHTML = '<div style="padding:20px;font-family:monospace;font-size:13px;color:#b91c1c;background:#fef2f2;min-height:100vh;white-space:pre-wrap;word-break:break-word">⚠️ React mount ล้มเหลว:\n\n<b>' + (err.message || err) + '</b>\n\n' + (err.stack || '') + '</div>';
+// รอให้ล้างแคชฐานข้อมูลเวอร์ชันเก่าเสร็จก่อน ค่อยเปิดแอป (กันแอปไปฟังข้อมูลจากฐานข้อมูลตัวที่ถูกปิดไปแล้ว → รายชื่อ/ออเดอร์ว่าง)
+function __mountApp() {
+  try {
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    setTimeout(function(){ if(window.__hideBootStatus) window.__hideBootStatus(); }, 500);
+  } catch (err) {
+    document.getElementById('root').innerHTML = '<div style="padding:20px;font-family:monospace;font-size:13px;color:#b91c1c;background:#fef2f2;min-height:100vh;white-space:pre-wrap;word-break:break-word">⚠️ React mount ล้มเหลว:\n\n<b>' + (err.message || err) + '</b>\n\n' + (err.stack || '') + '</div>';
+  }
 }
+Promise.race([window.dbReady || Promise.resolve(), new Promise(function(r){ setTimeout(r, 5000); })]).then(__mountApp, __mountApp);
 </script>
 </body>
 </html>
