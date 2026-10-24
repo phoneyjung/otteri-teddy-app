@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v139-2026-10-24';
+  window.APP_VERSION = 'v140-2026-10-24';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -617,6 +617,7 @@ const DEFAULT_CHECKLIST = {
 const CADENCE_LABEL = { daily: 'รายวัน', days: 'อ/ศ', weekly: 'ทุกจันทร์', monthly: 'จันทร์ต้นเดือน' };
 const DOW_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
+const toLocalInputValue = (ms) => { const d = new Date(ms), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const dateKeyOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const dateFromKey = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
 
@@ -1686,6 +1687,18 @@ const MM_DICT = {
   'ฟรีค่าบริการฝาก ซัก อบ พับ': 'အပ်နှံ လျှော်-ခြောက်-ခေါက် ဝန်ဆောင်ခ အခမဲ့',
   'ฝาก ซัก อบ พับ': 'အပ်နှံ လျှော်-ခြောက်-ခေါက်',
   'รายการล่าสุด': 'နောက်ဆုံးစာရင်း',
+  'รายการรับงาน': 'လက်ခံထားသော အလုပ်များ',
+  'เมื่อวาน': 'မနေ့က',
+  'กำลังดูย้อนหลัง': 'နောက်ကြောင်း ကြည့်နေသည်',
+  'แตะเพื่อเลือกวัน': 'ရက်ရွေးရန် နှိပ်ပါ',
+  'กลับวันนี้': 'ဒီနေ့သို့ ပြန်',
+  'ลงงานวันที่': 'ဤရက်အတွက် အလုပ်ထည့်',
+  'ไม่มีรายการในวันนี้': 'ဤရက်တွင် စာရင်းမရှိပါ',
+  'กำลังลงงานย้อนหลัง': 'နောက်ကြောင်းပြန် အလုပ်ထည့်နေသည်',
+  'เลือกวัน-เวลาที่ลูกค้ามาจริง': 'ဖောက်သည် တကယ်လာသည့် ရက်နှင့်အချိန် ရွေးပါ',
+  'ยืนยันลงงานย้อนหลัง': 'နောက်ကြောင်းပြန် အလုပ်ထည့်ရန် အတည်ပြု',
+  'งานนี้ไม่ใช่ของวันนี้ ใช่ไหม? เช็ควันเวลาให้ถูกก่อนกดตกลง': 'ဒီအလုပ်က ဒီနေ့အလုပ် မဟုတ်ဘူးနော်? OK မနှိပ်ခင် ရက်နှင့်အချိန် စစ်ပါ',
+  'เลือกเวลาในอนาคตไม่ได้': 'အနာဂတ်အချိန် ရွေး၍မရပါ',
   'วันนี้': 'ဒီနေ့',
   'รอเก็บเงิน': 'ငွေကောက်ရန်ကျန်',
   'ฝาก ซัก อบ พับ - ฟรี!': 'အပ်နှံ လျှော် ခြောက် ခေါက် - အခမဲ့!',
@@ -2717,6 +2730,8 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
     try { return localStorage.getItem('printServer-' + config.brand) === '1'; } catch { return false; }
   });
   const [printServerStatus, setPrintServerStatus] = useState('');
+  const [backdateDay, setBackdateDay] = useState(null); // ⏪ ลงงานย้อนหลัง (ms ต้นวัน) — null = งานวันนี้
+  const [homeDayOffset, setHomeDayOffset] = useState(0); // วันที่ดูในหน้าแรก: 0 = วันนี้, 1 = เมื่อวาน ...
   const [internalMode, setInternalMode] = useState(false); // 🔧 เปิดหน้ารับงานในโหมดงานภายในร้าน
   const [autoOpenTicket, setAutoOpenTicket] = useState(false); // เปิดใบงานอัตโนมัติหลังรับงานใหม่
 
@@ -2806,6 +2821,7 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
   const handleStaffLogin = (staff) => {
     try { localStorage.setItem('staff-' + config.brand, JSON.stringify(staff)); } catch {}
     setCurrentStaff(staff);
+    setHomeDayOffset(0);
     // ถ้าเข้าแบบเจ้าของ ให้เปิดโหมด owner เลย
     if (staff.isOwnerLogin) setIsOwner(true);
   };
@@ -2829,8 +2845,13 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
         orderWithoutId.staffAvatar = currentStaff.avatar || null;
       }
       // เลขคิวรายวัน — เรียงต่อ 1,2,3,... รีเซตทุกวัน (นับจากงานของวันนี้)
-      const qStart = new Date(); qStart.setHours(0, 0, 0, 0);
-      orderWithoutId.queueNo = orders.filter(o => (o.createdAt || 0) >= qStart.getTime()).length + 1;
+      const qStart = new Date(orderWithoutId.createdAt || Date.now()); qStart.setHours(0, 0, 0, 0);
+      const qEnd = new Date(qStart); qEnd.setDate(qEnd.getDate() + 1);
+      orderWithoutId.queueNo = orders.filter(o => (o.createdAt || 0) >= qStart.getTime() && (o.createdAt || 0) < qEnd.getTime()).length + 1;
+      // กลับหน้าแรกให้เห็นวันของงานที่เพิ่งลง (งานวันนี้ → วันนี้)
+      const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+      setHomeDayOffset(Math.max(0, Math.round((t0.getTime() - qStart.getTime()) / 86400000)));
+      setBackdateDay(null);
       const newId = await saveOrderToCloud(config.brand, orderWithoutId); // คืน id ทันที ไม่รอเน็ต
       const savedOrder = { ...orderWithoutId, id: newId };
       playSuccessSound();
@@ -3083,13 +3104,13 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
           🔄 กำลังเชื่อมต่อ cloud...
         </div>
       )}
-      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={() => { setInternalMode(false); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setView('newOrder'); }} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
-      {view === 'newOrder' && <NewOrderView config={config} onCancel={() => { setInternalMode(false); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
+      {view === 'newOrder' && <NewOrderView config={config} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
-      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => setView('newOrder')} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
@@ -3354,7 +3375,7 @@ function DeliveryCheckerView({ onBack }) {
   );
 }
 
-function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer }) {
+function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [tokenAmount, setTokenAmount] = useState('');
   const [tokenPayment, setTokenPayment] = useState('cash'); // cash | transfer
@@ -3736,7 +3757,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       </div>
 
       <div className="px-5 -mt-4 relative z-10">
-        <button onClick={onNewOrder} className="w-full bg-white rounded-2xl p-5 shadow-xl active:scale-95 transition flex items-center gap-4">
+        <button onClick={() => onNewOrder()} className="w-full bg-white rounded-2xl p-5 shadow-xl active:scale-95 transition flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg" style={{background: config.gradient}}>
             <Icon name="plus" className="w-7 h-7 text-white" strokeWidth={3} />
           </div>
@@ -4148,21 +4169,58 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       )}
 
       <div className="px-5 mt-6 pb-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-slate-900 font-bold text-lg">{tr(config, 'รายการล่าสุด')}</h2>
-          <span className="text-slate-500 text-sm">{orders.length} {tr(config, 'รายการ')}</span>
-        </div>
+        {(() => {
+          // 📅 แยกรายการตามวัน — ค่าเริ่มต้น = วันนี้, เลื่อนไป-กลับได้
+          const dayOff = dayOffset || 0;
+          const dStart = new Date(); dStart.setHours(0, 0, 0, 0); dStart.setDate(dStart.getDate() - dayOff);
+          const dEnd = new Date(dStart); dEnd.setDate(dEnd.getDate() + 1);
+          const s0 = dStart.getTime(), e0 = dEnd.getTime();
+          const dayOrders = orders.filter(o => (o.createdAt || 0) >= s0 && (o.createdAt || 0) < e0);
+          const daySales = dayOrders.filter(o => !isInternalOrder(o)).reduce((a, o) => a + (calculateTotal(o, config) || 0), 0);
+          const oldest = orders.reduce((m, o) => Math.min(m, o.createdAt || m), Date.now());
+          const canPrev = oldest < s0;
+          const dayWord = dayOff === 0 ? tr(config, 'วันนี้') : dayOff === 1 ? tr(config, 'เมื่อวาน') : '';
+          const dateTxt = dStart.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
+          const shortTxt = dStart.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+          const pickDay = (v) => {
+            if (!v) return;
+            const [y, m, d] = v.split('-').map(Number);
+            const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+            const off = Math.round((t0.getTime() - new Date(y, m - 1, d).getTime()) / 86400000);
+            setDayOffset(Math.max(0, off));
+          };
+          return (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-slate-900 font-bold text-lg">{tr(config, 'รายการรับงาน')}</h2>
+                <span className="text-slate-500 text-sm">{dayOrders.length} {tr(config, 'รายการ')} · ฿{formatMoney(daySales)}</span>
+              </div>
+              <div className={`flex items-center gap-2 mb-3 rounded-2xl p-1.5 ${dayOff > 0 ? 'bg-amber-100 border-2 border-amber-300' : 'bg-white border border-slate-100'}`}>
+                <button onClick={() => canPrev && setDayOffset(dayOff + 1)} disabled={!canPrev} className="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 font-bold text-lg active:scale-95 transition disabled:opacity-30">◀</button>
+                <label className="flex-1 relative text-center">
+                  <p className={`font-extrabold ${dayOff > 0 ? 'text-amber-900' : 'text-slate-900'}`}>📅 {dayWord ? dayWord + ' · ' : ''}{dateTxt}</p>
+                  <p className={`text-[10px] ${dayOff > 0 ? 'text-amber-700 font-bold' : 'text-slate-400'}`}>{dayOff > 0 ? '⏪ ' + tr(config, 'กำลังดูย้อนหลัง') : tr(config, 'แตะเพื่อเลือกวัน')}</p>
+                  <input type="date" value={dateKeyOf(dStart)} max={dateKeyOf(new Date())} onChange={(e) => pickDay(e.target.value)} className="absolute inset-0 w-full h-full opacity-0" />
+                </label>
+                <button onClick={() => dayOff > 0 && setDayOffset(dayOff - 1)} disabled={dayOff === 0} className="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 font-bold text-lg active:scale-95 transition disabled:opacity-30">▶</button>
+              </div>
+              {dayOff > 0 && (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <button onClick={() => setDayOffset(0)} className="py-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-sm active:scale-95 transition">↩ {tr(config, 'กลับวันนี้')}</button>
+                  <button onClick={() => onNewOrder(s0)} className="py-3 rounded-xl bg-amber-500 text-white font-bold text-sm active:scale-95 transition">⏪ {tr(config, 'ลงงานวันที่')} {shortTxt}</button>
+                </div>
+              )}
 
-        {orders.length === 0 ? (
+        {dayOrders.length === 0 ? (
           <div className="bg-white rounded-2xl p-8 text-center border border-slate-100">
             <div className="w-16 h-16 mx-auto rounded-full bg-slate-100 flex items-center justify-center mb-3">
               <Icon name="shirt" className="w-8 h-8 text-slate-400" />
             </div>
-            <p className="text-slate-600 font-medium">{tr(config, "ยังไม่มีรายการ")}</p>
+            <p className="text-slate-600 font-medium">{tr(config, "ไม่มีรายการในวันนี้")}</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {orders.slice(0, 10).map(o => (
+            {dayOrders.map(o => (
               <button key={o.id} onClick={() => onSelectOrder(o)} className="w-full bg-white rounded-2xl p-4 border border-slate-100 active:scale-95 transition flex items-center gap-3 text-left">
                 {(o.basketThumb || o.basketPhoto) ? (
                   <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-slate-200 relative"
@@ -4186,6 +4244,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
                     {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">{tr(config, "เคฟ")}</span>}
                     {o.fromLine && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💬</span>}
                     {(o.dryItems || []).some(d => d.topUp > 0) && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⏱️</span>}
+                    {o.backdated && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold">⏪</span>}
                   </div>
                   <p className="text-xs text-slate-500">{formatDate(o.createdAt)}{o.staffName && <span className="ml-1 text-teal-600 font-medium">• 🧕 {o.staffName}</span>}</p>
                 </div>
@@ -4199,6 +4258,9 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
             ))}
           </div>
         )}
+            </>
+          );
+        })()}
       </div>
 
       {zoomPhoto && (
@@ -4212,7 +4274,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   );
 }
 
-function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode }) {
+function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode, backdateDay }) {
   const [webOrders, setWebOrders] = useState([]);
   const [showWeb, setShowWeb] = useState(false);
   const [webPicked, setWebPicked] = useState(null); // { id, code }
@@ -4273,8 +4335,16 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
 
   // วันเวลารับงาน — เจ้าของกำหนดเองได้ (ใช้กรณีบันทึกย้อนหลัง)
   // Default: ใช้เวลาปัจจุบัน (สำหรับงานใหม่) หรือเวลาเดิม (สำหรับการแก้ไข)
-  const [useCustomTime, setUseCustomTime] = useState(isEdit); // edit mode → เปิดให้แก้ได้เลย
+  // ⏪ ลงงานย้อนหลัง (เปิดจากหน้าแรกตอนดูวันก่อนหน้า) — แม่บ้านเลือกวันเวลาได้ แต่ต้องกดยืนยัน
+  const backdateMode = !isEdit && typeof backdateDay === 'number';
+  const canPickTime = isOwner || backdateMode;
+  const [useCustomTime, setUseCustomTime] = useState(isEdit || backdateMode); // edit mode → เปิดให้แก้ได้เลย
   const [customDateTime, setCustomDateTime] = useState(() => {
+    if (backdateMode) {
+      const now = new Date(), b = new Date(backdateDay);
+      b.setHours(now.getHours(), now.getMinutes(), 0, 0);
+      return toLocalInputValue(Math.min(b.getTime(), Date.now()));
+    }
     const d = new Date(editingOrder?.createdAt || Date.now());
     // datetime-local format: YYYY-MM-DDTHH:mm
     const pad = (n) => String(n).padStart(2, '0');
@@ -4330,7 +4400,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
 
   // เวลาที่ใช้คำนวณโปรโมชั่น (พุธ/ดึก) — ขึ้นกับว่า owner เลือกเองหรือไม่
   const orderTime = (() => {
-    if (isOwner && useCustomTime && customDateTime) {
+    if (canPickTime && useCustomTime && customDateTime) {
       const ms = new Date(customDateTime).getTime();
       if (!isNaN(ms)) return ms;
     }
@@ -4446,6 +4516,29 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       alert('กรุณาเลือกไลเดอร์ที่จะส่ง Delivery');
       return;
     }
+
+    // วันเวลารับงาน: เลือกเอง (เจ้าของ / ลงย้อนหลัง) ไม่งั้นใช้เวลาเดิม / ปัจจุบัน
+    let finalCreatedAt;
+    if (canPickTime && useCustomTime && customDateTime) {
+      const customMs = new Date(customDateTime).getTime();
+      if (isNaN(customMs)) {
+        alert('วันเวลาที่เลือกไม่ถูกต้อง');
+        return;
+      }
+      if (!isEdit && customMs > Date.now() + 60000) {
+        alert(tr(config, 'เลือกเวลาในอนาคตไม่ได้'));
+        return;
+      }
+      finalCreatedAt = customMs;
+    } else {
+      finalCreatedAt = editingOrder?.createdAt || Date.now();
+    }
+    // ⏪ งานใหม่ที่ไม่ใช่ของวันนี้ → ต้องยืนยันให้ชัดก่อน
+    const isBackdated = !isEdit && dateKeyOf(new Date(finalCreatedAt)) !== dateKeyOf(new Date());
+    if (isBackdated) {
+      const when = new Date(finalCreatedAt).toLocaleString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      if (!confirm(`⏪ ${tr(config, 'ยืนยันลงงานย้อนหลัง')}\n\n📅 ${when} น.\n👤 ${name.trim() || '-'}\n💰 ${formatMoney(total)} ${tr(config, 'บาท')}\n\n⚠️ ${tr(config, 'งานนี้ไม่ใช่ของวันนี้ ใช่ไหม? เช็ควันเวลาให้ถูกก่อนกดตกลง')}`)) return;
+    }
     
     // 🔧 งานภายใน — ยืนยันแยก ไม่ถามวิธีจ่าย (ไม่ใช่รายได้)
     let splitCashNum = 0, splitTransferNum = 0;
@@ -4469,19 +4562,6 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
         return;
       }
     }
-    // ถ้าเจ้าของเปิด "เลือกเวลาเอง" → ใช้เวลาที่เลือก ไม่งั้นใช้เวลาเดิม / ปัจจุบัน
-    let finalCreatedAt;
-    if (isOwner && useCustomTime && customDateTime) {
-      const customMs = new Date(customDateTime).getTime();
-      if (isNaN(customMs)) {
-        alert('วันเวลาที่เลือกไม่ถูกต้อง');
-        return;
-      }
-      finalCreatedAt = customMs;
-    } else {
-      finalCreatedAt = editingOrder?.createdAt || Date.now();
-    }
-    
     const order = {
       id: editingOrder?.id || generateId(),
       createdAt: finalCreatedAt,
@@ -4493,6 +4573,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       moneyPhoto: moneyPhoto === null ? null : (moneyPhoto || ''),
       linePromoPhoto: linePromoPhoto === null ? null : (linePromoPhoto || ''),
       photoRef: !!(editingOrder && editingOrder.photoRef),
+      backdated: isBackdated || !!(editingOrder && editingOrder.backdated),
+      enteredAt: isBackdated ? Date.now() : ((editingOrder && editingOrder.enteredAt) || null),
       clothCount: clothCount.trim() || '',
       washItems: washItems || [],
       dryItems: dryItems || [],
@@ -4551,6 +4633,24 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       </div>
 
       <div className="px-5 py-5 space-y-5">
+        {/* ⏪ แม่บ้านลงงานย้อนหลัง */}
+        {!isOwner && backdateMode && (
+          <div className="rounded-2xl p-4 shadow-lg border-2 border-amber-400" style={{background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'}}>
+            <p className="font-extrabold text-amber-900 text-base mb-1">⏪ {tr(config, 'กำลังลงงานย้อนหลัง')}</p>
+            <p className="text-xs text-amber-800 mb-3">{tr(config, 'เลือกวัน-เวลาที่ลูกค้ามาจริง')}</p>
+            <input
+              type="datetime-local"
+              value={customDateTime}
+              onChange={(e) => setCustomDateTime(e.target.value)}
+              max={toLocalInputValue(Date.now())}
+              className="w-full px-3 py-3 bg-white rounded-xl border-2 border-amber-300 outline-none text-base font-bold text-amber-900"
+            />
+            {!isNaN(new Date(customDateTime).getTime()) && (
+              <p className="text-sm font-extrabold text-amber-900 mt-2 text-center">📅 {new Date(customDateTime).toLocaleString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} น.</p>
+            )}
+          </div>
+        )}
+
         {/* Section "วันเวลารับงาน" — แสดงเฉพาะเจ้าของ (สำหรับบันทึกย้อนหลัง) */}
         {isOwner && (
           <div className="rounded-2xl p-4 shadow-lg border-2 border-amber-300" style={{background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'}}>
@@ -5984,6 +6084,9 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
             )}
             {order.useLinePromo && (
               <span className="text-xs px-2 py-1 rounded-full font-bold bg-green-100 text-green-700">💚 ใช้คูปองแอดไลน์</span>
+            )}
+            {order.backdated && (
+              <span className="text-xs px-2 py-1 rounded-full font-bold bg-amber-200 text-amber-900">⏪ ลงย้อนหลัง{order.enteredAt ? ` (บันทึกเมื่อ ${formatDate(order.enteredAt)})` : ''}</span>
             )}
           </div>
           {order.note && <p className="text-sm text-slate-600 mt-2 bg-slate-50 rounded-xl p-2">{order.note}</p>}
