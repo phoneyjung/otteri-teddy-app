@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v141-2026-10-26';
+  window.APP_VERSION = 'v142-2026-10-26';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -413,7 +413,7 @@ const TEDDY2_CONFIG = {
   primaryColor: '#00A19A', // เขียวเวอร์ริเดียน — สีประจำ ม.ศิลปากร
   gradient: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)',
   linePromoDiscount: 50, // Teddy 2 ลดแอดไลน์ 50 (มากกว่า Teddy 1)
-  pulse: { workerUrl: 'https://teddy-pulse.phoneyjung.workers.dev', maxPerShot: 12 }, // ⚡ ยิงพัลส์ผ่านระบบ EC (เปิด/ปิดที่ ตั้งค่า)
+  pulse: { workerUrl: 'https://teddy-pulse.phoneyjung.workers.dev', maxPerShot: 12, stacks: 8, dryMinPer10: { 12: 7, 17: 6 }, washBusyMin: 45 }, // ⚡ ยิงพัลส์ผ่านระบบ EC (เปิด/ปิดที่ ตั้งค่า)
   washMachines: [
     { size: 12, count: 3, prices: { cold: 50, warm: 60, hot: 70 } },
     { size: 17, count: 5, prices: { cold: 60, warm: 70, hot: 80 } },
@@ -1973,6 +1973,35 @@ const MM_DICT = {
   'เริ่มเครื่องแล้ว': 'စက်စတင်ပြီး',
   'ยอดเปิดเครื่องวันนี้ไม่ตรง — ต้องใส่เหตุผลก่อนออกจากระบบ': 'ယနေ့ စက်ဖွင့်စာရင်း မကိုက်ညီ — ထွက်ခွာမီ အကြောင်းပြချက် ထည့်ရမည်',
   'ยอดเปิดเครื่องวันนี้ไม่ตรง — ต้องใส่เหตุผลก่อนออกงาน': 'ယနေ့ စက်ဖွင့်စာရင်း မကိုက်ညီ — အလုပ်ဆင်းမီ အကြောင်းပြချက် ထည့်ရမည်',
+  // 🧺 ผนังเครื่อง (v142) — รอพนักงานพม่าตรวจคำแปล
+  'ตามใบงาน': 'အလုပ်စာရွက်အတိုင်း',
+  'นาที': 'မိနစ်',
+  'ยังต้องเปิดตามใบงาน': 'အလုပ်စာရွက်အရ ဖွင့်ရန်ကျန်',
+  'เครื่องนี้เพิ่งเปิดให้งานอื่น': 'ဤစက်ကို အခြားအလုပ်အတွက် ဖွင့်ထားပြီး',
+  'เปิดเกินใบงาน': 'အလုပ်စာရွက်ထက် ပိုဖွင့်ထား',
+  'เปิดเครื่องเพิ่ม / เพิ่มเวลาอบ': 'စက်ထပ်ဖွင့် / အခြောက်ခံချိန်တိုး',
+  'เพิ่งเปิดให้งานอื่น': 'အခြားအလုပ်အတွက် ဖွင့်ထား',
+  'เพิ่มเวลาให้เครื่องที่อบอยู่ได้ (ทีละ ฿10)': 'အခြောက်ခံနေသောစက်ကို အချိန်တိုးနိုင် (တစ်ကြိမ် ฿10)',
+  'เริ่มเครื่อง': 'စက်စတင်',
+  'เลือกความร้อน': 'အပူချိန်ရွေးပါ',
+  'เลือกความร้อนก่อน': 'အပူချိန် အရင်ရွေးပါ',
+  'เลือกน้ำ': 'ရေရွေးပါ',
+  'เลือกน้ำก่อน': 'ရေ အရင်ရွေးပါ',
+  'เวลาอบ': 'အခြောက်ခံချိန်',
+  'แตะ อบ (บน) หรือ ซัก (ล่าง)': 'အခြောက်ခံ (အပေါ်) သို့ လျှော် (အောက်) ကို နှိပ်ပါ',
+  'ใบงานนี้ไม่มีซักที่ยังไม่ได้เปิด': 'ဤအလုပ်စာရွက်တွင် မဖွင့်ရသေးသော လျှော်ခြင်းမရှိ',
+  'ใบงานนี้ไม่มีอบที่ยังไม่ได้เปิด': 'ဤအလုပ်စာရွက်တွင် မဖွင့်ရသေးသော အခြောက်ခံခြင်းမရှိ',
+  'ใบงานเป็น': 'အလုပ်စာရွက်တွင် ',
+  'ใบงานเป็นเครื่อง': 'အလုပ်စာရွက်တွင် စက်',
+  'ไม่ตรงใบงาน': 'အလုပ်စာရွက်နှင့် မကိုက်',
+  'ร้อนสูง': 'အပူမြင့်',
+  'ร้อนกลาง': 'အပူအလယ်',
+  'ร้อนต่ำ': 'အပူနိမ့်',
+  'เกินใบงาน': 'အလုပ်စာရွက်ထက်ပို',
+  'ใบงานไม่มีซัก': 'အလုပ်စာရွက်တွင် လျှော်ခြင်းမရှိ',
+  'ใบงานไม่มีอบ': 'အလုပ်စာရွက်တွင် အခြောက်ခံခြင်းမရှိ',
+  'จาก': 'မှ',
+  'เครื่องไม่ตรงใบงาน': 'စက်သည် အလုပ်စာရွက်နှင့် မကိုက်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -8061,7 +8090,7 @@ async function saveCreditEntryWithId(brand, id, entry) {
 }
 
 // ยิงพัลส์ 1 ครั้ง — บันทึก pulseLogs ก่อนยิง (ถ้าเน็ตหลุดกลางทางยังเห็นว่าสั่งไปแล้ว)
-async function firePulse(config, { machine, pulses, refType, refId, slotKey, refLabel, retryOf }) {
+async function firePulse(config, { machine, pulses, refType, refId, slotKey, refLabel, retryOf, meta }) {
   const staff = currentStaffLS(config);
   const reqId = `${config.brand}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const now = Date.now();
@@ -8070,6 +8099,7 @@ async function firePulse(config, { machine, pulses, refType, refId, slotKey, ref
     pulses, baht: pulses * PULSE_BAHT, refType, refId: refId || null, slotKey: slotKey || null, refLabel: refLabel || '',
     staffId: staff && staff.id ? staff.id : null, staffName: staff && staff.name ? staff.name : '',
     createdAt: now, status: 'sending', retryOf: retryOf || null,
+    ...(meta || {}),
   };
   const ref = pulseLogRef(reqId);
   ref.set(base).catch(e => console.error('pulseLog set error:', e));
@@ -8148,6 +8178,8 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
     const label = pulseRefLabel(o, config);
     records.push({ id: o.id, kind: isInternalOrder(o) ? 'internal' : 'order', label, need, fired });
     const fresh = dateKey === dateKeyOf(new Date()) && Date.now() - (o.createdAt || 0) < 3 * 3600000;
+    allocatePulseLogs(o, config, live.filter(l => l.refId === o.id)).mismatches
+      .forEach(mm => add(`m:${o.id}:${mm.logId}`, 'error', 'เครื่องไม่ตรงใบงาน', { label: `${label} · ${mm.text}`, refId: o.id }));
     if (fired < need) add(`o:${o.id}:${need - fired}`, 'error', fired === 0 ? 'ยังไม่ได้เริ่มเครื่อง' : 'เริ่มเครื่องไม่ครบ', { label, amount: need - fired, refId: o.id, pending: fresh });
     else if (fired > need) add(`o:${o.id}:+${fired - need}`, 'error', 'ยิงเกินงาน', { label, amount: fired - need, refId: o.id });
   });
@@ -8286,48 +8318,402 @@ async function savePulseDayNote(config, dateKey, issues, reason, staffName) {
   }, { merge: true });
 }
 
-// ---------- 🧺 หน้าใบรับงาน: เริ่มเครื่องทีละถัง ----------
+// ---------- 🧺 หน้าใบรับงาน: ผนังเครื่องเหมือนจริง → แตะเครื่อง → เลือกน้ำ/ความร้อน → เริ่มเครื่อง (v142) ----------
+const WASH_TEMPS = [
+  { id: 'cold', label: 'น้ำเย็น', emoji: '❄️', color: '#0EA5E9' },
+  { id: 'warm', label: 'น้ำอุ่น', emoji: '♨️', color: '#F59E0B' },
+  { id: 'hot', label: 'น้ำร้อน', emoji: '🔥', color: '#E11D48' },
+];
+const DRY_HEATS = [
+  { id: 'high', label: 'ร้อนสูง', emoji: '🔥', color: '#E11D48' },
+  { id: 'med', label: 'ร้อนกลาง', emoji: '🌡️', color: '#F59E0B' },
+  { id: 'low', label: 'ร้อนต่ำ', emoji: '🍃', color: '#10B981' },
+];
+const washTempLabel = (id) => (WASH_TEMPS.find(t => t.id === id) || {}).label || '';
+const dryHeatLabel = (id) => (DRY_HEATS.find(t => t.id === id) || {}).label || '';
+
+// แท่นเครื่องหน้าร้าน ซ้าย→ขวา: แท่นละ อบบน (d) + ซักล่าง (w)
+function pulseStacks(config) {
+  const ms = pulseMachines(config);
+  const n = (config.pulse && config.pulse.stacks) || 0;
+  const out = [];
+  for (let i = 1; i <= n; i++) {
+    const dry = ms.find(m => m.id === 'd' + i), wash = ms.find(m => m.id === 'w' + i);
+    if (dry || wash) out.push({ n: i, dry, wash });
+  }
+  return out;
+}
+const dryMinutesFor = (config, kg, baht) => {
+  const per = ((config.pulse && config.pulse.dryMinPer10) || {})[kg] || 0;
+  return per ? Math.round((baht / PULSE_BAHT) * per) : 0;
+};
+const washPriceFor = (config, kg, temp) => { const m = config.washMachines.find(w => w.size === kg); return m ? m.prices[temp] : 0; };
+const dryPriceFor = (config, kg) => { const m = config.dryMachines.find(d => d.size === kg); return m ? m.price : 0; };
+
+function pulseLogDetail(config, l) {
+  if (l.kind === 'wash' && l.temp) return `${tr(config, washTempLabel(l.temp))}`;
+  if (l.kind === 'dry' && l.heat) return `${tr(config, dryHeatLabel(l.heat))}${l.dryMin ? ` · ≈${l.dryMin} ${tr(config, 'นาที')}` : ''}`;
+  return '';
+}
+
+// จับคู่พัลส์ของงาน → ช่องในใบงาน (ใช้แสดงผล + หาเครื่อง/น้ำที่ไม่ตรงใบงาน)
+function allocatePulseLogs(order, config, logs) {
+  const ms = pulseMachines(config);
+  const slots = pulseSlotsForOrder(order, config).map(s => ({ ...s, got: 0, logs: [], parts: [], notes: [] }));
+  const mismatches = [], extra = [];
+  const open = (s) => s.got < s.baht;
+  const put = (s, l, amt) => { s.got += amt; if (!s.logs.includes(l)) s.logs.push(l); const p = s.parts.find(x => x.log === l); if (p) p.amt += amt; else s.parts.push({ log: l, amt }); };
+  const live = (logs || []).filter(pulseLive).slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  live.forEach(l => {
+    const m = ms.find(x => x.id === l.machine) || {};
+    const kind = l.kind || m.kind, kg = l.kg || m.kg, amt = l.baht || 0;
+    const custom = slots.find(s => s.kind === 'custom');
+    if (custom) { put(custom, l, amt); return; }
+    if (!l.kind && l.slotKey) { const s = slots.find(x => x.key === l.slotKey); if (s) { put(s, l, amt); return; } }
+    const note = (s, text) => { s.notes.push(text); mismatches.push({ logId: l.id, text }); };
+    if (kind === 'wash') {
+      const ws = slots.filter(s => s.kind === 'wash');
+      const s = ws.find(x => open(x) && x.kg === kg && x.temp === l.temp) || ws.find(x => open(x) && x.kg === kg) || ws.find(open);
+      if (!s) { extra.push({ log: l, amt, why: ws.length ? 'เกินใบงาน' : 'ใบงานไม่มีซัก' }); return; }
+      put(s, l, amt);
+      if (s.kg !== kg) note(s, `ใบงานซัก ${s.kg}kg · เปิด ${l.machineLabel || m.label} (${kg}kg)`);
+      else if (l.temp && s.temp !== l.temp) note(s, `ใบงาน${washTempLabel(s.temp)} · เปิด${washTempLabel(l.temp)}`);
+      return;
+    }
+    // อบ: ราคาเริ่มต้นลงช่องอบ ส่วนที่เกินลงช่องหยอดเพิ่มของขนาดเดียวกัน
+    const ds = slots.filter(s => s.kind === 'dry'), ts = slots.filter(s => s.kind === 'topup');
+    let left = amt, touched = null;
+    const base = ds.find(x => open(x) && x.kg === kg) || ds.find(open);
+    if (base) {
+      const a = Math.min(left, base.baht - base.got); put(base, l, a); left -= a; touched = base;
+      if (base.kg !== kg) note(base, `ใบงานอบ ${base.kg}kg · เปิด ${l.machineLabel || m.label} (${kg}kg)`);
+    }
+    while (left > 0) {
+      const t = ts.find(x => open(x) && x.kg === kg) || ts.find(open);
+      if (!t) break;
+      const a = Math.min(left, t.baht - t.got); put(t, l, a); left -= a; touched = t;
+    }
+    if (left > 0) extra.push({ log: l, amt: left, why: touched ? 'เกินใบงาน' : 'ใบงานไม่มีอบ' });
+  });
+  return { slots, mismatches, extra };
+}
+
+// ---------- รูปผนังเครื่อง (สัดส่วน/สีตามแบบสติกเกอร์หน้าเครื่องจริง Teddy 2 · หน่วย = ซม.) ----------
+function MachineWall({ config, stacks, marks, selected, onPick }) {
+  const W = 81, GAP = 2, TOP = 20, H = 207.5;
+  const vbW = stacks.length * W + (stacks.length - 1) * GAP + 8;
+  const vbH = TOP + H + 8;
+  const NAVY = '#113D6C', DRED = '#BA3D4D', GOLD = '#C68B4A';
+  // กลุ่มขนาดเครื่องติดกัน (เช่น 1–5 = 17kg · 6–8 = 12kg) ไว้วาดวงเล็บบนหัว
+  const groups = [];
+  stacks.forEach((s, i) => {
+    const kg = (s.wash || s.dry || {}).kg;
+    const g = groups[groups.length - 1];
+    if (g && g.kg === kg) g.to = i; else groups.push({ kg, from: i, to: i });
+  });
+  const xOf = (i) => 4 + i * (W + GAP);
+  const glass = (state, kind) => state === 'done' ? '#047857' : state === 'busy' ? '#B45309' : (kind === 'dry' ? '#2A1F22' : '#14324F');
+  const half = (s, i, kind) => {
+    const m = kind === 'dry' ? s.dry : s.wash;
+    if (!m) return null;
+    const x = xOf(i);
+    const y = kind === 'dry' ? TOP : TOP + 91;
+    const h = kind === 'dry' ? 91 : H - 91;
+    const st = marks[m.id] || null;
+    const sel = selected === m.id;
+    return (
+      <g key={m.id}>
+        {st === 'target' && <rect x={x + 1.5} y={y + 1.5} width={W - 3} height={h - 3} rx="4" fill="none" stroke={GOLD} strokeWidth="4" className="animate-pulse" />}
+        {sel && <rect x={x + 1} y={y + 1} width={W - 2} height={h - 2} rx="4" fill="rgba(15,23,42,0.06)" stroke="#0F172A" strokeWidth="5" />}
+        <rect data-m={m.id} role="button" aria-label={m.label} x={x} y={y} width={W} height={h} fill="transparent" style={{ cursor: 'pointer' }} onClick={() => onPick(m)} />
+      </g>
+    );
+  };
+  return (
+    <svg viewBox={`0 0 ${vbW} ${vbH}`} width="100%" style={{ display: 'block', fontFamily: 'Kanit, "Noto Sans Thai", sans-serif' }}>
+      {groups.map(g => {
+        const x1 = xOf(g.from) + 3, x2 = xOf(g.to) + W - 3, xm = (x1 + x2) / 2;
+        return (
+          <g key={g.from}>
+            <path d={`M${x1} 15 V11 H${x2} V15`} fill="none" stroke="#94A3B8" strokeWidth="1.2" />
+            <rect x={xm - 22} y="2" width="44" height="14" rx="7" fill="#FBF6EC" stroke="#C68B4A" strokeWidth="1" />
+            <text x={xm} y="12.6" textAnchor="middle" fontSize="10" fontWeight="800" fill="#113D6C">{g.kg} kg</text>
+          </g>
+        );
+      })}
+      {stacks.map((s, i) => {
+        const x = xOf(i), y = TOP, cx = x + W / 2;
+        const dSt = s.dry ? marks[s.dry.id] : null, wSt = s.wash ? marks[s.wash.id] : null;
+        const dim = (st) => st === 'dim' ? 0.32 : 1;
+        return (
+          <g key={s.n}>
+            {/* ตัวเครื่อง + ฐานปูน */}
+            <rect x={x} y={y + H} width={W} height="6" fill="#CBD5E1" />
+            <rect x={x} y={y} width={W} height={H} rx="2.5" fill="#EEF1F4" stroke="#94A3B8" strokeWidth="0.8" />
+            {/* อบ (บน) */}
+            <g opacity={dim(dSt)}>
+              <rect x={x} y={y} width={W} height="17" rx="2.5" fill={DRED} />
+              <circle cx={cx} cy={y + 43.25} r="33.5" fill="#EEF1F4" />
+              <circle cx={cx} cy={y + 43.25} r="30.75" fill="#D9DEE5" stroke="#94A3B8" strokeWidth="1" />
+              <circle cx={cx} cy={y + 43.25} r="27" fill={glass(dSt, 'dry')} />
+              <path d={`M${cx - 18} ${y + 33} a 22 22 0 0 1 20 -9`} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="3" strokeLinecap="round" />
+              <text x={cx} y={y + 54} textAnchor="middle" fontSize="30" fontWeight="800" fill="#fff">{s.n}</text>
+              <text x={x + 5} y={y + 12} fontSize="8" fontWeight="700" fill="#fff" opacity="0.9">DRY</text>
+              {dSt === 'done' && <g><circle cx={x + W - 12} cy={y + 24} r="8" fill="#10B981" stroke="#fff" strokeWidth="1.5" /><path d={`M${x + W - 16} ${y + 24} l3 3 l5 -6`} fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" /></g>}
+              {dSt === 'busy' && <text x={x + W - 12} y={y + 28} textAnchor="middle" fontSize="12">⏳</text>}
+            </g>
+            {/* แผงกลาง: กล่องเหรียญ ซัก(ซ้าย) / อบ(ขวา) + จอสแกนจ่าย */}
+            <rect x={x} y={y + 78.5} width={W} height="25" fill="#D5DAE1" />
+            <rect x={x + 1.6} y={y + 80.1} width="14.4" height="21.8" rx="1.5" fill="#1E293B" />
+            <rect x={x + 65} y={y + 80.1} width="14.4" height="21.8" rx="1.5" fill="#1E293B" />
+            <rect x={x + 5} y={y + 82.5} width="7.6" height="3.7" rx="0.6" fill="#86EFAC" />
+            <rect x={x + 68.4} y={y + 82.5} width="7.6" height="3.7" rx="0.6" fill="#86EFAC" />
+            <rect x={x + 18.2} y={y + 82} width="5.9" height="9.4" rx="0.8" fill="#38BDF8" />
+            <rect x={x + 56.9} y={y + 82} width="5.9" height="9.4" rx="0.8" fill="#38BDF8" />
+            <rect x={x + 26} y={y + 83} width="29" height="15.8" rx="1.5" fill="#FBF6EC" />
+            {/* ซัก (ล่าง) */}
+            <g opacity={dim(wSt)}>
+              <rect x={x + 6} y={y + 105.3} width="22.3" height="8.3" rx="1.2" fill="#F8FAFC" stroke="#94A3B8" strokeWidth="0.8" />
+              <circle cx={cx} cy={y + 146.8} r="27.2" fill="#D9DEE5" stroke="#94A3B8" strokeWidth="1" />
+              <circle cx={cx} cy={y + 146.8} r="21.25" fill={glass(wSt, 'wash')} />
+              <path d={`M${cx - 19} ${y + 152} q 5 -4 9.5 0 t 9.5 0 t 9.5 0 t 9.5 0`} fill="none" stroke="rgba(91,184,232,0.55)" strokeWidth="2.2" />
+              <text x={cx} y={y + 157} textAnchor="middle" fontSize="28" fontWeight="800" fill="#fff">{s.n}</text>
+              <rect x={x} y={y + 180.5} width={W} height="23.1" fill={NAVY} />
+              <rect x={x} y={y + 180.5} width={W} height="2" fill="#5BB8E8" />
+              <text x={x + 5} y={y + 196} fontSize="8" fontWeight="700" fill="#fff" opacity="0.9">WASH</text>
+              {wSt === 'done' && <g><circle cx={x + W - 12} cy={y + 122} r="8" fill="#10B981" stroke="#fff" strokeWidth="1.5" /><path d={`M${x + W - 16} ${y + 122} l3 3 l5 -6`} fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" /></g>}
+              {wSt === 'busy' && <text x={x + W - 12} y={y + 126} textAnchor="middle" fontSize="12">⏳</text>}
+            </g>
+            {half(s, i, 'dry')}
+            {half(s, i, 'wash')}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ---------- หน้าเลือกเครื่อง (เต็มจอ) ----------
+function MachinePickerSheet({ config, order, alloc, dayLogs, preset, onFire, onClose, busyText, msg }) {
+  const stacks = pulseStacks(config);
+  const ms = pulseMachines(config);
+  const [sel, setSel] = useState(preset ? preset.machine : null);
+  const [temp, setTemp] = useState(preset ? preset.temp || null : null);
+  const [heat, setHeat] = useState(preset ? preset.heat || null : null);
+  const [amount, setAmount] = useState(preset ? preset.baht || 0 : 0);
+  const maxBaht = ((config.pulse && config.pulse.maxPerShot) || 12) * PULSE_BAHT;
+  const openSlots = alloc.slots.filter(s => s.got < s.baht);
+
+  // สถานะบนรูป: เปิดแล้ว (งานนี้) / ⏳ เพิ่งเปิดให้งานอื่น / เป้าหมายตามใบงาน / จาง
+  const now = Date.now();
+  const marks = {};
+  const targetIds = new Set();
+  openSlots.forEach(s => (s.allowed || []).forEach(id => targetIds.add(id)));
+  ms.forEach(m => {
+    const mine = alloc.slots.some(s => s.logs.some(l => l.machine === m.id));
+    const recent = (dayLogs || []).filter(l => l.machine === m.id && pulseLive(l) && l.refId !== order.id).some(l => {
+      const mins = m.kind === 'dry' ? (l.dryMin || dryMinutesFor(config, m.kg, l.baht || 0)) : ((config.pulse && config.pulse.washBusyMin) || 45);
+      return now - (l.createdAt || 0) < mins * 60000;
+    });
+    marks[m.id] = mine ? 'done' : recent ? 'busy' : targetIds.has(m.id) ? 'target' : (targetIds.size ? 'dim' : null);
+  });
+
+  const selM = ms.find(m => m.id === sel) || null;
+  const slotsOfKind = (kind) => openSlots.filter(s => kind === 'wash' ? s.kind === 'wash' : (s.kind === 'dry' || s.kind === 'topup'));
+
+  // ค่าที่แนะนำตามใบงาน เมื่อแตะเครื่อง
+  const suggest = (m) => {
+    if (m.kind === 'wash') {
+      const s = openSlots.find(x => x.kind === 'wash' && x.kg === m.kg) || openSlots.find(x => x.kind === 'wash');
+      return { temp: s ? s.temp : null, heat: null, amount: 0 };
+    }
+    const base = openSlots.find(x => x.kind === 'dry' && x.kg === m.kg);
+    const top = openSlots.filter(x => x.kind === 'topup' && x.kg === m.kg).reduce((a, x) => a + (x.baht - x.got), 0);
+    const amt = base ? (base.baht - base.got) + top : top > 0 ? top : dryPriceFor(config, m.kg);
+    return { temp: null, heat: null, amount: Math.min(maxBaht, Math.max(PULSE_BAHT, amt)) };
+  };
+  const pick = (m) => {
+    if (busyText) return;
+    const sg = suggest(m);
+    setSel(m.id); setTemp(sg.temp); setHeat(sg.heat); setAmount(sg.amount);
+  };
+
+  const washBaht = selM && selM.kind === 'wash' && temp ? washPriceFor(config, selM.kg, temp) : 0;
+  const baht = selM ? (selM.kind === 'wash' ? washBaht : amount) : 0;
+  const dryBaseOpen = selM && selM.kind === 'dry' && openSlots.some(x => x.kind === 'dry' && x.kg === selM.kg);
+  const minDry = selM && selM.kind === 'dry' ? (dryBaseOpen ? dryPriceFor(config, selM.kg) : PULSE_BAHT) : 0;
+
+  // เตือนถ้าไม่ตรงใบงาน
+  let warn = '';
+  if (selM) {
+    const ks = slotsOfKind(selM.kind);
+    if (!ks.length) warn = selM.kind === 'wash' ? tr(config, 'ใบงานนี้ไม่มีซักที่ยังไม่ได้เปิด') : tr(config, 'ใบงานนี้ไม่มีอบที่ยังไม่ได้เปิด');
+    else if (!ks.some(s => s.kg === selM.kg)) warn = `${tr(config, 'ใบงานเป็นเครื่อง')} ${[...new Set(ks.map(s => s.kg))].join('/')}kg`;
+    else if (selM.kind === 'wash' && temp && !ks.some(s => s.kg === selM.kg && s.temp === temp)) warn = `${tr(config, 'ใบงานเป็น')}${[...new Set(ks.filter(s => s.kg === selM.kg).map(s => tr(config, washTempLabel(s.temp))))].join('/')}`;
+    if (marks[selM.id] === 'busy') warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้เพิ่งเปิดให้งานอื่น');
+  }
+  const ready = selM && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : !!heat);
+
+  const remainText = openSlots.map(s => s.kind === 'topup'
+    ? `⏱️ ${tr(config, 'อบเพิ่มเวลา')} ${s.kg}kg ฿${s.baht - s.got}`
+    : `${pulseSlotLabel(config, s)} ฿${s.baht - s.got}`);
+
+  const tile = (active, color, onClick, top, bottom, badge) => (
+    <button onClick={onClick} disabled={!!busyText}
+      className={`relative flex-1 rounded-2xl py-3 px-1 border-2 text-center active:scale-95 transition ${active ? 'text-white shadow-lg' : 'bg-white text-slate-700'}`}
+      style={active ? { background: color, borderColor: color } : { borderColor: '#E2E8F0' }}>
+      {badge && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 whitespace-nowrap">{badge}</span>}
+      <div className="text-2xl leading-none">{top}</div>
+      <div className="text-sm font-extrabold mt-1">{bottom}</div>
+    </button>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-100 overflow-y-auto">
+      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="font-extrabold text-slate-900">🧺 {tr(config, 'เลือกเครื่อง')}</p>
+          <p className="text-xs text-slate-500 truncate">{pulseRefLabel(order, config)}</p>
+        </div>
+        <button onClick={onClose} disabled={!!busyText} className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 text-xl font-bold active:scale-95">✕</button>
+      </div>
+
+      <div className="p-3 space-y-3 pb-28">
+        <div className={`rounded-2xl px-3 py-2 border ${openSlots.length ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+          <p className={`text-xs font-bold ${openSlots.length ? 'text-amber-800' : 'text-emerald-700'}`}>
+            {openSlots.length ? `${tr(config, 'ยังต้องเปิดตามใบงาน')}:` : `✅ ${tr(config, 'เริ่มเครื่องครบแล้ว')}`}
+          </p>
+          {openSlots.length > 0 && <p className="text-sm font-bold text-slate-800 leading-snug">{remainText.join(' · ')}</p>}
+        </div>
+
+        <div className="rounded-2xl bg-white border border-slate-200 p-2" style={{ background: 'linear-gradient(#FBF6EC, #F3EBDD)' }}>
+          <MachineWall config={config} stacks={stacks} marks={marks} selected={sel} onPick={pick} />
+          <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2 text-[11px] font-bold text-slate-600">
+            <span><span className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ border: '2px solid #C68B4A' }}></span>{tr(config, 'ตามใบงาน')}</span>
+            <span>✅ {tr(config, 'เปิดแล้ว')}</span>
+            <span>⏳ {tr(config, 'เพิ่งเปิดให้งานอื่น')}</span>
+            <span>{tr(config, 'แตะ อบ (บน) หรือ ซัก (ล่าง)')}</span>
+          </div>
+        </div>
+
+        {selM && (
+          <div className="rounded-2xl bg-white border-2 p-3 space-y-3" style={{ borderColor: selM.kind === 'wash' ? '#113D6C' : '#BA3D4D' }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-extrabold text-white px-2 py-1 rounded-lg" style={{ background: selM.kind === 'wash' ? '#113D6C' : '#BA3D4D' }}>
+                {selM.kind === 'wash' ? '💧' : '🌬️'} {selM.label}
+              </span>
+              <span className="text-sm font-bold text-slate-600">{selM.kg} kg</span>
+              <button onClick={() => setSel(null)} disabled={!!busyText} className="ml-auto text-xs font-bold text-slate-400 px-2">{tr(config, 'ยกเลิก')}</button>
+            </div>
+
+            {selM.kind === 'wash' ? (
+              <div>
+                <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกน้ำ')}</p>
+                <div className="flex gap-2">
+                  {WASH_TEMPS.map(t => tile(temp === t.id, t.color, () => setTemp(t.id), t.emoji,
+                    <span>{tr(config, t.label)}<br /><span className="text-xs font-bold opacity-80">฿{washPriceFor(config, selM.kg, t.id)}</span></span>,
+                    openSlots.some(s => s.kind === 'wash' && s.kg === selM.kg && s.temp === t.id) ? tr(config, 'ตามใบงาน') : null))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกความร้อน')}</p>
+                  <div className="flex gap-2">
+                    {DRY_HEATS.map(h => tile(heat === h.id, h.color, () => setHeat(h.id), h.emoji, tr(config, h.label), null))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เวลาอบ')}</p>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setAmount(a => Math.max(minDry, a - PULSE_BAHT))} disabled={!!busyText || amount <= minDry}
+                      className="w-14 h-14 rounded-2xl bg-slate-100 text-2xl font-extrabold text-slate-700 active:scale-95 disabled:opacity-30">−</button>
+                    <div className="flex-1 text-center">
+                      <p className="text-2xl font-extrabold text-slate-900">฿{amount}</p>
+                      <p className="text-xs font-bold text-slate-500">≈ {dryMinutesFor(config, selM.kg, amount)} {tr(config, 'นาที')} · +฿10 = +{((config.pulse && config.pulse.dryMinPer10) || {})[selM.kg] || '?'} {tr(config, 'นาที')}</p>
+                    </div>
+                    <button onClick={() => setAmount(a => Math.min(maxBaht, a + PULSE_BAHT))} disabled={!!busyText || amount >= maxBaht}
+                      className="w-14 h-14 rounded-2xl bg-slate-100 text-2xl font-extrabold text-slate-700 active:scale-95 disabled:opacity-30">+</button>
+                  </div>
+                  {!dryBaseOpen && <p className="text-[11px] text-slate-500 mt-1 text-center">{tr(config, 'เพิ่มเวลาให้เครื่องที่อบอยู่ได้ (ทีละ ฿10)')}</p>}
+                </div>
+              </div>
+            )}
+
+            {warn && <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ {warn}</p>}
+          </div>
+        )}
+
+        {msg && <p className={`text-sm font-bold text-center ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
+      </div>
+
+      {selM && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3">
+          <button disabled={!ready || !!busyText}
+            onClick={() => onFire({ machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, onDone: () => setSel(null) })}
+            className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: config.gradient }}>
+            {busyText ? `⏳ ${busyText}` : !ready
+              ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกความร้อนก่อน'))
+              : `⚡ ${tr(config, 'เริ่มเครื่อง')} ${selM.label} · ฿${baht} (${baht / PULSE_BAHT} ${tr(config, 'พัลส์')})`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- การ์ดในใบรับงาน ----------
 function PulseStarterCard({ config, order }) {
   const [logs, setLogs] = useState([]);
-  const [openSlot, setOpenSlot] = useState(null);
+  const [dayLogs, setDayLogs] = useState([]);
+  const [picker, setPicker] = useState(null); // null | { preset, retryLog }
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
   const lockRef = useRef(false);
+  const todayKey = dateKeyOf(new Date());
   useEffect(() => {
     if (!window.db || !order || !order.id) return;
     const u = subscribePulseLogsByRef(order.id, list => setLogs(list.filter(l => l.brand === config.brand).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))));
     return () => { if (u) u(); };
   }, [order && order.id, config.brand]);
+  useEffect(() => {
+    if (!window.db || !picker) return;
+    const u = subscribePulseLogsByDays([todayKey], list => setDayLogs(list.filter(l => l.brand === config.brand)));
+    return () => { if (u) u(); };
+  }, [!!picker, todayKey, config.brand]);
 
-  const slots = pulseSlotsForOrder(order, config);
-  if (slots.length === 0) return null;
+  const alloc = useMemo(() => allocatePulseLogs(order, config, logs), [order, config, logs]);
+  if (alloc.slots.length === 0) return null;
 
   const liveLogs = logs.filter(pulseLive);
-  const slotLogs = (s) => logs.filter(l => l.slotKey === s.key && l.status !== 'void');
-  const firedOf = (s) => liveLogs.filter(l => l.slotKey === s.key).reduce((sum, l) => sum + (l.baht || 0), 0);
-  const need = slots.reduce((s, x) => s + x.baht, 0);
+  const need = alloc.slots.reduce((s, x) => s + x.baht, 0);
   const fired = liveLogs.reduce((s, l) => s + (l.baht || 0), 0);
-  const otherLogs = liveLogs.filter(l => !slots.some(s => s.key === l.slotKey));
   const allDone = fired >= need;
   const maxShot = (config.pulse && config.pulse.maxPerShot) || 12;
 
-  const fire = async (slot, machineId, retryLog) => {
+  const fire = async ({ machine, kind, kg, temp, heat, baht, warn, onDone }) => {
     if (lockRef.current) return;
-    const remain = Math.max(0, slot.baht - firedOf(slot) + (retryLog && pulseLive(retryLog) ? retryLog.baht : 0));
-    const pulses = Math.min(Math.floor(remain / PULSE_BAHT), maxShot);
-    if (pulses <= 0) { alert(tr(config, 'ช่องนี้เริ่มเครื่องครบแล้ว')); return; }
-    const mLabel = pulseMachineLabel(config, machineId);
-    if (!confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${mLabel}\n🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${pulses * PULSE_BAHT})\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return;
+    const pulses = Math.round(baht / PULSE_BAHT);
+    if (pulses < 1 || pulses > maxShot) { alert(`${tr(config, 'ยอดสูงสุดต่อครั้ง')} ฿${maxShot * PULSE_BAHT}`); return; }
+    const mLabel = pulseMachineLabel(config, machine);
+    const dryMin = kind === 'dry' ? dryMinutesFor(config, kg, baht) : 0;
+    const detail = kind === 'wash' ? `💧 ${tr(config, washTempLabel(temp))}` : `🌬️ ${tr(config, dryHeatLabel(heat))} · ≈ ${dryMin} ${tr(config, 'นาที')}`;
+    if (!confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${mLabel} (${kg}kg)\n${detail}\n🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return;
+    const retryLog = picker && picker.retryLog;
     lockRef.current = true;
     setBusy(mLabel);
     setMsg(null);
     try {
       if (retryLog) await voidPulseLog(retryLog.id, 'ยิงใหม่ — เครื่องไม่ได้รับ').catch(() => {});
-      const res = await firePulse(config, { machine: machineId, pulses, refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: slot.key, refLabel: pulseRefLabel(order, config), retryOf: retryLog ? retryLog.id : null });
+      const res = await firePulse(config, {
+        machine, pulses, refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null,
+        refLabel: pulseRefLabel(order, config), retryOf: retryLog ? retryLog.id : null,
+        meta: { kind, kg, temp: temp || null, heat: heat || null, dryMin: dryMin || null, mismatch: warn || null },
+      });
       if (res.status === 'confirmed') { playSuccessSound(); setMsg({ ok: true, text: `✅ ${mLabel} ${tr(config, 'เครื่องรับแล้ว')}` }); }
       else if (res.status === 'failed') setMsg({ ok: false, text: `❌ ${tr(config, 'ไม่สำเร็จ')}: ${res.error || ''}` });
       else setMsg({ ok: null, text: `⏳ ${mLabel} — ${tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}` });
-      setOpenSlot(null);
+      if (res.status !== 'failed') { if (onDone) onDone(); if (retryLog) setPicker({ preset: null, retryLog: null }); }
     } finally { lockRef.current = false; setBusy(null); }
   };
 
@@ -8353,6 +8739,25 @@ function PulseStarterCard({ config, order }) {
     const [cls, text] = map[l.status] || ['bg-slate-100 text-slate-600', l.status];
     return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cls}`}>{text}</span>;
   };
+  const logRow = (l, shown, amtNote) => {
+    const unconfirmed = ['sent', 'unknown', 'sending', 'forced'].includes(l.status);
+    const part = shown != null && shown !== l.baht;
+    return (
+      <div key={l.id + String(shown) + (amtNote || '')} className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+        <span className="text-xs font-bold text-slate-700">🧺 {l.machineLabel}</span>
+        {pulseLogDetail(config, l) && <span className="text-[11px] font-bold text-slate-600">{pulseLogDetail(config, l)}</span>}
+        <span className="text-[11px] text-slate-500">{new Date(l.createdAt).toTimeString().slice(0, 5)} · ฿{part ? shown : l.baht}{part ? ` (${tr(config, 'จาก')} ฿${l.baht})` : ''}{amtNote ? ` · ${amtNote}` : ''}</span>
+        {statusChip(l)}
+        {unconfirmed && (
+          <>
+            <button onClick={() => recheck(l)} disabled={!!busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-300 text-slate-600 active:scale-95">🔄 {tr(config, 'เช็กอีกครั้ง')}</button>
+            <button onClick={() => setPicker({ retryLog: l, preset: { machine: l.machine, temp: l.temp, heat: l.heat, baht: l.baht } })} disabled={!!busy}
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 border border-rose-300 text-rose-700 active:scale-95">{tr(config, 'เครื่องไม่ทำงาน → ยิงใหม่')}</button>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className={`rounded-2xl p-4 mb-3 border-2 ${allDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-amber-300 shadow-lg'}`}>
@@ -8370,68 +8775,37 @@ function PulseStarterCard({ config, order }) {
       </div>
 
       <div className="mt-3 space-y-2">
-        {slots.map(s => {
-          const sl = slotLogs(s);
-          const sFired = firedOf(s);
-          const sDone = sFired >= s.baht;
-          const unconfirmed = sl.filter(l => ['sent', 'unknown', 'sending', 'forced'].includes(l.status));
+        {alloc.slots.map(s => {
+          const sDone = s.got >= s.baht;
           return (
             <div key={s.key} className={`rounded-xl p-2.5 border ${sDone ? 'bg-white border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-bold text-slate-800 flex-1">{pulseSlotLabel(config, s)}</p>
-                <p className="text-xs font-bold text-slate-500">฿{s.baht} · {Math.floor(s.baht / PULSE_BAHT)} {tr(config, 'พัลส์')}</p>
+                <p className="text-sm font-bold text-slate-800 flex-1">{sDone ? '✅ ' : '⬜ '}{pulseSlotLabel(config, s)}</p>
+                <p className="text-xs font-bold text-slate-500">฿{Math.min(s.got, s.baht)} / ฿{s.baht}</p>
               </div>
-              {sl.map(l => (
-                <div key={l.id} className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                  <span className="text-xs font-bold text-slate-700">🧺 {l.machineLabel}</span>
-                  <span className="text-[11px] text-slate-500">{new Date(l.createdAt).toTimeString().slice(0, 5)} · ฿{l.baht}</span>
-                  {statusChip(l)}
-                  {unconfirmed.includes(l) && (
-                    <>
-                      <button onClick={() => recheck(l)} disabled={!!busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-300 text-slate-600 active:scale-95">🔄 {tr(config, 'เช็กอีกครั้ง')}</button>
-                      <button onClick={() => setOpenSlot({ key: s.key, retry: l })} disabled={!!busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 border border-rose-300 text-rose-700 active:scale-95">{tr(config, 'เครื่องไม่ทำงาน → ยิงใหม่')}</button>
-                    </>
-                  )}
-                </div>
-              ))}
-              {(!sDone || (openSlot && openSlot.key === s.key)) && (
-                openSlot && openSlot.key === s.key ? (
-                  <div className="mt-2">
-                    <p className="text-[11px] font-bold text-slate-600 mb-1">{openSlot.retry ? '🔁 ' + tr(config, 'ยิงใหม่ — เลือกเครื่อง') : tr(config, 'เลือกเครื่องที่ใส่ผ้า')}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {s.allowed.map(id => (
-                        <button key={id} onClick={() => fire(s, id, openSlot.retry || null)} disabled={!!busy}
-                          className="px-3 py-2 rounded-xl text-sm font-extrabold bg-slate-900 text-white active:scale-95 transition disabled:opacity-40">
-                          {pulseMachineLabel(config, id)}
-                        </button>
-                      ))}
-                      <button onClick={() => setOpenSlot(null)} className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-500">{tr(config, 'ยกเลิก')}</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button onClick={() => setOpenSlot({ key: s.key })} disabled={!!busy}
-                    className="mt-2 w-full py-2.5 rounded-xl text-sm font-extrabold text-white active:scale-95 transition disabled:opacity-40" style={{ background: config.gradient }}>
-                    ▶ {tr(config, 'เลือกเครื่อง')}{sFired > 0 ? ` (${tr(config, 'ขาด')} ฿${s.baht - sFired})` : ''}
-                  </button>
-                )
-              )}
+              {s.parts.map(p => logRow(p.log, p.amt))}
+              {s.notes.map((n, i) => <p key={i} className="text-[11px] font-bold text-amber-800 mt-1">⚠️ {tr(config, 'ไม่ตรงใบงาน')}: {n}</p>)}
             </div>
           );
         })}
-        {otherLogs.length > 0 && (
-          <p className="text-[11px] text-slate-500">{tr(config, 'พัลส์อื่นของงานนี้')}: {otherLogs.map(l => `${l.machineLabel} ฿${l.baht}`).join(', ')}</p>
+        {alloc.extra.length > 0 && (
+          <div className="rounded-xl p-2.5 border bg-rose-50 border-rose-200">
+            <p className="text-sm font-bold text-rose-700">⚠️ {tr(config, 'เปิดเกินใบงาน')}</p>
+            {alloc.extra.map(x => logRow(x.log, x.amt, tr(config, x.why)))}
+          </div>
         )}
       </div>
 
-      {msg && <p className={`mt-2 text-sm font-bold ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
-      {busy && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
-          <div className="bg-white rounded-3xl p-6 text-center max-w-xs w-full">
-            <p className="text-4xl animate-pulse">⚡</p>
-            <p className="font-extrabold text-slate-800 mt-2">{busy}</p>
-            <p className="text-sm text-slate-500 mt-1">{tr(config, 'กำลังส่งคำสั่ง รอเครื่องตอบ…')}</p>
-          </div>
-        </div>
+      <button onClick={() => setPicker({ preset: null, retryLog: null })} disabled={!!busy}
+        className={`mt-3 w-full rounded-xl font-extrabold active:scale-95 transition disabled:opacity-40 ${allDone ? 'py-2 text-sm bg-white border border-emerald-300 text-emerald-700' : 'py-3.5 text-base text-white shadow'}`}
+        style={allDone ? {} : { background: config.gradient }}>
+        {allDone ? `🧺 ${tr(config, 'เปิดเครื่องเพิ่ม / เพิ่มเวลาอบ')}` : `🧺 ${tr(config, 'เลือกเครื่อง')} (${tr(config, 'ขาด')} ฿${need - fired})`}
+      </button>
+
+      {msg && !picker && <p className={`mt-2 text-sm font-bold ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
+      {picker && (
+        <MachinePickerSheet config={config} order={order} alloc={alloc} dayLogs={dayLogs} preset={picker.preset}
+          onFire={fire} onClose={() => { setPicker(null); }} busyText={busy} msg={msg} />
       )}
     </div>
   );
