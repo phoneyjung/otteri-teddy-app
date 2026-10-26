@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v143-2026-10-26';
+  window.APP_VERSION = 'v144-2026-10-26';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2002,6 +2002,19 @@ const MM_DICT = {
   'ใบงานไม่มีอบ': 'အလုပ်စာရွက်တွင် အခြောက်ခံခြင်းမရှိ',
   'จาก': 'မှ',
   'เครื่องไม่ตรงใบงาน': 'စက်သည် အလုပ်စာရွက်နှင့် မကိုက်',
+  // 🧺 ปุ่มเริ่มเครื่องหน้าแรก (v144) — รอพนักงานพม่าตรวจคำแปล
+  'ไม่ใช่เครื่องที่ระบุในงานภายใน': 'ဆိုင်တွင်းအလုပ်တွင် သတ်မှတ်ထားသောစက် မဟုတ်',
+  'ไม่มีใบงานรอเริ่มเครื่อง': 'စက်စတင်ရန် စောင့်နေသော အလုပ်စာရွက် မရှိ',
+  'รับงานใหม่ก่อน แล้วค่อยเริ่มเครื่อง': 'အလုပ်သစ် အရင်လက်ခံပြီးမှ စက်စတင်ပါ',
+  'ใบงานรอเริ่มเครื่อง': 'စက်စတင်ရန် စောင့်နေသော အလုပ်စာရွက်',
+  'มีใบงานรอ': 'အလုပ်စာရွက် စောင့်နေ',
+  'เพิ่งเปิด': 'ဖွင့်ပြီးခါစ',
+  'ใช้กับใบงานไหน': 'မည်သည့်အလုပ်စာရွက်အတွက်',
+  'ไม่มีใบงานที่รอซัก': 'လျှော်ရန်စောင့်နေသော အလုပ်စာရွက် မရှိ',
+  'ไม่มีใบงานที่รออบ': 'အခြောက်ခံရန်စောင့်နေသော အလုပ်စာရွက် မရှိ',
+  'ขนาดเครื่องไม่ตรงใบงาน': 'စက်အရွယ်အစား အလုပ်စာရွက်နှင့် မကိုက်',
+  'ยังไม่ต้องเริ่มตอนนี้ก็ได้ — กดปุ่ม 🧺 เริ่มเครื่อง ที่หน้าแรกทีหลัง': 'ယခု မစတင်လည်းရ — နောက်မှ ပင်မစာမျက်နှာရှိ 🧺 စက်စတင် ခလုတ်ကို နှိပ်ပါ',
+  'แตะเครื่อง → เลือกใบงาน → เริ่ม': 'စက်နှိပ် → အလုပ်စာရွက်ရွေး → စတင်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3903,6 +3916,9 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
           </div>
         </button>
       </div>
+
+      {/* 🧺 เริ่มเครื่อง — แตะเครื่องก่อน แล้วเลือกใบงานที่รอ (v144) */}
+      {pulseOn(config) && <HomePulseStartCard config={config} orders={orders} />}
 
       <div className="px-5 mt-3 flex justify-end">
         <button onClick={onToggleLang} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs font-bold text-slate-600 active:scale-95 transition">
@@ -8494,25 +8510,64 @@ function MachineWall({ config, stacks, marks, selected, onPick }) {
   );
 }
 
+// ---------- ยิงพัลส์ให้ใบงาน (ใช้ร่วมกันทั้งในใบงานและปุ่มหน้าแรก) ----------
+async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht, warn }, retryLog) {
+  const maxShot = (config.pulse && config.pulse.maxPerShot) || 12;
+  const pulses = Math.round(baht / PULSE_BAHT);
+  if (pulses < 1 || pulses > maxShot) { alert(`${tr(config, 'ยอดสูงสุดต่อครั้ง')} ฿${maxShot * PULSE_BAHT}`); return null; }
+  const mLabel = pulseMachineLabel(config, machine);
+  const dryMin = kind === 'dry' ? dryMinutesFor(config, kg, baht) : 0;
+  const detail = kind === 'wash' ? `💧 ${tr(config, washTempLabel(temp))}` : `🌬️ ${tr(config, dryHeatLabel(heat))} · ≈ ${dryMin} ${tr(config, 'นาที')}`;
+  if (!confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return null;
+  if (retryLog) await voidPulseLog(retryLog.id, 'ยิงใหม่ — เครื่องไม่ได้รับ').catch(() => {});
+  return firePulse(config, {
+    machine, pulses, refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null,
+    refLabel: pulseRefLabel(order, config), retryOf: retryLog ? retryLog.id : null,
+    meta: { kind, kg, temp: temp || null, heat: heat || null, dryMin: dryMin || null, mismatch: warn || null },
+  });
+}
+function fireResultMsg(config, res) {
+  const mLabel = res.machineLabel || '';
+  if (res.status === 'confirmed') return { ok: true, text: `✅ ${mLabel} ${tr(config, 'เครื่องรับแล้ว')}` };
+  if (res.status === 'failed') return { ok: false, text: `❌ ${tr(config, 'ไม่สำเร็จ')}: ${res.error || ''}` };
+  return { ok: null, text: `⏳ ${mLabel} — ${tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}` };
+}
+const slotOpenLeft = (s) => s.baht - s.got;
+// ช่องในใบงานนี้ใช้เครื่องนี้ได้ไหม (ชนิดตรง + ขนาดตรง)
+const slotFitsMachine = (s, m) => s.kind === 'custom'
+  ? (s.allowed || []).includes(m.id)
+  : (m.kind === 'wash' ? s.kind === 'wash' : (s.kind === 'dry' || s.kind === 'topup')) && s.kg === m.kg;
+const slotSameKind = (s, m) => s.kind === 'custom' || (m.kind === 'wash' ? s.kind === 'wash' : (s.kind === 'dry' || s.kind === 'topup'));
+function jobOpenText(config, alloc) {
+  return alloc.slots.filter(s => s.got < s.baht).map(s => s.kind === 'topup'
+    ? `⏱️ +฿${slotOpenLeft(s)}`
+    : s.kind === 'wash' ? `💧 ${s.kg}kg ${tr(config, washTempLabel(s.temp))}` : s.kind === 'dry' ? `🌬️ ${s.kg}kg` : `🔧 ฿${slotOpenLeft(s)}`).join(' · ');
+}
+
 // ---------- หน้าเลือกเครื่อง (เต็มจอ) ----------
-function MachinePickerSheet({ config, order, alloc, dayLogs, preset, onFire, onClose, busyText, msg }) {
+// jobs = [{ order, alloc }] · fixed = เปิดจากใบงาน (ใบงานเดียว) · ไม่ fixed = เปิดจากหน้าแรก (แตะเครื่องก่อน แล้วเลือกใบงาน)
+function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onClose, busyText, msg }) {
   const stacks = pulseStacks(config);
   const ms = pulseMachines(config);
   const [sel, setSel] = useState(preset ? preset.machine : null);
+  const [jobId, setJobId] = useState(() => (preset && preset.orderId) || (fixed && jobs[0] ? jobs[0].order.id : null));
   const [temp, setTemp] = useState(preset ? preset.temp || null : null);
   const [heat, setHeat] = useState(preset ? preset.heat || null : null);
   const [amount, setAmount] = useState(preset ? preset.baht || 0 : 0);
   const maxBaht = ((config.pulse && config.pulse.maxPerShot) || 12) * PULSE_BAHT;
-  const openSlots = alloc.slots.filter(s => s.got < s.baht);
+  const openOf = (j) => (j ? j.alloc.slots.filter(s => s.got < s.baht) : []);
+  const job = jobs.find(j => j.order.id === jobId) || null;
+  const openSlots = openOf(job);
+  const allOpen = jobs.flatMap(j => openOf(j));
 
-  // สถานะบนรูป: เปิดแล้ว (งานนี้) / ⏳ เพิ่งเปิดให้งานอื่น / เป้าหมายตามใบงาน / จาง
+  // สถานะบนรูป: ✅ เปิดให้ใบงานนี้แล้ว / ⏳ เพิ่งเปิด / กรอบทอง = มีใบงานรอเครื่องนี้ / จาง
   const now = Date.now();
   const marks = {};
   const targetIds = new Set();
-  openSlots.forEach(s => (s.allowed || []).forEach(id => targetIds.add(id)));
+  (fixed ? openSlots : allOpen).forEach(s => (s.allowed || []).forEach(id => targetIds.add(id)));
   ms.forEach(m => {
-    const mine = alloc.slots.some(s => s.logs.some(l => l.machine === m.id));
-    const recent = (dayLogs || []).filter(l => l.machine === m.id && pulseLive(l) && l.refId !== order.id).some(l => {
+    const mine = fixed && job && job.alloc.slots.some(s => s.logs.some(l => l.machine === m.id));
+    const recent = (dayLogs || []).filter(l => l.machine === m.id && pulseLive(l) && (!fixed || !job || l.refId !== job.order.id)).some(l => {
       const mins = m.kind === 'dry' ? (l.dryMin || dryMinutesFor(config, m.kg, l.baht || 0)) : ((config.pulse && config.pulse.washBusyMin) || 45);
       return now - (l.createdAt || 0) < mins * 60000;
     });
@@ -8520,24 +8575,35 @@ function MachinePickerSheet({ config, order, alloc, dayLogs, preset, onFire, onC
   });
 
   const selM = ms.find(m => m.id === sel) || null;
-  const slotsOfKind = (kind) => openSlots.filter(s => kind === 'wash' ? s.kind === 'wash' : (s.kind === 'dry' || s.kind === 'topup'));
 
-  // ค่าที่แนะนำตามใบงาน เมื่อแตะเครื่อง
-  const suggest = (m) => {
+  // ค่าที่แนะนำตามใบงาน
+  const suggest = (m, j) => {
+    const os = openOf(j);
     if (m.kind === 'wash') {
-      const s = openSlots.find(x => x.kind === 'wash' && x.kg === m.kg) || openSlots.find(x => x.kind === 'wash');
-      return { temp: s ? s.temp : null, heat: null, amount: 0 };
+      const s = os.find(x => x.kind === 'wash' && x.kg === m.kg) || os.find(x => x.kind === 'wash');
+      return { temp: s ? s.temp : null, amount: 0 };
     }
-    const base = openSlots.find(x => x.kind === 'dry' && x.kg === m.kg);
-    const top = openSlots.filter(x => x.kind === 'topup' && x.kg === m.kg).reduce((a, x) => a + (x.baht - x.got), 0);
-    const amt = base ? (base.baht - base.got) + top : top > 0 ? top : dryPriceFor(config, m.kg);
-    return { temp: null, heat: null, amount: Math.min(maxBaht, Math.max(PULSE_BAHT, amt)) };
+    const base = os.find(x => x.kind === 'dry' && x.kg === m.kg);
+    const top = os.filter(x => x.kind === 'topup' && x.kg === m.kg).reduce((a, x) => a + slotOpenLeft(x), 0);
+    const amt = base ? slotOpenLeft(base) + top : top > 0 ? top : dryPriceFor(config, m.kg);
+    return { temp: null, amount: Math.min(maxBaht, Math.max(PULSE_BAHT, amt)) };
   };
+  // ใบงานที่เลือกได้ เมื่อแตะเครื่องนี้ (หน้าแรก): ตรงขนาดก่อน → ชนิดเดียวกันแต่ขนาดไม่ตรง · เก่าก่อน
+  const jobChoices = (m) => {
+    if (!m) return [];
+    const fit = jobs.filter(j => openOf(j).some(s => slotFitsMachine(s, m)));
+    const kindOnly = jobs.filter(j => !fit.includes(j) && openOf(j).some(s => slotSameKind(s, m)));
+    return [...fit.map(j => ({ j, fit: true })), ...kindOnly.map(j => ({ j, fit: false }))];
+  };
+  const applyJob = (m, j) => { const sg = suggest(m, j); setTemp(sg.temp); setAmount(sg.amount); };
   const pick = (m) => {
     if (busyText) return;
-    const sg = suggest(m);
-    setSel(m.id); setTemp(sg.temp); setHeat(sg.heat); setAmount(sg.amount);
+    setSel(m.id); setHeat(null);
+    let j = job;
+    if (!fixed) { const c = jobChoices(m); j = c.length ? c[0].j : null; setJobId(j ? j.order.id : null); }
+    applyJob(m, j);
   };
+  const chooseJob = (j) => { if (busyText) return; setJobId(j.order.id); if (selM) applyJob(selM, j); };
 
   const washBaht = selM && selM.kind === 'wash' && temp ? washPriceFor(config, selM.kg, temp) : 0;
   const baht = selM ? (selM.kind === 'wash' ? washBaht : amount) : 0;
@@ -8546,18 +8612,16 @@ function MachinePickerSheet({ config, order, alloc, dayLogs, preset, onFire, onC
 
   // เตือนถ้าไม่ตรงใบงาน
   let warn = '';
-  if (selM) {
-    const ks = slotsOfKind(selM.kind);
-    if (!ks.length) warn = selM.kind === 'wash' ? tr(config, 'ใบงานนี้ไม่มีซักที่ยังไม่ได้เปิด') : tr(config, 'ใบงานนี้ไม่มีอบที่ยังไม่ได้เปิด');
+  if (selM && job) {
+    const ks = openSlots.filter(s => slotSameKind(s, selM) && s.kind !== 'custom');
+    const custom = openSlots.find(s => s.kind === 'custom');
+    if (custom) { if (!(custom.allowed || []).includes(selM.id)) warn = tr(config, 'ไม่ใช่เครื่องที่ระบุในงานภายใน'); }
+    else if (!ks.length) warn = selM.kind === 'wash' ? tr(config, 'ใบงานนี้ไม่มีซักที่ยังไม่ได้เปิด') : tr(config, 'ใบงานนี้ไม่มีอบที่ยังไม่ได้เปิด');
     else if (!ks.some(s => s.kg === selM.kg)) warn = `${tr(config, 'ใบงานเป็นเครื่อง')} ${[...new Set(ks.map(s => s.kg))].join('/')}kg`;
     else if (selM.kind === 'wash' && temp && !ks.some(s => s.kg === selM.kg && s.temp === temp)) warn = `${tr(config, 'ใบงานเป็น')}${[...new Set(ks.filter(s => s.kg === selM.kg).map(s => tr(config, washTempLabel(s.temp))))].join('/')}`;
-    if (marks[selM.id] === 'busy') warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้เพิ่งเปิดให้งานอื่น');
   }
-  const ready = selM && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : !!heat);
-
-  const remainText = openSlots.map(s => s.kind === 'topup'
-    ? `⏱️ ${tr(config, 'อบเพิ่มเวลา')} ${s.kg}kg ฿${s.baht - s.got}`
-    : `${pulseSlotLabel(config, s)} ฿${s.baht - s.got}`);
+  if (selM && marks[selM.id] === 'busy') warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้เพิ่งเปิดให้งานอื่น');
+  const ready = selM && job && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : !!heat);
 
   const tile = (active, color, onClick, top, bottom, badge) => (
     <button onClick={onClick} disabled={!!busyText}
@@ -8568,31 +8632,47 @@ function MachinePickerSheet({ config, order, alloc, dayLogs, preset, onFire, onC
       <div className="text-sm font-extrabold mt-1">{bottom}</div>
     </button>
   );
+  const fmTime = (t) => new Date(t).toTimeString().slice(0, 5);
+  const choices = !fixed && selM ? jobChoices(selM) : [];
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-100 overflow-y-auto">
       <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-2">
         <div className="flex-1 min-w-0">
-          <p className="font-extrabold text-slate-900">🧺 {tr(config, 'เลือกเครื่อง')}</p>
-          <p className="text-xs text-slate-500 truncate">{pulseRefLabel(order, config)}</p>
+          <p className="font-extrabold text-slate-900">🧺 {tr(config, fixed ? 'เลือกเครื่อง' : 'เริ่มเครื่อง')}</p>
+          <p className="text-xs text-slate-500 truncate">{fixed && job ? pulseRefLabel(job.order, config) : `${tr(config, 'รอเริ่มเครื่อง')} ${jobs.length} ${tr(config, 'งาน')}`}</p>
         </div>
         <button onClick={onClose} disabled={!!busyText} className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 text-xl font-bold active:scale-95">✕</button>
       </div>
 
       <div className="p-3 space-y-3 pb-28">
-        <div className={`rounded-2xl px-3 py-2 border ${openSlots.length ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-          <p className={`text-xs font-bold ${openSlots.length ? 'text-amber-800' : 'text-emerald-700'}`}>
-            {openSlots.length ? `${tr(config, 'ยังต้องเปิดตามใบงาน')}:` : `✅ ${tr(config, 'เริ่มเครื่องครบแล้ว')}`}
-          </p>
-          {openSlots.length > 0 && <p className="text-sm font-bold text-slate-800 leading-snug">{remainText.join(' · ')}</p>}
-        </div>
+        {fixed ? (
+          <div className={`rounded-2xl px-3 py-2 border ${openSlots.length ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+            <p className={`text-xs font-bold ${openSlots.length ? 'text-amber-800' : 'text-emerald-700'}`}>
+              {openSlots.length ? `${tr(config, 'ยังต้องเปิดตามใบงาน')}:` : `✅ ${tr(config, 'เริ่มเครื่องครบแล้ว')}`}
+            </p>
+            {openSlots.length > 0 && <p className="text-sm font-bold text-slate-800 leading-snug">{openSlots.map(s => s.kind === 'topup' ? `⏱️ ${tr(config, 'อบเพิ่มเวลา')} ${s.kg}kg ฿${slotOpenLeft(s)}` : `${pulseSlotLabel(config, s)} ฿${slotOpenLeft(s)}`).join(' · ')}</p>}
+          </div>
+        ) : (
+          <div className={`rounded-2xl px-3 py-2 border ${jobs.length ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+            {jobs.length === 0
+              ? <p className="text-sm font-bold text-emerald-700">✅ {tr(config, 'ไม่มีใบงานรอเริ่มเครื่อง')} — {tr(config, 'รับงานใหม่ก่อน แล้วค่อยเริ่มเครื่อง')}</p>
+              : <>
+                  <p className="text-xs font-bold text-amber-800">{tr(config, 'ใบงานรอเริ่มเครื่อง')} ({jobs.length})</p>
+                  {jobs.slice(0, 5).map(j => (
+                    <p key={j.order.id} className="text-[13px] font-bold text-slate-800 leading-snug truncate">{pulseRefLabel(j.order, config)} <span className="text-slate-500 font-semibold">· {jobOpenText(config, j.alloc)}</span></p>
+                  ))}
+                  {jobs.length > 5 && <p className="text-[11px] text-slate-500">+{jobs.length - 5}</p>}
+                </>}
+          </div>
+        )}
 
-        <div className="rounded-2xl bg-white border border-slate-200 p-2" style={{ background: 'linear-gradient(#FBF6EC, #F3EBDD)' }}>
+        <div className="rounded-2xl border border-slate-200 p-2" style={{ background: 'linear-gradient(#FBF6EC, #F3EBDD)' }}>
           <MachineWall config={config} stacks={stacks} marks={marks} selected={sel} onPick={pick} />
           <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2 text-[11px] font-bold text-slate-600">
-            <span><span className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ border: '2px solid #C68B4A' }}></span>{tr(config, 'ตามใบงาน')}</span>
-            <span>✅ {tr(config, 'เปิดแล้ว')}</span>
-            <span>⏳ {tr(config, 'เพิ่งเปิดให้งานอื่น')}</span>
+            <span><span className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ border: '2px solid #C68B4A' }}></span>{tr(config, fixed ? 'ตามใบงาน' : 'มีใบงานรอ')}</span>
+            {fixed && <span>✅ {tr(config, 'เปิดแล้ว')}</span>}
+            <span>⏳ {tr(config, fixed ? 'เพิ่งเปิดให้งานอื่น' : 'เพิ่งเปิด')}</span>
             <span>{tr(config, 'แตะ อบ (บน) หรือ ซัก (ล่าง)')}</span>
           </div>
         </div>
@@ -8607,7 +8687,37 @@ function MachinePickerSheet({ config, order, alloc, dayLogs, preset, onFire, onC
               <button onClick={() => setSel(null)} disabled={!!busyText} className="ml-auto text-xs font-bold text-slate-400 px-2">{tr(config, 'ยกเลิก')}</button>
             </div>
 
-            {selM.kind === 'wash' ? (
+            {!fixed && (
+              <div>
+                <p className="text-xs font-bold text-slate-500 mb-2">📋 {tr(config, 'ใช้กับใบงานไหน')}</p>
+                {choices.length === 0 ? (
+                  <p className="text-sm font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    {selM.kind === 'wash' ? tr(config, 'ไม่มีใบงานที่รอซัก') : tr(config, 'ไม่มีใบงานที่รออบ')} — {tr(config, 'รับงานใหม่ก่อน แล้วค่อยเริ่มเครื่อง')}
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {choices.map(({ j, fit }) => {
+                      const on = job && job.order.id === j.order.id;
+                      return (
+                        <button key={j.order.id} onClick={() => chooseJob(j)} disabled={!!busyText}
+                          className={`w-full text-left rounded-xl px-3 py-2 border-2 active:scale-95 transition ${on ? 'bg-sky-50' : 'bg-white'}`}
+                          style={{ borderColor: on ? '#0284C7' : '#E2E8F0' }}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{on ? '🔵' : '⚪'}</span>
+                            <span className="text-sm font-extrabold text-slate-800 flex-1 truncate">{pulseRefLabel(j.order, config)}</span>
+                            <span className="text-[11px] text-slate-500">{fmTime(j.order.createdAt || 0)}</span>
+                          </div>
+                          <p className="text-xs font-bold text-slate-600 mt-0.5 pl-7">{jobOpenText(config, j.alloc)}</p>
+                          {!fit && <p className="text-[11px] font-bold text-amber-700 pl-7">⚠️ {tr(config, 'ขนาดเครื่องไม่ตรงใบงาน')}</p>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(fixed || job) && (selM.kind === 'wash' ? (
               <div>
                 <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกน้ำ')}</p>
                 <div className="flex gap-2">
@@ -8639,7 +8749,7 @@ function MachinePickerSheet({ config, order, alloc, dayLogs, preset, onFire, onC
                   {!dryBaseOpen && <p className="text-[11px] text-slate-500 mt-1 text-center">{tr(config, 'เพิ่มเวลาให้เครื่องที่อบอยู่ได้ (ทีละ ฿10)')}</p>}
                 </div>
               </div>
-            )}
+            ))}
 
             {warn && <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ {warn}</p>}
           </div>
@@ -8648,10 +8758,10 @@ function MachinePickerSheet({ config, order, alloc, dayLogs, preset, onFire, onC
         {msg && <p className={`text-sm font-bold text-center ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
       </div>
 
-      {selM && (
+      {selM && (fixed || job) && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3">
           <button disabled={!ready || !!busyText}
-            onClick={() => onFire({ machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, onDone: () => setSel(null) })}
+            onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn }, () => setSel(null))}
             className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: config.gradient }}>
             {busyText ? `⏳ ${busyText}` : !ready
               ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกความร้อนก่อน'))
@@ -8690,30 +8800,18 @@ function PulseStarterCard({ config, order }) {
   const need = alloc.slots.reduce((s, x) => s + x.baht, 0);
   const fired = liveLogs.reduce((s, l) => s + (l.baht || 0), 0);
   const allDone = fired >= need;
-  const maxShot = (config.pulse && config.pulse.maxPerShot) || 12;
 
-  const fire = async ({ machine, kind, kg, temp, heat, baht, warn, onDone }) => {
+  const fire = async (job, params, onDone) => {
     if (lockRef.current) return;
-    const pulses = Math.round(baht / PULSE_BAHT);
-    if (pulses < 1 || pulses > maxShot) { alert(`${tr(config, 'ยอดสูงสุดต่อครั้ง')} ฿${maxShot * PULSE_BAHT}`); return; }
-    const mLabel = pulseMachineLabel(config, machine);
-    const dryMin = kind === 'dry' ? dryMinutesFor(config, kg, baht) : 0;
-    const detail = kind === 'wash' ? `💧 ${tr(config, washTempLabel(temp))}` : `🌬️ ${tr(config, dryHeatLabel(heat))} · ≈ ${dryMin} ${tr(config, 'นาที')}`;
-    if (!confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${mLabel} (${kg}kg)\n${detail}\n🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return;
     const retryLog = picker && picker.retryLog;
     lockRef.current = true;
-    setBusy(mLabel);
-    setMsg(null);
     try {
-      if (retryLog) await voidPulseLog(retryLog.id, 'ยิงใหม่ — เครื่องไม่ได้รับ').catch(() => {});
-      const res = await firePulse(config, {
-        machine, pulses, refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null,
-        refLabel: pulseRefLabel(order, config), retryOf: retryLog ? retryLog.id : null,
-        meta: { kind, kg, temp: temp || null, heat: heat || null, dryMin: dryMin || null, mismatch: warn || null },
-      });
-      if (res.status === 'confirmed') { playSuccessSound(); setMsg({ ok: true, text: `✅ ${mLabel} ${tr(config, 'เครื่องรับแล้ว')}` }); }
-      else if (res.status === 'failed') setMsg({ ok: false, text: `❌ ${tr(config, 'ไม่สำเร็จ')}: ${res.error || ''}` });
-      else setMsg({ ok: null, text: `⏳ ${mLabel} — ${tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}` });
+      setBusy(pulseMachineLabel(config, params.machine));
+      setMsg(null);
+      const res = await fireForOrder(config, order, params, retryLog);
+      if (!res) return;
+      setMsg(fireResultMsg(config, res));
+      if (res.status === 'confirmed') playSuccessSound();
       if (res.status !== 'failed') { if (onDone) onDone(); if (retryLog) setPicker({ preset: null, retryLog: null }); }
     } finally { lockRef.current = false; setBusy(null); }
   };
@@ -8802,11 +8900,73 @@ function PulseStarterCard({ config, order }) {
         style={allDone ? {} : { background: config.gradient }}>
         {allDone ? `🧺 ${tr(config, 'เปิดเครื่องเพิ่ม / เพิ่มเวลาอบ')}` : `🧺 ${tr(config, 'เลือกเครื่อง')} (${tr(config, 'ขาด')} ฿${need - fired})`}
       </button>
+      {!allDone && <p className="text-[11px] text-slate-500 mt-1.5 text-center">{tr(config, 'ยังไม่ต้องเริ่มตอนนี้ก็ได้ — กดปุ่ม 🧺 เริ่มเครื่อง ที่หน้าแรกทีหลัง')}</p>}
 
       {msg && !picker && <p className={`mt-2 text-sm font-bold ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
       {picker && (
-        <MachinePickerSheet config={config} order={order} alloc={alloc} dayLogs={dayLogs} preset={picker.preset}
+        <MachinePickerSheet config={config} jobs={[{ order, alloc }]} fixed={true} dayLogs={dayLogs} preset={picker.preset}
           onFire={fire} onClose={() => { setPicker(null); }} busyText={busy} msg={msg} />
+      )}
+    </div>
+  );
+}
+
+// ---------- 🧺 ปุ่มเริ่มเครื่องหน้าแรก (แตะเครื่องก่อน แล้วเลือกใบงาน) ----------
+function HomePulseStartCard({ config, orders }) {
+  const [logs, setLogs] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const lockRef = useRef(false);
+  const todayKey = dateKeyOf(new Date());
+  const yKey = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 1); return dateKeyOf(d); }, [todayKey]);
+  useEffect(() => {
+    if (!window.db) return;
+    const u = subscribePulseLogsByDays([yKey, todayKey], list => setLogs(list.filter(l => l.brand === config.brand)));
+    return () => { if (u) u(); };
+  }, [yKey, todayKey, config.brand]);
+
+  // ใบงานที่ยังเปิดเครื่องไม่ครบ (ภายใน 36 ชม. และหลังเปิดระบบ) — เก่าก่อน
+  const jobs = useMemo(() => {
+    const since = Math.max(pulseSinceOf(config), Date.now() - 36 * 3600000);
+    return (orders || [])
+      .filter(o => o.id && (o.createdAt || 0) >= since && creditForOrder(o, config) > 0)
+      .map(o => ({ order: o, alloc: allocatePulseLogs(o, config, logs.filter(l => l.refId === o.id)) }))
+      .filter(j => j.alloc.slots.some(s => s.got < s.baht))
+      .sort((a, b) => (a.order.createdAt || 0) - (b.order.createdAt || 0));
+  }, [orders, logs, config]);
+
+  const fire = async (job, params, onDone) => {
+    if (lockRef.current || !job) return;
+    lockRef.current = true;
+    try {
+      setBusy(pulseMachineLabel(config, params.machine));
+      setMsg(null);
+      const res = await fireForOrder(config, job.order, params, null);
+      if (!res) return;
+      setMsg(fireResultMsg(config, res));
+      if (res.status === 'confirmed') playSuccessSound();
+      if (res.status !== 'failed' && onDone) onDone();
+    } finally { lockRef.current = false; setBusy(null); }
+  };
+
+  const n = jobs.length;
+  return (
+    <div className="px-5 mt-3">
+      <button onClick={() => { setMsg(null); setOpen(true); }}
+        className={`w-full rounded-2xl p-4 shadow-lg active:scale-95 transition flex items-center gap-4 border-2 ${n ? 'bg-white border-amber-300' : 'bg-white border-slate-100'}`}>
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow" style={{ background: 'linear-gradient(135deg, #113D6C 0%, #5BB8E8 100%)' }}>🧺</div>
+        <div className="text-left flex-1 min-w-0">
+          <p className="text-slate-900 font-bold text-lg">{tr(config, 'เริ่มเครื่อง')}</p>
+          <p className={`text-sm font-bold ${n ? 'text-amber-700' : 'text-slate-500'}`}>
+            {n ? `⏳ ${tr(config, 'รอเริ่มเครื่อง')} ${n} ${tr(config, 'งาน')}` : tr(config, 'แตะเครื่อง → เลือกใบงาน → เริ่ม')}
+          </p>
+        </div>
+        <Icon name="chevron-right" className="w-5 h-5 text-slate-400" />
+      </button>
+      {open && (
+        <MachinePickerSheet config={config} jobs={jobs} fixed={false} dayLogs={logs} preset={null}
+          onFire={fire} onClose={() => setOpen(false)} busyText={busy} msg={msg} />
       )}
     </div>
   );
