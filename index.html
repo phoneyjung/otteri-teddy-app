@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v142-2026-10-26';
+  window.APP_VERSION = 'v143-2026-10-26';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -8319,10 +8319,11 @@ async function savePulseDayNote(config, dateKey, issues, reason, staffName) {
 }
 
 // ---------- 🧺 หน้าใบรับงาน: ผนังเครื่องเหมือนจริง → แตะเครื่อง → เลือกน้ำ/ความร้อน → เริ่มเครื่อง (v142) ----------
+// เรียงตามปุ่มที่เครื่องจริง: ร้อนซ้าย → เย็นขวา (ซักและอบเหมือนกัน)
 const WASH_TEMPS = [
-  { id: 'cold', label: 'น้ำเย็น', emoji: '❄️', color: '#0EA5E9' },
-  { id: 'warm', label: 'น้ำอุ่น', emoji: '♨️', color: '#F59E0B' },
   { id: 'hot', label: 'น้ำร้อน', emoji: '🔥', color: '#E11D48' },
+  { id: 'warm', label: 'น้ำอุ่น', emoji: '♨️', color: '#F59E0B' },
+  { id: 'cold', label: 'น้ำเย็น', emoji: '❄️', color: '#0EA5E9' },
 ];
 const DRY_HEATS = [
   { id: 'high', label: 'ร้อนสูง', emoji: '🔥', color: '#E11D48' },
