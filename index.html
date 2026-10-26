@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v140-2026-10-24';
+  window.APP_VERSION = 'v141-2026-10-26';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -413,6 +413,7 @@ const TEDDY2_CONFIG = {
   primaryColor: '#00A19A', // เขียวเวอร์ริเดียน — สีประจำ ม.ศิลปากร
   gradient: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)',
   linePromoDiscount: 50, // Teddy 2 ลดแอดไลน์ 50 (มากกว่า Teddy 1)
+  pulse: { workerUrl: 'https://teddy-pulse.phoneyjung.workers.dev', maxPerShot: 12 }, // ⚡ ยิงพัลส์ผ่านระบบ EC (เปิด/ปิดที่ ตั้งค่า)
   washMachines: [
     { size: 12, count: 3, prices: { cold: 50, warm: 60, hot: 70 } },
     { size: 17, count: 5, prices: { cold: 60, warm: 70, hot: 80 } },
@@ -1895,6 +1896,83 @@ const MM_DICT = {
   'ซอง': 'ထုပ်',
   'ลบ': 'ဖျက်ရန်',
   'เปลี่ยนร้าน': 'ဆိုင်ပြောင်းရန်',
+  // ⚡ ยิงพัลส์ / กระทบยอด (v141) — รอพนักงานพม่าตรวจคำแปล
+  'กระทบยอดเปิดเครื่อง': 'စက်ဖွင့်စာရင်း တိုက်စစ်ခြင်း',
+  'กำลังส่งคำสั่ง รอเครื่องตอบ…': 'အမိန့်ပို့နေသည်၊ စက်တုံ့ပြန်မှုကို စောင့်ပါ…',
+  'กำลังเช็กกับเครื่อง': 'စက်နှင့် တိုက်စစ်နေသည်',
+  'งาน': 'အလုပ်',
+  'งานภายใน': 'ဆိုင်တွင်းအလုပ်',
+  'งานในแอป': 'အက်ပ်ထဲက အလုပ်',
+  'ช่องนี้เริ่มเครื่องครบแล้ว': 'ဤအကွက်အတွက် စက်စတင်ပြီးပါပြီ',
+  'ซัก': 'လျှော်',
+  'ดูรายละเอียด': 'အသေးစိတ်ကြည့်ရန်',
+  'ทุกเครื่อง': 'စက်အားလုံး',
+  'บังคับ': 'မဖြစ်မနေ',
+  'บันทึกเหตุผล': 'အကြောင်းပြချက် သိမ်းရန်',
+  'พัลส์': 'pulse',
+  'พัลส์อื่นของงานนี้': 'ဤအလုပ်၏ အခြား pulse',
+  'ยอดเปิดเครื่องตรงกัน': 'စက်ဖွင့်စာရင်း ကိုက်ညီသည်',
+  'ยอดเปิดเครื่องวันนี้ตรงกัน': 'ယနေ့ စက်ဖွင့်စာရင်း ကိုက်ညီသည်',
+  'ยอดเปิดเครื่องไม่ตรง': 'စက်ဖွင့်စာရင်း မကိုက်ညီ',
+  'ยอดไม่ตรง': 'စာရင်းမကိုက်ညီ',
+  'ยังไม่พบในประวัติเครื่อง': 'စက်မှတ်တမ်းတွင် မတွေ့သေး',
+  'ยังไม่ยืนยัน': 'မအတည်ပြုရသေး',
+  'ยังไม่ได้เทียบกับเครื่องจริง': 'စက်အမှန်နှင့် မတိုက်စစ်ရသေး',
+  'ยิงจากแอป': 'အက်ပ်မှ ပို့',
+  'ยิงใหม่ — เลือกเครื่อง': 'ထပ်ပို့ရန် — စက်ရွေးပါ',
+  'ยืนยันเริ่มเครื่อง': 'စက်စတင်ရန် အတည်ပြုပါ',
+  'รอเริ่มเครื่อง': 'စက်စတင်ရန် စောင့်ဆိုင်း',
+  'รับคำสั่งแล้ว รอเครื่อง': 'အမိန့်ရပြီး စက်ကိုစောင့်နေ',
+  'รายเครื่อง: แอป / เครื่องจริง': 'စက်အလိုက်: အက်ပ် / စက်အမှန်',
+  'วันนี้ยังไม่ได้เปิดระบบยิงพัลส์จากแอป': 'ဤနေ့တွင် အက်ပ်မှ pulse ပို့စနစ် မဖွင့်ရသေး',
+  'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม': 'အမိန့်ပို့ပြီး၊ စက်စတင်လည်ပတ်ခြင်း ရှိမရှိ ကြည့်ပါ',
+  'อบ': 'အခြောက်ခံ',
+  'อบเพิ่มเวลา': 'အခြောက်ခံချိန် တိုး',
+  'เครื่อง': 'စက်',
+  'เครื่องจริง (EC)': 'စက်အမှန် (EC)',
+  'เครื่องรับแล้ว': 'စက်လက်ခံပြီး',
+  'เครื่องไม่ทำงาน → ยิงใหม่': 'စက်မလည် → ထပ်ပို့',
+  'เช็กกับเครื่องอีกครั้ง': 'စက်နှင့် ထပ်တိုက်စစ်ရန်',
+  'เช็กกับเครื่องไม่ได้': 'စက်နှင့် တိုက်စစ်၍မရ',
+  'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว': 'အဝတ်ထည့်ပြီး စက်တံခါးပိတ်ပြီးကြောင်း စစ်ပါ',
+  'เช็กอีกครั้ง': 'ထပ်စစ်ရန်',
+  'เช่น รอซักพรุ่งนี้ / ลูกค้ายกเลิก / เจ้าของยิงทดสอบ': 'ဥပမာ - မနက်ဖြန်မှလျှော်မည် / ဖောက်သည်ပယ်ဖျက် / ပိုင်ရှင်စမ်းသပ်',
+  'เปิดแล้ว': 'ဖွင့်ပြီး',
+  'เมื่อวานยอดไม่ตรง ยังไม่มีเหตุผล': 'မနေ့က စာရင်းမကိုက်ညီ၊ အကြောင်းပြချက် မရှိသေး',
+  'เริ่มเครื่อง (ยิงพัลส์)': 'စက်စတင်ရန် (pulse ပို့)',
+  'เริ่มเครื่องครบแล้ว': 'စက်အားလုံး စတင်ပြီး',
+  'เลือกเครื่อง': 'စက်ရွေးရန်',
+  'เลือกเครื่องที่ใส่ผ้า': 'အဝတ်ထည့်ထားသော စက်ကို ရွေးပါ',
+  'เหตุผลที่บันทึกไว้': 'သိမ်းထားသော အကြောင်းပြချက်',
+  'เหตุผลที่ยอดไม่ตรง': 'စာရင်းမကိုက်ညီရသည့် အကြောင်းရင်း',
+  'แตะดู': 'နှိပ်ကြည့်ပါ',
+  'แอป': 'အက်ပ်',
+  'ใส่เหตุผลก่อน': 'အကြောင်းပြချက် အရင်ထည့်ပါ',
+  'ใส่เหตุผลแล้ว': 'အကြောင်းပြချက် ထည့်ပြီး',
+  'ไม่สำเร็จ': 'မအောင်မြင်ပါ',
+  'มีการยิงนอกแอป': 'အက်ပ်ပြင်ပမှ စက်ဖွင့်ထားသည်',
+  'ยังไม่ยืนยันว่าเครื่องได้รับ': 'စက်ရကြောင်း မအတည်ပြုရသေး',
+  'ยังไม่ได้เริ่มเครื่อง': 'စက်မစတင်ရသေး',
+  'ยิงพัลส์แต่ไม่พบงาน': 'pulse ပို့ထားသော်လည်း အလုပ်မတွေ့',
+  'ยิงเกินงาน': 'အလုပ်ထက် ပိုပို့ထား',
+  'สั่งแล้วเครื่องไม่ตอบ': 'ပို့ပြီးသော်လည်း စက်မတုံ့ပြန်',
+  'เริ่มเครื่องไม่ครบ': 'စက်စတင်မှု မစုံသေး',
+  'แอปสั่งแต่เครื่องไม่ได้รับ': 'အက်ပ်မှပို့သော်လည်း စက်မရ',
+  'โปร: ยิงเกิน': 'ပရိုမိုးရှင်း: ပိုပို့',
+  'โปร: ยิงไม่ครบ': 'ပရိုမိုးရှင်း: မပြည့်',
+  'น้ำเย็น': 'ရေအေး',
+  'น้ำอุ่น': 'ရေနွေး',
+  'น้ำร้อน': 'ရေပူ',
+  'เลือกเครื่อง → ถ่ายรูป → กดเริ่มเครื่อง': 'စက်ရွေး → ဓာတ်ပုံရိုက် → စက်စတင်',
+  'ยอดโปรที่ร้านจ่ายให้ (บาท)': 'ဆိုင်က ပေးသော ပရိုမိုးရှင်း ပမာဏ (ဘတ်)',
+  '⚡ เริ่มเครื่อง + บันทึก': '⚡ စက်စတင် + သိမ်းရန်',
+  'ยอดต้องลงท้ายด้วย 0 (1 พัลส์ = 10 บาท)': 'ပမာဏသည် 0 ဖြင့်ဆုံးရမည် (1 pulse = 10 ဘတ်)',
+  'ยอดสูงสุดต่อครั้ง': 'တစ်ကြိမ်လျှင် အများဆုံး',
+  'เลือกเครื่องที่ลูกค้าใช้': 'ဖောက်သည်သုံးသော စက်ကို ရွေးပါ',
+  'เริ่มเครื่องไม่สำเร็จ': 'စက်စတင်၍ မရပါ',
+  'เริ่มเครื่องแล้ว': 'စက်စတင်ပြီး',
+  'ยอดเปิดเครื่องวันนี้ไม่ตรง — ต้องใส่เหตุผลก่อนออกจากระบบ': 'ယနေ့ စက်ဖွင့်စာရင်း မကိုက်ညီ — ထွက်ခွာမီ အကြောင်းပြချက် ထည့်ရမည်',
+  'ยอดเปิดเครื่องวันนี้ไม่ตรง — ต้องใส่เหตุผลก่อนออกงาน': 'ယနေ့ စက်ဖွင့်စာရင်း မကိုက်ညီ — အလုပ်ဆင်းမီ အကြောင်းပြချက် ထည့်ရမည်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -2826,6 +2904,12 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
     if (staff.isOwnerLogin) setIsOwner(true);
   };
   const handleSwitchStaff = () => {
+    const gate = PULSE_GATE[config.brand];
+    if (gate && gate.needReason && currentStaff && !currentStaff.isOwnerLogin) {
+      alert('⚠️ ' + tr(config, 'ยอดเปิดเครื่องวันนี้ไม่ตรง — ต้องใส่เหตุผลก่อนออกจากระบบ'));
+      gate.open();
+      return;
+    }
     if (!confirm('ออกจากระบบและสลับผู้ใช้?')) return;
     try { localStorage.removeItem('staff-' + config.brand); } catch {}
     setCurrentStaff(null);
@@ -3442,8 +3526,18 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   const handleSubmitPromo = async () => {
     const amount = parseInt(promoAmount, 10) || 0;
     if (amount <= 0) { alert('ใส่ยอดเครดิตที่สแกนให้ลูกค้า'); return; }
+    // ⚡ ยิงพัลส์จากแอป: ยอดต้องหาร 10 ลงตัว + ต้องเลือกเครื่อง 1 เครื่อง
+    const usePulse = pulseOn(config);
+    const pulseMachine = usePulse ? pulseMachines(config).find(m => m.label === promoMachine) : null;
+    if (usePulse) {
+      if (amount % PULSE_BAHT !== 0) { alert(tr(config, 'ยอดต้องลงท้ายด้วย 0 (1 พัลส์ = 10 บาท)')); return; }
+      const maxBaht = ((config.pulse && config.pulse.maxPerShot) || 12) * PULSE_BAHT;
+      if (amount > maxBaht) { alert(tr(config, 'ยอดสูงสุดต่อครั้ง') + ' ' + maxBaht + '฿'); return; }
+      if (!pulseMachine) { alert(tr(config, 'เลือกเครื่องที่ลูกค้าใช้')); return; }
+    }
     if (!promoPhoto) { alert('ถ่ายรูปหลักฐานก่อนบันทึก'); return; }
     if (!promoStaff) { alert('ใส่ชื่อแม่บ้าน'); return; }
+    if (usePulse && !confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${pulseMachine.label}\n🔢 ${amount / PULSE_BAHT} ${tr(config, 'พัลส์')} (฿${amount})\n🎁 ${promoName || 'ส่วนลด'}`)) return;
     setSavingPromo(true);
     try {
       const entry = {
@@ -3452,7 +3546,20 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
         machine: promoMachine || '',
         dateKey: new Date().toISOString().slice(0, 10),
       };
-      const id = await saveCreditEntry(config.brand, entry);
+      let id;
+      if (usePulse) {
+        const entryRef = window.db.collection('creditLedger').doc(); // จอง id ก่อน → พัลส์ผูกกับรายการนี้
+        const res = await firePulse(config, { machine: pulseMachine.id, pulses: amount / PULSE_BAHT, refType: 'promo', refId: entryRef.id, slotKey: 'p', refLabel: '🎟️ ' + entry.promoName });
+        if (res.status === 'failed') {
+          alert('❌ ' + tr(config, 'เริ่มเครื่องไม่สำเร็จ') + '\n' + (res.error || ''));
+          setSavingPromo(false);
+          return;
+        }
+        entry.pulseLogId = res.id; entry.pulseStatus = res.status; entry.machineId = pulseMachine.id;
+        id = await saveCreditEntryWithId(config.brand, entryRef.id, entry);
+      } else {
+        id = await saveCreditEntry(config.brand, entry);
+      }
       playSuccessSound();
       setSavedPromo({ ...entry, id, createdAt: Date.now() });
       setShowPromoForm(false);
@@ -3472,7 +3579,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       const lines = [
         '🎟️ ลูกค้าใช้โปร (ซักเอง)',
         `🏪 ${config.name}${p.machine ? ` · 🧺 ${p.machine}` : ''}`,
-        `🎁 ${p.promoName} · เครดิต ${p.amount}฿`,
+        p.pulseLogId ? `🎁 ${p.promoName} · ⚡ ยิงพัลส์ ${p.amount}฿` : `🎁 ${p.promoName} · เครดิต ${p.amount}฿`,
         `🧕 ${p.staffName} · 🕐 ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`,
       ];
       if (p.note) lines.push(`📝 ${p.note}`);
@@ -3505,7 +3612,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       `🏪 ${config.name}`,
       savedPromo.machine ? `🧺 เครื่อง: ${savedPromo.machine}` : '',
       `🎁 ${savedPromo.promoName}`,
-      `💳 เครดิตที่สแกน: ${savedPromo.amount}฿`,
+      savedPromo.pulseLogId ? `⚡ ยิงพัลส์: ${savedPromo.amount}฿ (${savedPromo.pulseStatus === 'confirmed' ? 'เครื่องรับแล้ว' : 'ส่งคำสั่งแล้ว'})` : `💳 เครดิตที่สแกน: ${savedPromo.amount}฿`,
       `🧕 แม่บ้าน: ${savedPromo.staffName}`,
       `🕐 ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`,
       savedPromo.note ? `📝 ${savedPromo.note}` : '',
@@ -3774,6 +3881,9 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
         </button>
       </div>
 
+      {/* ⚡ กระทบยอดเปิดเครื่อง (ยิงพัลส์จากแอป) */}
+      {pulseOn(config) && <PulseReconCard config={config} orders={orders} currentStaff={currentStaff} />}
+
       {/* 🕐 เข้า-ออกงานด้วยรูปร้าน */}
       {config.hasAttendance && <AttendanceCard config={config} currentStaff={currentStaff} />}
 
@@ -3813,7 +3923,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-400 to-rose-600 flex items-center justify-center text-xl shadow">🎟️</div>
             <div className="text-left flex-1">
               <p className="font-bold text-rose-900 text-sm">{tr(config, "ลูกค้าใช้โปร (ซักเอง ไม่ฝาก)")}</p>
-              <p className="text-xs text-rose-700">{tr(config, "สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม")}</p>
+              <p className="text-xs text-rose-700">{tr(config, pulseOn(config) ? 'เลือกเครื่อง → ถ่ายรูป → กดเริ่มเครื่อง' : "สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม")}</p>
             </div>
             <Icon name="chevron-right" className="w-5 h-5 text-rose-600" />
           </button>
@@ -3848,7 +3958,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-600 mb-1">{tr(config, "ยอดเครดิตที่สแกนให้ลูกค้า (บาท)")}</p>
+              <p className="text-xs font-bold text-slate-600 mb-1">{tr(config, pulseOn(config) ? 'ยอดโปรที่ร้านจ่ายให้ (บาท)' : "ยอดเครดิตที่สแกนให้ลูกค้า (บาท)")}</p>
               <input type="number" inputMode="numeric" value={promoAmount} onChange={e => setPromoAmount(e.target.value)} onFocus={e => e.target.select()}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-lg font-bold text-right" placeholder="0" />
               {promoNow.active && promoName === promoNow.label && (
@@ -3859,7 +3969,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
             <div>
               <p className="text-xs font-bold text-slate-600 mb-1.5">{tr(config, "เครื่องที่ลูกค้าใช้")}</p>
               <div className="flex flex-wrap gap-1.5">
-                {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).filter(m => m.label.startsWith('ซัก')).map(m => (
+                {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).filter(m => pulseOn(config) || m.label.startsWith('ซัก')).map(m => (
                   <button key={m.id} onClick={() => setPromoMachine(promoMachine === m.label ? '' : m.label)}
                     className={`px-2.5 py-1 rounded-full text-xs font-bold border ${promoMachine === m.label ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-slate-600 border-slate-300'}`}>
                     {m.label}
@@ -3909,7 +4019,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
 
             <button onClick={handleSubmitPromo} disabled={savingPromo}
               className="w-full py-3.5 rounded-2xl bg-rose-500 text-white font-bold text-base active:scale-95 transition disabled:opacity-50">
-              {savingPromo ? tr(config, 'กำลังบันทึก…') : tr(config, 'บันทึกตัดเครดิต') + ' ' + (parseInt(promoAmount, 10) || 0) + '฿'}
+              {savingPromo ? tr(config, 'กำลังบันทึก…') : tr(config, pulseOn(config) ? '⚡ เริ่มเครื่อง + บันทึก' : 'บันทึกตัดเครดิต') + ' ' + (parseInt(promoAmount, 10) || 0) + '฿'}
             </button>
           </div>
         )}
@@ -3919,7 +4029,12 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6" onClick={() => setSavedPromo(null)}>
           <div className="bg-white rounded-3xl w-full max-w-xs p-5 text-center" onClick={e => e.stopPropagation()}>
             <p className="text-4xl mb-1">✅</p>
-            <p className="text-lg font-extrabold text-slate-800">{tr(config, "บันทึกตัดเครดิตแล้ว")}</p>
+            <p className="text-lg font-extrabold text-slate-800">{savedPromo.pulseLogId ? tr(config, 'เริ่มเครื่องแล้ว') : tr(config, "บันทึกตัดเครดิตแล้ว")}</p>
+            {savedPromo.pulseLogId && (
+              <p className={`text-sm font-bold mt-1 ${savedPromo.pulseStatus === 'confirmed' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {savedPromo.pulseStatus === 'confirmed' ? '✅ ' + tr(config, 'เครื่องรับแล้ว') : '⏳ ' + tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}
+              </p>
+            )}
             <p className="text-sm text-slate-600 mt-1">{savedPromo.promoName} · <b>{savedPromo.amount}฿</b></p>
             <p className="text-xs text-slate-500">🧕 {savedPromo.staffName}{savedPromo.machine ? ` · 🧺 ${savedPromo.machine}` : ''}</p>
             <img src={savedPromo.photo} className="w-full h-32 object-cover rounded-xl mt-3 border border-slate-200" alt="" />
@@ -5555,6 +5670,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
       </div>
 
       <div className="p-4">
+        {pulseOn(config) && order.id && (order.createdAt || 0) >= pulseSinceOf(config) && <PulseStarterCard config={config} order={order} />}
         <div ref={receiptRef} className="bg-white rounded-2xl overflow-hidden shadow-lg" style={{fontFamily: '"Noto Sans Thai", sans-serif'}}>
           <div className="relative" style={{ background: config.gradient }}>
             <div className="absolute top-0 left-0 right-0 h-1.5" style={{ background: headerStripe }}></div>
@@ -6847,7 +6963,15 @@ function AttendanceCard({ config, currentStaff }) {
   const rec = recs.find(r => r.dateKey === today && r.staffKey === sk) || null;
   const wh = config.workHours || { start: '09:00', end: '20:00' };
 
-  const startCapture = (kind) => setPickSrc(kind);
+  const startCapture = (kind) => {
+    const gate = PULSE_GATE[config.brand];
+    if (kind === 'out' && gate && gate.needReason) {
+      alert('⚠️ ' + tr(config, 'ยอดเปิดเครื่องวันนี้ไม่ตรง — ต้องใส่เหตุผลก่อนออกงาน'));
+      gate.open();
+      return;
+    }
+    setPickSrc(kind);
+  };
   const pickCamera = () => { const k = pickSrc; setPickSrc(null); srcRef.current = 'camera'; setWebcam(k); };
   const pickDeviceCamera = () => { const k = webcam || pickSrc; setWebcam(null); setPickSrc(null); setStage(k); srcRef.current = 'camera'; setTimeout(() => camRef.current && camRef.current.click(), 50); };
   const pickGallery = () => { const k = pickSrc; setPickSrc(null); setStage(k); srcRef.current = 'gallery'; setTimeout(() => galRef.current && galRef.current.click(), 50); };
@@ -7727,6 +7851,9 @@ function SettingsView({ config, staffList }) {
 
   return (
     <div className="space-y-3">
+      {/* ⚡ ยิงพัลส์จากแอป (EC) */}
+      {config.pulse && <PulseSettingsCard config={config} />}
+
       {/* ระบบ Token */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200">
         <p className="text-sm font-bold text-slate-800 mb-2">🪙 ระบบ{exchangeName(config)}กับแม่บ้าน (ตู้แลกเหรียญเสีย)</p>
@@ -7841,6 +7968,730 @@ function SettingsView({ config, staffList }) {
       )}
     </div>
   );
+}
+
+// ============ ⚡ ยิงพัลส์เข้าเครื่องจากแอป + กระทบยอดรายวัน (Teddy 2) — v141 ============
+// แอป → Cloudflare Worker (teddy-pulse) → เว็บ qrcode.ec.in.th → กล่อง QR หน้าเครื่อง
+// เปิด/ปิดที่ หน้าเจ้าของ → ⚙️ ตั้งค่า · กระทบยอดเริ่มนับจากเวลาที่เปิด (settings.pulseSinceMs)
+// pulseLogs: 1 เอกสาร = ยิง 1 ครั้ง (id = reqId) · pulseDayNotes: เหตุผลยอดไม่ตรงรายวัน (id = brand_YYYY-MM-DD)
+const PULSE_BAHT = 10; // 1 พัลส์ = 10 บาท (เช็กกับประวัติ EC: QR 60฿ → 6 พัลส์)
+const PULSE_LIVE = ['confirmed', 'forced', 'sent', 'unknown', 'sending']; // นับว่าเครื่องน่าจะได้รับ
+const PULSE_EC_CACHE = {}; // brand|date → ผลอ่านประวัติเครื่องจาก EC (แคชในหน้าเว็บ)
+const PULSE_EC_INFLIGHT = {}; // brand|date → กำลังอ่านอยู่ (กันอ่านซ้ำพร้อมกันจากการ์ดกับหน้ารายละเอียด)
+const PULSE_GATE = {};     // brand → { needReason, open } — ใช้กันออกจากระบบ/ลงเวลาออกตอนยอดไม่ตรง
+
+const pulseOn = (config) => !!(config && config.pulse && config.settings && config.settings.pulseEnabled === true);
+const pulseSinceOf = (config) => (config && config.settings && config.settings.pulseSinceMs) || 0;
+const pulseLive = (l) => PULSE_LIVE.includes(l.status);
+const pulseBkkMs = (t) => Date.parse(String(t).replace(' ', 'T') + '+07:00');
+
+function pulseMachines(config) {
+  return ((COIN_POINTS[config.brand] || {}).machines || []).map(m => ({
+    ...m, kind: /^w/i.test(m.id) ? 'wash' : 'dry', kg: parseInt(m.size, 10) || 0,
+  }));
+}
+const pulseMachineLabel = (config, id) => (pulseMachines(config).find(m => m.id === id) || {}).label || id;
+
+function currentStaffLS(config) {
+  try { return JSON.parse(localStorage.getItem('staff-' + config.brand) || 'null'); } catch (e) { return null; }
+}
+
+function pulseRefLabel(order, config) {
+  if (isInternalOrder(order)) return '🔧 ' + ((INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).label || 'งานภายใน');
+  return `#${order.queueNo != null ? order.queueNo : (order.id || '').slice(-4)} ${order.customerName || ''}`.trim();
+}
+
+// แตก 1 งาน เป็น "ช่องที่ต้องเปิดเครื่อง" (1 ถัง = 1 ช่อง) — ยอดรวม = creditForOrder เสมอ
+function pulseSlotsForOrder(order, config) {
+  const ms = pulseMachines(config);
+  const internalIds = (order.internalMachines || []).map(lb => (ms.find(m => m.label === lb) || {}).id).filter(Boolean);
+  const pick = (kind, kg) => {
+    const all = ms.filter(m => m.kind === kind && (!kg || m.kg === kg));
+    const only = internalIds.length ? all.filter(m => internalIds.includes(m.id)) : [];
+    return (only.length ? only : all).map(m => m.id);
+  };
+  const slots = [];
+  if (order.internalType && order.internalCustom > 0) {
+    slots.push({ key: 'c', kind: 'custom', baht: order.internalCustom, allowed: internalIds.length ? internalIds : ms.map(m => m.id) });
+    return slots;
+  }
+  (order.washItems || []).forEach(item => {
+    const m = config.washMachines.find(w => w.size === item.size);
+    if (!m) return;
+    const temp = item.temp || 'cold';
+    for (let i = 0; i < (item.qty || 0); i++) slots.push({ key: `w-${item.size}-${temp}-${i}`, kind: 'wash', kg: item.size, temp, baht: m.prices[temp], allowed: pick('wash', item.size) });
+  });
+  (order.dryItems || []).forEach(item => {
+    const m = config.dryMachines.find(d => d.size === item.size);
+    if (!m) return;
+    for (let i = 0; i < (item.qty || 0); i++) slots.push({ key: `d-${item.size}-${i}`, kind: 'dry', kg: item.size, baht: m.price, allowed: pick('dry', item.size) });
+    if (item.topUp > 0) slots.push({ key: `t-${item.size}`, kind: 'topup', kg: item.size, baht: item.topUp, allowed: pick('dry', item.size) });
+  });
+  return slots;
+}
+
+function pulseSlotLabel(config, s) {
+  const tempTh = { cold: 'น้ำเย็น', warm: 'น้ำอุ่น', hot: 'น้ำร้อน' };
+  if (s.kind === 'custom') return '🔧 ' + tr(config, 'งานภายใน');
+  if (s.kind === 'wash') return `💧 ${tr(config, 'ซัก')} ${s.kg}kg ${tr(config, tempTh[s.temp] || '')}`;
+  if (s.kind === 'dry') return `🌬️ ${tr(config, 'อบ')} ${s.kg}kg`;
+  return `⏱️ ${tr(config, 'อบเพิ่มเวลา')} ${s.kg}kg`;
+}
+
+// ---------- Firestore ----------
+const pulseLogRef = (id) => window.db.collection('pulseLogs').doc(id);
+
+function subscribePulseLogsByRef(refId, cb) {
+  return window.db.collection('pulseLogs').where('refId', '==', refId).onSnapshot(
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+    e => console.error('subscribe pulseLogs(ref) error:', e)
+  );
+}
+function subscribePulseLogsByDays(dateKeys, cb) {
+  return window.db.collection('pulseLogs').where('dateKey', 'in', dateKeys.slice(0, 10)).onSnapshot(
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+    e => console.error('subscribe pulseLogs(days) error:', e)
+  );
+}
+async function saveCreditEntryWithId(brand, id, entry) {
+  let data = cleanUndefined({ ...entry, brand, createdAt: Date.now() });
+  data = JSON.parse(JSON.stringify(data));
+  await window.db.collection('creditLedger').doc(id).set(data);
+  return id;
+}
+
+// ยิงพัลส์ 1 ครั้ง — บันทึก pulseLogs ก่อนยิง (ถ้าเน็ตหลุดกลางทางยังเห็นว่าสั่งไปแล้ว)
+async function firePulse(config, { machine, pulses, refType, refId, slotKey, refLabel, retryOf }) {
+  const staff = currentStaffLS(config);
+  const reqId = `${config.brand}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const now = Date.now();
+  const base = {
+    brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine, machineLabel: pulseMachineLabel(config, machine),
+    pulses, baht: pulses * PULSE_BAHT, refType, refId: refId || null, slotKey: slotKey || null, refLabel: refLabel || '',
+    staffId: staff && staff.id ? staff.id : null, staffName: staff && staff.name ? staff.name : '',
+    createdAt: now, status: 'sending', retryOf: retryOf || null,
+  };
+  const ref = pulseLogRef(reqId);
+  ref.set(base).catch(e => console.error('pulseLog set error:', e));
+  let res;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    const r = await fetch(config.pulse.workerUrl + '/pulse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+      body: JSON.stringify({ shop: config.brand, machine, pulses, reqId }),
+    });
+    clearTimeout(timer);
+    res = await r.json();
+  } catch (e) {
+    res = { ok: false, error: e && e.name === 'AbortError' ? 'timeout' : 'network' };
+  }
+  // ต่อ Worker ไม่ได้/หมดเวลา = ไม่รู้ว่ายิงไปหรือยัง (unknown) · Worker ตอบไม่สำเร็จ = ไม่ได้ยิง (failed)
+  const status = res.ok ? (res.status || 'sent') : (res.error === 'timeout' || res.error === 'network' ? 'unknown' : 'failed');
+  const patch = { status, error: res.ok ? null : (res.error || 'error'), ecTime: res.ecTime || null, sentAt: res.sentAt || null, reply: res.reply || null, doneAt: Date.now() };
+  ref.set(patch, { merge: true }).catch(e => console.error('pulseLog update error:', e));
+  return { id: reqId, ...base, ...patch };
+}
+
+async function voidPulseLog(id, reason) {
+  await pulseLogRef(id).set({ status: 'void', voidReason: reason || '', voidAt: Date.now() }, { merge: true });
+}
+
+// อ่านประวัติเครื่องของวันจาก EC (ผ่าน Worker) — ทีละ 4 เครื่องพร้อมกัน
+async function fetchEcDay(config, dateKey, machineIds, onProgress) {
+  const ms = pulseMachines(config).filter(m => !machineIds || machineIds.includes(m.id));
+  const byMachine = {}, errors = [];
+  let i = 0, done = 0;
+  const run = async () => {
+    while (i < ms.length) {
+      const m = ms[i++];
+      try {
+        const r = await fetch(`${config.pulse.workerUrl}/day?shop=${config.brand}&machine=${m.id}&date=${dateKey}`);
+        const j = await r.json();
+        if (j.ok) byMachine[m.id] = j; else errors.push(`${m.label}: ${j.error || 'error'}`);
+      } catch (e) { errors.push(`${m.label}: ${e && e.message ? e.message : 'network'}`); }
+      done++;
+      if (onProgress) onProgress(done, ms.length);
+    }
+  };
+  await Promise.all([run(), run(), run(), run()]);
+  return { at: Date.now(), byMachine, errors };
+}
+
+// เช็กสถานะยิงที่ยังไม่ยืนยัน กับประวัติเครื่อง → อัปเดตเป็น confirmed ถ้าเจอ
+async function recheckPulseLog(config, log) {
+  const ec = await fetchEcDay(config, log.dateKey, [log.machine]);
+  const e = ec.byMachine[log.machine];
+  if (!e) return { ok: false, error: ec.errors[0] || 'อ่านประวัติเครื่องไม่ได้' };
+  const hit = (e.forced || []).find(f => !f.pending && f.pulses === log.pulses && pulseBkkMs(f.time) >= (log.createdAt || 0) - 30000);
+  if (hit) await pulseLogRef(log.id).set({ status: 'confirmed', ecTime: hit.time, recheckAt: Date.now() }, { merge: true });
+  return { ok: true, found: !!hit };
+}
+
+// ---------- กระทบยอด ----------
+// 1) งานในแอป (ฝาก/งานภายใน/โปร) ↔ พัลส์ที่ยิงให้งานนั้น  2) พัลส์ที่ยิงจากแอป ↔ "บังคับส่งพัลส์" ที่ EC บันทึก (รายเครื่อง)
+function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
+  const sinceMs = pulseSinceOf(config);
+  const d0 = new Date(dateKey + 'T00:00:00').getTime();
+  const d1 = d0 + 86400000;
+  const inDay = (t) => t >= d0 && t < d1 && t >= sinceMs;
+  const live = (logs || []).filter(l => l.brand === config.brand && pulseLive(l));
+  const sumBaht = (list) => list.reduce((s, l) => s + (l.baht || 0), 0);
+  const issues = [];
+  const add = (key, level, text, extra) => issues.push({ key, level, text, ...extra });
+
+  const records = [];
+  (orders || []).filter(o => inDay(o.createdAt || 0)).forEach(o => {
+    const need = creditForOrder(o, config);
+    if (need <= 0) return;
+    const fired = sumBaht(live.filter(l => l.refId === o.id));
+    const label = pulseRefLabel(o, config);
+    records.push({ id: o.id, kind: isInternalOrder(o) ? 'internal' : 'order', label, need, fired });
+    const fresh = dateKey === dateKeyOf(new Date()) && Date.now() - (o.createdAt || 0) < 3 * 3600000;
+    if (fired < need) add(`o:${o.id}:${need - fired}`, 'error', fired === 0 ? 'ยังไม่ได้เริ่มเครื่อง' : 'เริ่มเครื่องไม่ครบ', { label, amount: need - fired, refId: o.id, pending: fresh });
+    else if (fired > need) add(`o:${o.id}:+${fired - need}`, 'error', 'ยิงเกินงาน', { label, amount: fired - need, refId: o.id });
+  });
+  (ledger || []).filter(e => e.type === 'promo' && e.pulseLogId && inDay(e.createdAt || 0)).forEach(e => {
+    const need = e.amount || 0;
+    const fired = sumBaht(live.filter(l => l.refId === e.id));
+    const label = `🎟️ ${e.promoName || 'โปร'}${e.machine ? ' · ' + e.machine : ''}`;
+    records.push({ id: e.id, kind: 'promo', label, need, fired });
+    if (fired !== need) add(`p:${e.id}:${fired}`, 'error', fired < need ? 'โปร: ยิงไม่ครบ' : 'โปร: ยิงเกิน', { label, amount: Math.abs(need - fired) });
+  });
+
+  // พัลส์ของวันนั้นที่ไม่มีงานรองรับ (งานถูกลบ / บันทึกโปรไม่สำเร็จ)
+  const dayLogs = live.filter(l => inDay(l.createdAt || 0));
+  const orderIds = new Set((orders || []).map(o => o.id));
+  const promoIds = new Set((ledger || []).map(e => e.id));
+  dayLogs.forEach(l => {
+    const exists = l.refType === 'promo' ? promoIds.has(l.refId) : orderIds.has(l.refId);
+    if (!exists) add(`x:${l.id}`, 'error', 'ยิงพัลส์แต่ไม่พบงาน', { label: `${l.machineLabel} · ${l.refLabel || ''}`, amount: l.baht });
+  });
+
+  // แอป ↔ เครื่องจริง — จับคู่ทีละครั้ง: เครื่องเดียวกัน จำนวนพัลส์เท่ากัน เวลาห่างไม่เกิน 2 นาที
+  const machineRows = [];
+  if (ec && ec.byMachine) {
+    pulseMachines(config).forEach(m => {
+      const e = ec.byMachine[m.id];
+      const appList = dayLogs.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+      const appBaht = sumBaht(appList);
+      if (!e) { machineRows.push({ id: m.id, label: m.label, appBaht, ecBaht: null, ok: null }); return; }
+      const ecList = (e.forced || []).filter(f => !f.pending && pulseBkkMs(f.time) >= sinceMs).map(f => ({ ...f, ms: pulseBkkMs(f.time), used: false }));
+      const ecBaht = ecList.reduce((s, f) => s + (f.pulses || 0), 0) * PULSE_BAHT;
+      const missing = [];
+      appList.forEach(l => {
+        const t = l.sentAt || l.createdAt || 0; // sentAt = เวลาฝั่ง EC (แม่นกว่านาฬิกามือถือ)
+        let best = null;
+        ecList.forEach(f => { if (!f.used && f.pulses === l.pulses && Math.abs(f.ms - t) <= 120000 && (!best || Math.abs(f.ms - t) < Math.abs(best.ms - t))) best = f; });
+        if (best) best.used = true;
+        else if (ec.at - (l.createdAt || 0) > 60000) missing.push(l); // เพิ่งยิงไม่ถึงนาที ยังไม่ขึ้นประวัติ — ข้ามไปก่อน
+      });
+      const outside = ecList.filter(f => !f.used);
+      const noSignal = (e.forcedNoSignal || []).filter(t => pulseBkkMs(t) >= sinceMs);
+      machineRows.push({ id: m.id, label: m.label, appBaht, ecBaht, ok: !outside.length && !missing.length });
+      if (outside.length) add(`e:${m.id}:out:${outside.map(f => f.time.slice(11, 19)).join(',')}`, 'error', 'มีการยิงนอกแอป', { label: m.label, amount: outside.reduce((s, f) => s + f.pulses, 0) * PULSE_BAHT, times: outside.map(f => f.time.slice(11, 16)) });
+      if (missing.length) add(`e:${m.id}:miss:${missing.map(l => l.id).join(',')}`, 'error', 'แอปสั่งแต่เครื่องไม่ได้รับ', { label: m.label, amount: sumBaht(missing), times: missing.map(l => new Date(l.createdAt).toTimeString().slice(0, 5)) });
+      noSignal.forEach(t => add(`n:${m.id}:${t}`, 'warn', 'สั่งแล้วเครื่องไม่ตอบ', { label: m.label, times: [t.slice(11, 16)] }));
+    });
+  } else {
+    dayLogs.filter(l => ['sent', 'unknown', 'sending'].includes(l.status) && Date.now() - (l.createdAt || 0) > 180000)
+      .forEach(l => add(`u:${l.id}`, 'warn', 'ยังไม่ยืนยันว่าเครื่องได้รับ', { label: `${l.machineLabel} · ${l.refLabel || ''}`, amount: l.baht }));
+  }
+
+  const errors = issues.filter(i => i.level === 'error');
+  return {
+    dateKey, records, issues, errors,
+    need: records.reduce((s, r) => s + r.need, 0),
+    firedForRecords: records.reduce((s, r) => s + r.fired, 0),
+    appBaht: sumBaht(dayLogs),
+    ecBaht: ec && ec.byMachine && Object.keys(ec.byMachine).length ? machineRows.reduce((s, r) => s + (r.ecBaht || 0), 0) : null,
+    machineRows, ecAt: ec ? ec.at : null, ecErrors: ec ? ec.errors : null,
+    active: dateKey >= dateKeyOf(new Date(sinceMs || Date.now())),
+  };
+}
+
+function usePulseRecon(config, orders, dateKey) {
+  const cacheKey = config.brand + '|' + dateKey;
+  const [logs, setLogs] = useState([]);
+  const [ledger, setLedger] = useState([]);
+  const [note, setNote] = useState(null);
+  const [ec, setEc] = useState(() => PULSE_EC_CACHE[cacheKey] || null);
+  const [ecBusy, setEcBusy] = useState(() => (PULSE_EC_INFLIGHT[cacheKey] ? '…' : null));
+  const dayKeys = useMemo(() => {
+    const d = new Date(dateKey + 'T12:00:00');
+    return [-3, -2, -1, 0, 1, 2, 3].map(k => { const x = new Date(d); x.setDate(x.getDate() + k); return dateKeyOf(x); });
+  }, [dateKey]);
+  useEffect(() => {
+    if (!window.db) return;
+    const u = subscribePulseLogsByDays(dayKeys, setLogs);
+    return () => { if (u) u(); };
+  }, [dayKeys.join(',')]);
+  useEffect(() => {
+    if (!window.db) return;
+    const u = subscribeToCreditLedger(config.brand, setLedger);
+    return () => { if (u) u(); };
+  }, [config.brand]);
+  useEffect(() => {
+    if (!window.db) return;
+    const u = window.db.collection('pulseDayNotes').doc(config.brand + '_' + dateKey).onSnapshot(
+      s => setNote(s.exists ? s.data() : null), e => console.error('pulseDayNotes error:', e));
+    return () => u();
+  }, [config.brand, dateKey]);
+  // ทุกการ์ด/หน้าที่ดูวันเดียวกัน ใช้ผลอ่าน EC ชุดเดียวกัน
+  useEffect(() => {
+    setEc(PULSE_EC_CACHE[cacheKey] || null);
+    setEcBusy(PULSE_EC_INFLIGHT[cacheKey] ? '…' : null);
+    const onDone = (e) => { if (e.detail === cacheKey) setEc(PULSE_EC_CACHE[cacheKey] || null); };
+    const onProg = (e) => { if (e.detail && e.detail.key === cacheKey) setEcBusy(e.detail.text); };
+    window.addEventListener('pulse-ec', onDone);
+    window.addEventListener('pulse-ec-progress', onProg);
+    return () => { window.removeEventListener('pulse-ec', onDone); window.removeEventListener('pulse-ec-progress', onProg); };
+  }, [cacheKey]);
+
+  const refreshEc = () => {
+    if (!config.pulse) return Promise.resolve(null);
+    if (PULSE_EC_INFLIGHT[cacheKey]) return PULSE_EC_INFLIGHT[cacheKey];
+    const prog = (text) => window.dispatchEvent(new CustomEvent('pulse-ec-progress', { detail: { key: cacheKey, text } }));
+    prog('0/' + pulseMachines(config).length);
+    const p = fetchEcDay(config, dateKey, null, (n, t) => prog(n + '/' + t))
+      .then(res => { PULSE_EC_CACHE[cacheKey] = res; window.dispatchEvent(new CustomEvent('pulse-ec', { detail: cacheKey })); return res; })
+      .catch(err => { console.error('fetchEcDay error:', err); return null; })
+      .finally(() => { delete PULSE_EC_INFLIGHT[cacheKey]; prog(null); });
+    PULSE_EC_INFLIGHT[cacheKey] = p;
+    return p;
+  };
+  const recon = useMemo(() => buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }), [config, dateKey, orders, ledger, logs, ec]);
+
+  // EC ตรงกับแอปแล้ว → ปรับพัลส์ที่ยังไม่ยืนยันของเครื่องนั้นเป็น "เครื่องรับแล้ว"
+  useEffect(() => {
+    if (!ec || !window.db) return;
+    recon.machineRows.filter(r => r.ok && r.appBaht > 0).forEach(r => {
+      logs.filter(l => l.machine === r.id && l.dateKey === dateKey && ['sent', 'unknown', 'sending', 'forced'].includes(l.status) && (l.createdAt || 0) <= ec.at - 60000)
+        .forEach(l => pulseLogRef(l.id).set({ status: 'confirmed', recheckAt: Date.now() }, { merge: true }).catch(() => {}));
+    });
+  }, [ec, logs.length]);
+
+  const noted = new Set((note && note.issueKeys) || []);
+  const unexplained = recon.errors.filter(i => !noted.has(i.key));
+  return { recon, ec, ecBusy, refreshEc, note, unexplained, logs, ledger };
+}
+
+async function savePulseDayNote(config, dateKey, issues, reason, staffName) {
+  const FV = firebase.firestore.FieldValue;
+  await window.db.collection('pulseDayNotes').doc(config.brand + '_' + dateKey).set({
+    brand: config.brand, dateKey,
+    issueKeys: FV.arrayUnion(...issues.map(i => i.key)),
+    history: FV.arrayUnion({ reason, staffName: staffName || '', at: Date.now(), issues: issues.map(i => `${i.text} · ${i.label || ''}${i.amount ? ' · ฿' + i.amount : ''}`) }),
+    updatedAt: Date.now(),
+  }, { merge: true });
+}
+
+// ---------- 🧺 หน้าใบรับงาน: เริ่มเครื่องทีละถัง ----------
+function PulseStarterCard({ config, order }) {
+  const [logs, setLogs] = useState([]);
+  const [openSlot, setOpenSlot] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const lockRef = useRef(false);
+  useEffect(() => {
+    if (!window.db || !order || !order.id) return;
+    const u = subscribePulseLogsByRef(order.id, list => setLogs(list.filter(l => l.brand === config.brand).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))));
+    return () => { if (u) u(); };
+  }, [order && order.id, config.brand]);
+
+  const slots = pulseSlotsForOrder(order, config);
+  if (slots.length === 0) return null;
+
+  const liveLogs = logs.filter(pulseLive);
+  const slotLogs = (s) => logs.filter(l => l.slotKey === s.key && l.status !== 'void');
+  const firedOf = (s) => liveLogs.filter(l => l.slotKey === s.key).reduce((sum, l) => sum + (l.baht || 0), 0);
+  const need = slots.reduce((s, x) => s + x.baht, 0);
+  const fired = liveLogs.reduce((s, l) => s + (l.baht || 0), 0);
+  const otherLogs = liveLogs.filter(l => !slots.some(s => s.key === l.slotKey));
+  const allDone = fired >= need;
+  const maxShot = (config.pulse && config.pulse.maxPerShot) || 12;
+
+  const fire = async (slot, machineId, retryLog) => {
+    if (lockRef.current) return;
+    const remain = Math.max(0, slot.baht - firedOf(slot) + (retryLog && pulseLive(retryLog) ? retryLog.baht : 0));
+    const pulses = Math.min(Math.floor(remain / PULSE_BAHT), maxShot);
+    if (pulses <= 0) { alert(tr(config, 'ช่องนี้เริ่มเครื่องครบแล้ว')); return; }
+    const mLabel = pulseMachineLabel(config, machineId);
+    if (!confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${mLabel}\n🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${pulses * PULSE_BAHT})\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return;
+    lockRef.current = true;
+    setBusy(mLabel);
+    setMsg(null);
+    try {
+      if (retryLog) await voidPulseLog(retryLog.id, 'ยิงใหม่ — เครื่องไม่ได้รับ').catch(() => {});
+      const res = await firePulse(config, { machine: machineId, pulses, refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: slot.key, refLabel: pulseRefLabel(order, config), retryOf: retryLog ? retryLog.id : null });
+      if (res.status === 'confirmed') { playSuccessSound(); setMsg({ ok: true, text: `✅ ${mLabel} ${tr(config, 'เครื่องรับแล้ว')}` }); }
+      else if (res.status === 'failed') setMsg({ ok: false, text: `❌ ${tr(config, 'ไม่สำเร็จ')}: ${res.error || ''}` });
+      else setMsg({ ok: null, text: `⏳ ${mLabel} — ${tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}` });
+      setOpenSlot(null);
+    } finally { lockRef.current = false; setBusy(null); }
+  };
+
+  const recheck = async (log) => {
+    if (lockRef.current) return;
+    lockRef.current = true;
+    setBusy(tr(config, 'เช็กอีกครั้ง'));
+    try {
+      const r = await recheckPulseLog(config, log);
+      setMsg(r.ok ? (r.found ? { ok: true, text: `✅ ${log.machineLabel} ${tr(config, 'เครื่องรับแล้ว')}` } : { ok: false, text: `⚠️ ${log.machineLabel} ${tr(config, 'ยังไม่พบในประวัติเครื่อง')}` }) : { ok: false, text: '❌ ' + r.error });
+    } finally { lockRef.current = false; setBusy(null); }
+  };
+
+  const statusChip = (l) => {
+    const map = {
+      confirmed: ['bg-emerald-100 text-emerald-700', '✅ ' + tr(config, 'เครื่องรับแล้ว')],
+      forced: ['bg-sky-100 text-sky-700', '⏳ ' + tr(config, 'รับคำสั่งแล้ว รอเครื่อง')],
+      sent: ['bg-amber-100 text-amber-800', '⚠️ ' + tr(config, 'ยังไม่ยืนยัน')],
+      unknown: ['bg-amber-100 text-amber-800', '⚠️ ' + tr(config, 'ยังไม่ยืนยัน')],
+      sending: ['bg-amber-100 text-amber-800', '⚠️ ' + tr(config, 'ยังไม่ยืนยัน')],
+      failed: ['bg-rose-100 text-rose-700', '❌ ' + tr(config, 'ไม่สำเร็จ')],
+    };
+    const [cls, text] = map[l.status] || ['bg-slate-100 text-slate-600', l.status];
+    return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cls}`}>{text}</span>;
+  };
+
+  return (
+    <div className={`rounded-2xl p-4 mb-3 border-2 ${allDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-amber-300 shadow-lg'}`}>
+      <div className="flex items-center gap-2">
+        <span className="text-2xl">⚡</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-extrabold text-slate-900">{tr(config, 'เริ่มเครื่อง (ยิงพัลส์)')}</p>
+          <p className={`text-xs font-bold ${allDone ? 'text-emerald-700' : 'text-amber-700'}`}>
+            {allDone ? '✅ ' + tr(config, 'เริ่มเครื่องครบแล้ว') : `${tr(config, 'เปิดแล้ว')} ฿${fired} / ฿${need}`}
+          </p>
+        </div>
+      </div>
+      <div className="h-1.5 rounded-full bg-slate-200 mt-2 overflow-hidden">
+        <div className={`h-full ${allDone ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, need ? (fired / need) * 100 : 0)}%` }}></div>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {slots.map(s => {
+          const sl = slotLogs(s);
+          const sFired = firedOf(s);
+          const sDone = sFired >= s.baht;
+          const unconfirmed = sl.filter(l => ['sent', 'unknown', 'sending', 'forced'].includes(l.status));
+          return (
+            <div key={s.key} className={`rounded-xl p-2.5 border ${sDone ? 'bg-white border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-slate-800 flex-1">{pulseSlotLabel(config, s)}</p>
+                <p className="text-xs font-bold text-slate-500">฿{s.baht} · {Math.floor(s.baht / PULSE_BAHT)} {tr(config, 'พัลส์')}</p>
+              </div>
+              {sl.map(l => (
+                <div key={l.id} className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  <span className="text-xs font-bold text-slate-700">🧺 {l.machineLabel}</span>
+                  <span className="text-[11px] text-slate-500">{new Date(l.createdAt).toTimeString().slice(0, 5)} · ฿{l.baht}</span>
+                  {statusChip(l)}
+                  {unconfirmed.includes(l) && (
+                    <>
+                      <button onClick={() => recheck(l)} disabled={!!busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-300 text-slate-600 active:scale-95">🔄 {tr(config, 'เช็กอีกครั้ง')}</button>
+                      <button onClick={() => setOpenSlot({ key: s.key, retry: l })} disabled={!!busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 border border-rose-300 text-rose-700 active:scale-95">{tr(config, 'เครื่องไม่ทำงาน → ยิงใหม่')}</button>
+                    </>
+                  )}
+                </div>
+              ))}
+              {(!sDone || (openSlot && openSlot.key === s.key)) && (
+                openSlot && openSlot.key === s.key ? (
+                  <div className="mt-2">
+                    <p className="text-[11px] font-bold text-slate-600 mb-1">{openSlot.retry ? '🔁 ' + tr(config, 'ยิงใหม่ — เลือกเครื่อง') : tr(config, 'เลือกเครื่องที่ใส่ผ้า')}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {s.allowed.map(id => (
+                        <button key={id} onClick={() => fire(s, id, openSlot.retry || null)} disabled={!!busy}
+                          className="px-3 py-2 rounded-xl text-sm font-extrabold bg-slate-900 text-white active:scale-95 transition disabled:opacity-40">
+                          {pulseMachineLabel(config, id)}
+                        </button>
+                      ))}
+                      <button onClick={() => setOpenSlot(null)} className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-500">{tr(config, 'ยกเลิก')}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setOpenSlot({ key: s.key })} disabled={!!busy}
+                    className="mt-2 w-full py-2.5 rounded-xl text-sm font-extrabold text-white active:scale-95 transition disabled:opacity-40" style={{ background: config.gradient }}>
+                    ▶ {tr(config, 'เลือกเครื่อง')}{sFired > 0 ? ` (${tr(config, 'ขาด')} ฿${s.baht - sFired})` : ''}
+                  </button>
+                )
+              )}
+            </div>
+          );
+        })}
+        {otherLogs.length > 0 && (
+          <p className="text-[11px] text-slate-500">{tr(config, 'พัลส์อื่นของงานนี้')}: {otherLogs.map(l => `${l.machineLabel} ฿${l.baht}`).join(', ')}</p>
+        )}
+      </div>
+
+      {msg && <p className={`mt-2 text-sm font-bold ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
+      {busy && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl p-6 text-center max-w-xs w-full">
+            <p className="text-4xl animate-pulse">⚡</p>
+            <p className="font-extrabold text-slate-800 mt-2">{busy}</p>
+            <p className="text-sm text-slate-500 mt-1">{tr(config, 'กำลังส่งคำสั่ง รอเครื่องตอบ…')}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- ⚡ กระทบยอด: เนื้อหา (ใช้ทั้งหน้าแม่บ้านและหน้าเจ้าของ) ----------
+function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc }) {
+  const { recon, ecBusy, refreshEc, note, unexplained } = usePulseRecon(config, orders, dateKey);
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  useEffect(() => {
+    if (!autoEc) return;
+    const c = PULSE_EC_CACHE[config.brand + '|' + dateKey];
+    if (!c || Date.now() - c.at > 5 * 60000) refreshEc();
+  }, [dateKey, autoEc]);
+
+  const todayKey = dateKeyOf(new Date());
+  const shift = (dir) => { const d = new Date(dateKey + 'T12:00:00'); d.setDate(d.getDate() + dir); const k = dateKeyOf(d); if (k <= todayKey) setDateKey(k); };
+  const staff = currentStaffLS(config);
+  const fm = (v) => (v == null ? '…' : '฿' + formatMoney(v));
+  const dLabel = new Date(dateKey + 'T12:00:00').toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  const saveReason = async () => {
+    if (!reason.trim()) { alert(tr(config, 'ใส่เหตุผลก่อน')); return; }
+    setSaving(true);
+    try {
+      await savePulseDayNote(config, dateKey, unexplained, reason.trim(), isOwner ? 'เจ้าของ' : (staff && staff.name) || '');
+      setReason('');
+      playSuccessSound();
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e) + '\nตรวจ Firestore Rules: pulseDayNotes'); }
+    setSaving(false);
+  };
+
+  const issueText = (i) => `${tr(config, i.text)}${i.amount ? ' ฿' + i.amount : ''}`;
+
+  return (
+    <div className="space-y-3">
+      {setDateKey && (
+        <div className="flex items-center gap-2 bg-white rounded-2xl p-2 border border-slate-200">
+          <button onClick={() => shift(-1)} className="w-10 h-10 rounded-xl bg-slate-100 font-bold text-slate-700 active:scale-95">◀</button>
+          <p className="flex-1 text-center font-bold text-slate-800">{dateKey === todayKey ? tr(config, 'วันนี้') + ' · ' : ''}{dLabel}</p>
+          <button onClick={() => shift(1)} disabled={dateKey >= todayKey} className="w-10 h-10 rounded-xl bg-slate-100 font-bold text-slate-700 active:scale-95 disabled:opacity-30">▶</button>
+        </div>
+      )}
+
+      {!recon.active ? (
+        <p className="text-sm text-slate-500 text-center py-6">{tr(config, 'วันนี้ยังไม่ได้เปิดระบบยิงพัลส์จากแอป')}</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              [tr(config, 'งานในแอป'), recon.need, `${recon.records.length} ${tr(config, 'งาน')}`],
+              [tr(config, 'ยิงจากแอป'), recon.appBaht, tr(config, 'ทุกเครื่อง')],
+              [tr(config, 'เครื่องจริง (EC)'), recon.ecBaht, ecBusy ? `⏳ ${ecBusy}` : recon.ecAt ? new Date(recon.ecAt).toTimeString().slice(0, 5) : '-'],
+            ].map(([t, v, sub]) => (
+              <div key={t} className="bg-white rounded-2xl p-2.5 border border-slate-200 text-center">
+                <p className="text-[11px] text-slate-500 font-bold">{t}</p>
+                <p className="text-lg font-extrabold text-slate-900">{fm(v)}</p>
+                <p className="text-[10px] text-slate-400">{sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {recon.errors.length === 0 ? (
+            <div className="rounded-2xl p-3 bg-emerald-50 border-2 border-emerald-300 text-center">
+              <p className="font-extrabold text-emerald-800">✅ {tr(config, 'ยอดเปิดเครื่องตรงกัน')}</p>
+              {recon.ecBaht == null && <p className="text-[11px] text-emerald-700 mt-0.5">{tr(config, 'ยังไม่ได้เทียบกับเครื่องจริง')}</p>}
+            </div>
+          ) : (
+            <div className="rounded-2xl p-3 bg-rose-50 border-2 border-rose-300">
+              <p className="font-extrabold text-rose-800 mb-2">⚠️ {tr(config, 'ยอดไม่ตรง')} {recon.errors.length} {tr(config, 'รายการ')}</p>
+              <div className="space-y-1.5">
+                {recon.errors.map(i => (
+                  <div key={i.key} className="bg-white rounded-xl px-3 py-2 border border-rose-200">
+                    <p className="text-sm font-bold text-rose-700">{issueText(i)}{note && (note.issueKeys || []).includes(i.key) ? ' · 📝' : ''}</p>
+                    <p className="text-xs text-slate-600">{i.label}{i.times && i.times.length ? ` · 🕐 ${i.times.join(', ')}` : ''}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {recon.issues.filter(i => i.level === 'warn').map(i => (
+            <p key={i.key} className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ {issueText(i)} · {i.label}{i.times ? ` · ${i.times.join(', ')}` : ''}</p>
+          ))}
+          {recon.ecErrors && recon.ecErrors.length > 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{tr(config, 'เช็กกับเครื่องไม่ได้')} {recon.ecErrors.length} {tr(config, 'เครื่อง')}: {recon.ecErrors.slice(0, 2).join(' · ')}</p>
+          )}
+
+          <button onClick={refreshEc} disabled={!!ecBusy}
+            className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-sm font-bold active:scale-95 transition disabled:opacity-50">
+            {ecBusy ? `⏳ ${tr(config, 'กำลังเช็กกับเครื่อง')} ${ecBusy}` : `🔄 ${tr(config, 'เช็กกับเครื่องอีกครั้ง')}`}
+          </button>
+
+          {unexplained.length > 0 && (
+            <div className="bg-white rounded-2xl p-3 border-2 border-rose-300">
+              <p className="text-sm font-bold text-slate-800 mb-1">{tr(config, 'เหตุผลที่ยอดไม่ตรง')} <span className="text-rose-600">*{tr(config, 'บังคับ')}</span></p>
+              <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+                className="w-full px-3 py-2 rounded-xl border-2 border-rose-200 bg-rose-50 text-sm" placeholder={tr(config, 'เช่น รอซักพรุ่งนี้ / ลูกค้ายกเลิก / เจ้าของยิงทดสอบ')} />
+              <button onClick={saveReason} disabled={saving} className="w-full mt-2 py-2.5 rounded-xl bg-rose-500 text-white font-bold active:scale-95 disabled:opacity-50">
+                {saving ? '…' : tr(config, 'บันทึกเหตุผล')}
+              </button>
+            </div>
+          )}
+          {note && (note.history || []).length > 0 && (
+            <div className="bg-white rounded-2xl p-3 border border-slate-200 space-y-1.5">
+              <p className="text-xs font-bold text-slate-500">📝 {tr(config, 'เหตุผลที่บันทึกไว้')}</p>
+              {(note.history || []).slice().sort((a, b) => a.at - b.at).map((h, idx) => (
+                <div key={idx} className="text-xs text-slate-700 border-t border-slate-100 pt-1.5">
+                  <b>{h.staffName || '-'}</b> · {new Date(h.at).toTimeString().slice(0, 5)} — {h.reason}
+                  {isOwner && h.issues && h.issues.length > 0 && <p className="text-[10px] text-slate-400">{h.issues.join(' | ')}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button onClick={() => setShowDetail(!showDetail)} className="w-full text-xs font-bold text-slate-500 py-1">{showDetail ? '▲' : '▼'} {tr(config, 'ดูรายละเอียด')}</button>
+          {showDetail && (
+            <div className="space-y-2">
+              <div className="bg-white rounded-2xl p-3 border border-slate-200">
+                <p className="text-xs font-bold text-slate-500 mb-1">{tr(config, 'งานในแอป')}</p>
+                {recon.records.length === 0 && <p className="text-xs text-slate-400">-</p>}
+                {recon.records.map(r => (
+                  <div key={r.id} className="flex items-center justify-between text-xs py-1 border-t border-slate-100">
+                    <span className="truncate flex-1">{r.fired === r.need ? '✅' : '⚠️'} {r.label}</span>
+                    <span className="font-bold">฿{r.fired} / ฿{r.need}</span>
+                  </div>
+                ))}
+              </div>
+              {recon.machineRows.length > 0 && (
+                <div className="bg-white rounded-2xl p-3 border border-slate-200">
+                  <p className="text-xs font-bold text-slate-500 mb-1">{tr(config, 'รายเครื่อง: แอป / เครื่องจริง')}</p>
+                  {recon.machineRows.filter(r => r.appBaht || r.ecBaht).map(r => (
+                    <div key={r.id} className="flex items-center justify-between text-xs py-1 border-t border-slate-100">
+                      <span>{r.ok ? '✅' : r.ok === false ? '⚠️' : '…'} {r.label}</span>
+                      <span className="font-bold">{fm(r.appBaht)} / {fm(r.ecBaht)}</span>
+                    </div>
+                  ))}
+                  {recon.machineRows.every(r => !r.appBaht && !r.ecBaht) && <p className="text-xs text-slate-400">-</p>}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- ⚡ การ์ดหน้าแรกแม่บ้าน + เด้งถามเหตุผลของเมื่อวาน ----------
+function PulseReconCard({ config, orders, currentStaff }) {
+  const todayKey = dateKeyOf(new Date());
+  const yKey = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 1); return dateKeyOf(d); }, [todayKey]);
+  const { recon, ecBusy, refreshEc, unexplained, logs, ledger } = usePulseRecon(config, orders, todayKey);
+  const [sheetDate, setSheetDate] = useState(null);
+  const [yNote, setYNote] = useState(undefined);
+  const askedYRef = useRef(false);
+  const isMaid = !!(currentStaff && !currentStaff.isOwnerLogin);
+
+  // เช็กกับเครื่องตอนเปิดหน้า (ถ้าเก่ากว่า 10 นาที) และทุก 15 นาที
+  useEffect(() => {
+    const c = PULSE_EC_CACHE[config.brand + '|' + todayKey];
+    if (!c || Date.now() - c.at > 10 * 60000) refreshEc();
+    const t = setInterval(() => refreshEc(), 15 * 60000);
+    return () => clearInterval(t);
+  }, [config.brand, todayKey]);
+
+  useEffect(() => {
+    if (!window.db) return;
+    window.db.collection('pulseDayNotes').doc(config.brand + '_' + yKey).get()
+      .then(s => setYNote(s.exists ? s.data() : null)).catch(() => setYNote(null));
+  }, [config.brand, yKey]);
+  const yRecon = useMemo(() => buildPulseRecon({ config, dateKey: yKey, orders, ledger, logs, ec: null }), [config, yKey, orders, ledger, logs]);
+  const yUnexplained = yNote === undefined ? [] : yRecon.errors.filter(i => !((yNote && yNote.issueKeys) || []).includes(i.key));
+  useEffect(() => {
+    if (isMaid && yRecon.active && yUnexplained.length > 0 && !askedYRef.current) { askedYRef.current = true; setSheetDate(yKey); }
+  }, [isMaid, yUnexplained.length]);
+
+  useEffect(() => {
+    PULSE_GATE[config.brand] = { needReason: isMaid && unexplained.length > 0, open: () => setSheetDate(todayKey) };
+    return () => { delete PULSE_GATE[config.brand]; };
+  }, [config.brand, isMaid, unexplained.length, todayKey]);
+
+  const bad = recon.errors.length;
+  const onlyPending = bad > 0 && recon.errors.every(i => i.pending);
+  const tone = !recon.active ? 'slate' : onlyPending ? 'amber' : bad > 0 ? 'rose' : 'emerald';
+  const box = { slate: 'bg-slate-50 border-slate-200', amber: 'bg-amber-50 border-amber-300', rose: 'bg-rose-50 border-rose-400', emerald: 'bg-emerald-50 border-emerald-300' }[tone];
+  const dot = { slate: 'bg-slate-400', amber: 'bg-amber-500', rose: 'bg-rose-500', emerald: 'bg-emerald-500' }[tone];
+
+  return (
+    <div className="px-5 mt-3">
+      <button onClick={() => setSheetDate(todayKey)} className={`w-full rounded-2xl p-3 border-2 active:scale-95 transition flex items-center gap-3 ${box}`}>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${dot}`}>⚡</div>
+        <div className="text-left flex-1 min-w-0">
+          <p className={`font-bold text-sm ${tone === 'rose' ? 'text-rose-800' : tone === 'amber' ? 'text-amber-900' : 'text-emerald-900'}`}>
+            {onlyPending ? `⏳ ${tr(config, 'รอเริ่มเครื่อง')} ${bad} ${tr(config, 'งาน')} — ${tr(config, 'แตะดู')}` : bad > 0 ? `⚠️ ${tr(config, 'ยอดเปิดเครื่องไม่ตรง')} ${bad} ${tr(config, 'รายการ')} — ${tr(config, 'แตะดู')}` : `✅ ${tr(config, 'ยอดเปิดเครื่องวันนี้ตรงกัน')}`}
+          </p>
+          <p className="text-xs text-slate-600">
+            {tr(config, 'งาน')} ฿{formatMoney(recon.need)} · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)} · EC {ecBusy ? `⏳ ${ecBusy}` : recon.ecBaht == null ? '…' : '฿' + formatMoney(recon.ecBaht)}
+            {bad > 0 && unexplained.length === 0 ? ` · 📝 ${tr(config, 'ใส่เหตุผลแล้ว')}` : ''}
+          </p>
+        </div>
+        <Icon name="chevron-right" className="w-5 h-5 text-slate-500" />
+      </button>
+
+      {sheetDate && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => setSheetDate(null)}>
+          <div className="bg-slate-100 rounded-t-3xl w-full max-w-md p-4 pb-8 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-lg font-extrabold text-slate-900 flex-1">⚡ {tr(config, 'กระทบยอดเปิดเครื่อง')}</p>
+              <button onClick={() => setSheetDate(null)} className="text-slate-400 text-2xl leading-none px-2">✕</button>
+            </div>
+            {sheetDate === yKey && yUnexplained.length > 0 && (
+              <p className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 mb-3">📅 {tr(config, 'เมื่อวานยอดไม่ตรง ยังไม่มีเหตุผล')}</p>
+            )}
+            <PulseReconPanel config={config} orders={orders} dateKey={sheetDate} setDateKey={setSheetDate} isOwner={!isMaid} autoEc={true} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- ⚙️ ตั้งค่า (เจ้าของ) ----------
+function PulseSettingsCard({ config }) {
+  const [ping, setPing] = useState(null);
+  const on = pulseOn(config);
+  const toggle = async () => {
+    if (!on && !confirm('เปิดยิงพัลส์จากแอป?\n\n• ต้องตั้ง Worker teddy-pulse (ใส่ EC_USER / EC_PASS) เสร็จแล้ว\n• กดทดสอบการเชื่อมต่อให้ผ่านก่อน\n• เริ่มกระทบยอดตั้งแต่ตอนนี้')) return;
+    try {
+      await saveShopSettings(config.brand, on ? { pulseEnabled: false } : { pulseEnabled: true, pulseSinceMs: pulseSinceOf(config) || Date.now() });
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
+  };
+  const test = async () => {
+    setPing('⏳ กำลังทดสอบ…');
+    try {
+      const r = await fetch(config.pulse.workerUrl + '/ping');
+      const j = await r.json();
+      setPing(j.ok ? `✅ เชื่อมต่อได้ · ล็อกอิน EC ผ่าน (${j.version})` : `❌ ${j.error || 'ไม่ผ่าน'}`);
+    } catch (e) { setPing('❌ ต่อ Worker ไม่ได้ — เช็กว่าสร้าง Worker ชื่อ teddy-pulse แล้ว'); }
+  };
+  return (
+    <div className="bg-white rounded-2xl p-4 border border-slate-200">
+      <p className="text-sm font-bold text-slate-800 mb-2">⚡ ยิงพัลส์เข้าเครื่องจากแอป (ระบบ EC)</p>
+      <button onClick={toggle}
+        className={`w-full py-2.5 rounded-xl text-sm font-bold border-2 flex items-center justify-between px-3 active:scale-95 transition ${on ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
+        <span>{on ? '✅ เปิดอยู่' : '⛔ ปิดอยู่'}</span>
+        <span>แตะเพื่อ{on ? 'ปิด' : 'เปิด'}</span>
+      </button>
+      <button onClick={test} className="w-full mt-2 py-2 rounded-xl text-sm font-bold bg-slate-900 text-white active:scale-95">🔌 ทดสอบการเชื่อมต่อ (ไม่ยิงเครื่อง)</button>
+      {ping && <p className="text-xs font-bold text-slate-700 mt-2">{ping}</p>}
+      <p className="text-[11px] text-slate-400 mt-1.5">เปิดแล้ว: หน้าใบรับงานมีปุ่ม ▶ เริ่มเครื่อง · โปรซักเองยิงพัลส์แทนสแกนเครดิต · หน้าแรกแม่บ้านมีการ์ดกระทบยอด · Worker: {config.pulse.workerUrl.replace('https://', '')}</p>
+      {pulseSinceOf(config) > 0 && <p className="text-[11px] text-slate-400">เริ่มกระทบยอดตั้งแต่ {formatDate(pulseSinceOf(config))}</p>}
+    </div>
+  );
+}
+
+function OwnerPulseView({ config, orders }) {
+  const [d, setD] = useState(() => dateKeyOf(new Date()));
+  return <PulseReconPanel config={config} orders={orders} dateKey={d} setDateKey={setD} isOwner={true} autoEc={true} />;
 }
 
 // ============ 🎟️ เครดิตแม่บ้าน / กระทบยอด (เจ้าของ) — เฟส 3 ============
@@ -8018,6 +8869,7 @@ function CreditView({ config, orders, staffList }) {
     <div className="space-y-3">
       <div className="bg-white rounded-2xl p-4 border border-slate-200">
         <p className="text-sm font-bold text-slate-800">🎟️ เครดิตแม่บ้าน</p>
+        {pulseOn(config) && <p className="text-xs font-bold text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mt-1">⚡ สาขานี้เลิกใช้เครดิตแม่บ้านแล้ว (ยิงพัลส์จากแอปแทน) — ดูกระทบยอดที่แท็บ ⚡ พัลส์ · หน้านี้เหลือไว้ดูประวัติ</p>}
         <p className="text-[11px] text-slate-500 mt-1">คงเหลือควรเป็น = ยอดต้น + เติม − ราคาเครื่องงานฝาก/ส่ง − โปรซักเอง · กด 🔍 กรอกยอดจริงจากระบบเครื่องเพื่อเทียบ · <b className="text-rose-600">ติดลบ = เครดิตหายเกินที่แอปรู้</b></p>
       </div>
 
@@ -8557,6 +9409,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           {config.hasChecklist && <TabBtn active={tab === 'checklist'} onClick={() => setTab('checklist')}>📋 งานแม่บ้าน</TabBtn>}
           {config.hasAttendance && <TabBtn active={tab === 'attendance'} onClick={() => setTab('attendance')}>🕐 เข้า-ออก</TabBtn>}
           <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
+          {pulseOn(config) && <TabBtn active={tab === 'pulse'} onClick={() => setTab('pulse')}>⚡ พัลส์</TabBtn>}
           <TabBtn active={tab === 'credit'} onClick={() => setTab('credit')}>🎟️ เครดิต</TabBtn>
           {config.tokenEnabled !== false && menuOn(config, 'exchange') && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 {exchangeName(config)} ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
@@ -8638,6 +9491,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           <DiscountReportView orders={orders} config={config} />
         ) : tab === 'coins' ? (
           <CoinCountView config={config} />
+        ) : tab === 'pulse' ? (
+          <OwnerPulseView config={config} orders={orders} />
         ) : tab === 'credit' ? (
           <CreditView config={config} orders={orders} staffList={staffList} />
         ) : tab === 'settings' ? (
