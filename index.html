@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v145-2026-10-26';
+  window.APP_VERSION = 'v146-2026-10-26';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2034,6 +2034,34 @@ const MM_DICT = {
   'อบครบแล้ว — เพิ่มเวลาได้เฉพาะเครื่องที่อบงานนี้': 'အခြောက်ခံပြီး — ဤအလုပ်ကို ခြောက်နေသောစက်တွင်သာ အချိန်တိုးနိုင်',
   'เพิ่มเวลาเกินใบงาน (ขึ้นในกระทบยอด)': 'အလုပ်စာရွက်ထက် အချိန်ပိုတိုး (စာရင်းတိုက်စစ်တွင် ပေါ်မည်)',
   'ยิงไม่ได้': 'မပို့နိုင်',
+  // ↩️ คืนเครดิตเมื่อเครื่องมีปัญหา (v146) — รอพนักงานพม่าตรวจคำแปล
+  'ยิงแล้วเครื่องไม่ทำงาน': 'ပို့ပြီးသော်လည်း စက်မလည်ပတ်',
+  'เครื่องหยุดกลางคัน / ขึ้น error': 'စက် လမ်းတစ်ဝက်တွင် ရပ်သွား / error ပြ',
+  'ยิงผิดเครื่อง': 'စက်မှား ပို့မိ',
+  'คืนเครดิตแล้ว': 'ခရက်ဒစ် ပြန်ပေးပြီး',
+  'รอเจ้าของคืนเครดิต': 'ပိုင်ရှင် ခရက်ဒစ်ပြန်ပေးရန် စောင့်ဆိုင်း',
+  'คืนเครดิต': 'ခရက်ဒစ် ပြန်ပေး',
+  'ไม่คืน': 'ပြန်မပေး',
+  'ยกเลิกคำขอ': 'တောင်းဆိုမှု ပယ်ဖျက်',
+  'เครื่องมีปัญหา': 'စက် ပြဿနာရှိ',
+  'เจ้าของไม่คืน': 'ပိုင်ရှင် ပြန်မပေး',
+  'แจ้งเครื่องมีปัญหา': 'စက်ပြဿနာ အကြောင်းကြား',
+  'ขอคืนเครดิตให้ใบงานนี้ เพื่อสแกนเริ่มเครื่องใหม่': 'ဤအလုပ်စာရွက်အတွက် ခရက်ဒစ်ပြန်တောင်းပြီး စက်ကို ပြန်စကင်ဖတ်စတင်ရန်',
+  'เกิดอะไรขึ้น': 'ဘာဖြစ်သလဲ',
+  'รายละเอียดเพิ่มเติม': 'အသေးစိတ် ထပ်ဖြည့်',
+  'เช่น ซัก 5 ขึ้น E21 หยุดตอน 20 นาที': 'ဥပမာ လျှော်စက် 5 တွင် E21 ပြပြီး မိနစ် 20 တွင် ရပ်',
+  'ส่งให้เจ้าของอนุมัติ': 'ပိုင်ရှင်ထံ ခွင့်ပြုချက်တောင်း ပို့',
+  'ใส่รายละเอียดก่อน': 'အသေးစိတ် အရင်ဖြည့်ပါ',
+  'ส่งแล้ว — แจ้งเจ้าของให้อนุมัติ': 'ပို့ပြီး — ပိုင်ရှင်ကို ခွင့်ပြုပေးရန် ပြောပါ',
+  'พอเจ้าของคืนแล้ว สแกนใบงานเริ่มเครื่องใหม่ได้เลย': 'ပိုင်ရှင် ပြန်ပေးပြီးနောက် အလုပ်စာရွက်ကို စကင်ဖတ်ပြီး စက်ပြန်စနိုင်',
+  'เปิดแล้วสำหรับใบงานนี้': 'ဤအလုပ်စာရွက်အတွက် ဖွင့်ပြီးသား',
+  'เครื่องมีปัญหา? กด ⚠️ ที่รายการด้านล่าง ให้เจ้าของคืนเครดิต': 'စက်ပြဿနာရှိလား? အောက်ပါစာရင်းရှိ ⚠️ ကိုနှိပ်ပြီး ပိုင်ရှင်ထံ ခရက်ဒစ်ပြန်တောင်းပါ',
+  'เครื่องนี้มีแจ้งปัญหาวันนี้ — เช็กเครื่องก่อน': 'ဤစက် ယနေ့ ပြဿနာ အကြောင်းကြားထား — စက်ကို အရင်စစ်ပါ',
+  'มีปัญหา': 'ပြဿနာရှိ',
+  'คืนเครดิตโดยเจ้าของ': 'ပိုင်ရှင်မှ ခရက်ဒစ်ပြန်ပေး',
+  'เครื่องได้รับพัลส์แล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)': 'စက်သို့ pulse ရောက်ပြီးသော်လည်း အလုပ်စာရွက်တွင် မရေတွက် (ဆိုင်က ကျခံ)',
+  'เครื่องไม่ได้รับ': 'စက် မရရှိ',
+  'ส่งไม่สำเร็จ': 'ပို့၍မရ',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3262,12 +3290,12 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
           🔄 กำลังเชื่อมต่อ cloud...
         </div>
       )}
-      {deepJobId && <JobStartSheet config={config} orderId={deepJobId} orders={orders} onClose={onDeepDone} />}
+      {deepJobId && <JobStartSheet config={config} orderId={deepJobId} orders={orders} onClose={onDeepDone} isOwner={isOwner} />}
       {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
-      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
+      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
@@ -5530,7 +5558,7 @@ async function printImageDataUrl(dataUrl, onProgress) {
   await printCanvasViaBluetooth(c, onProgress);
 }
 
-function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) {
+function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, isOwner }) {
   const receiptRef = useRef(null);
   const payQr = PAYMENT_QRS[config.brand]; // QR static สำรอง (กรณีไลบรารีโหลดไม่ทัน)
   const jobTicketRef = useRef(null);
@@ -5748,7 +5776,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
       </div>
 
       <div className="p-4">
-        {pulseOn(config) && order.id && (order.createdAt || 0) >= pulseSinceOf(config) && <PulseStarterCard config={config} order={order} />}
+        {pulseOn(config) && order.id && (order.createdAt || 0) >= pulseSinceOf(config) && <PulseStarterCard config={config} order={order} isOwner={isOwner} />}
         <div ref={receiptRef} className="bg-white rounded-2xl overflow-hidden shadow-lg" style={{fontFamily: '"Noto Sans Thai", sans-serif'}}>
           <div className="relative" style={{ background: config.gradient }}>
             <div className="absolute top-0 left-0 right-0 h-1.5" style={{ background: headerStripe }}></div>
@@ -8191,6 +8219,48 @@ async function voidPulseLog(id, reason) {
   await pulseLogRef(id).set({ status: 'void', voidReason: reason || '', voidAt: Date.now() }, { merge: true });
 }
 
+// ↩️ คืนเครดิต (v146) — status 'refunded' = เครื่องได้รับพัลส์แล้ว แต่ไม่นับกับใบงาน (ใบงานเปิดเครื่องใหม่ได้)
+// refundReq = แม่บ้านแจ้งปัญหา รอเจ้าของอนุมัติ (ยังนับกับใบงานจนกว่าเจ้าของจะคืน)
+const REFUND_REASONS = [
+  { id: 'nostart', label: 'ยิงแล้วเครื่องไม่ทำงาน', emoji: '⛔', fault: true },
+  { id: 'stopped', label: 'เครื่องหยุดกลางคัน / ขึ้น error', emoji: '🛑', fault: true },
+  { id: 'wrong', label: 'ยิงผิดเครื่อง', emoji: '🔀', fault: false },
+  { id: 'other', label: 'อื่นๆ', emoji: '📝', fault: false },
+];
+const refundReasonLabel = (id) => (REFUND_REASONS.find(r => r.id === id) || {}).label || id || '';
+const refundIsFault = (id) => !!(REFUND_REASONS.find(r => r.id === id) || {}).fault;
+const pulseRefunded = (l) => !!(l && l.status === 'refunded');
+const pulseRefundPending = (l) => !!(l && l.refundReq && pulseLive(l));
+function pulseIsOwnerNow(config, isOwner) {
+  if (isOwner) return true;
+  const st = currentStaffLS(config);
+  return !!(st && st.isOwnerLogin);
+}
+async function requestPulseRefund(config, log, reason, note) {
+  const staff = currentStaffLS(config);
+  await pulseLogRef(log.id).set({
+    brand: log.brand || config.brand,
+    refundReq: { reason, note: note || '', by: staff && staff.name ? staff.name : '', byId: staff && staff.id ? staff.id : null, at: Date.now() },
+    refundRejected: null,
+  }, { merge: true });
+}
+async function clearPulseRefundReq(config, log, rejectNote) {
+  await pulseLogRef(log.id).set({
+    brand: log.brand || config.brand, refundReq: null,
+    refundRejected: rejectNote != null ? { note: rejectNote, at: Date.now() } : null,
+  }, { merge: true });
+}
+async function approvePulseRefund(config, log, reason, note) {
+  if (!pulseLive(log) || log.status === 'sending') throw new Error('รายการนี้คืนเครดิตไม่ได้ (' + log.status + ')');
+  const req = log.refundReq || {};
+  await pulseLogRef(log.id).set({
+    brand: log.brand || config.brand, status: 'refunded', statusBefore: log.status,
+    refundedAt: Date.now(), refundBy: 'เจ้าของ',
+    refundReason: reason || req.reason || 'other', refundNote: note != null && note !== '' ? note : (req.note || ''),
+    refundReqBy: req.by || '', refundReq: null,
+  }, { merge: true });
+}
+
 // อ่านประวัติเครื่องของวันจาก EC (ผ่าน Worker) — ทีละ 4 เครื่องพร้อมกัน
 async function fetchEcDay(config, dateKey, machineIds, onProgress) {
   const ms = pulseMachines(config).filter(m => !machineIds || machineIds.includes(m.id));
@@ -8230,6 +8300,7 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
   const d1 = d0 + 86400000;
   const inDay = (t) => t >= d0 && t < d1 && t >= sinceMs;
   const live = (logs || []).filter(l => l.brand === config.brand && pulseLive(l));
+  const refundedAll = (logs || []).filter(l => l.brand === config.brand && pulseRefunded(l)); // ↩️ v146
   const sumBaht = (list) => list.reduce((s, l) => s + (l.baht || 0), 0);
   const issues = [];
   const add = (key, level, text, extra) => issues.push({ key, level, text, ...extra });
@@ -8257,6 +8328,9 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
 
   // พัลส์ของวันนั้นที่ไม่มีงานรองรับ (งานถูกลบ / บันทึกโปรไม่สำเร็จ)
   const dayLogs = live.filter(l => inDay(l.createdAt || 0));
+  const dayRefunded = refundedAll.filter(l => inDay(l.createdAt || 0));
+  const refundSeen = {}; // id → true/false (เครื่องได้รับไหม เมื่อเทียบ EC แล้ว)
+  dayLogs.filter(pulseRefundPending).forEach(l => add(`r:${l.id}`, 'warn', 'รอเจ้าของคืนเครดิต', { label: `${l.machineLabel} · ${l.refLabel || ''}`, amount: l.baht }));
   const orderIds = new Set((orders || []).map(o => o.id));
   const promoIds = new Set((ledger || []).map(e => e.id));
   dayLogs.forEach(l => {
@@ -8270,18 +8344,24 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
     pulseMachines(config).forEach(m => {
       const e = ec.byMachine[m.id];
       const appList = dayLogs.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
-      const appBaht = sumBaht(appList);
-      if (!e) { machineRows.push({ id: m.id, label: m.label, appBaht, ecBaht: null, ok: null }); return; }
+      const refList = dayRefunded.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+      let appBaht = sumBaht(appList);
+      if (!e) { machineRows.push({ id: m.id, label: m.label, appBaht: appBaht + sumBaht(refList), ecBaht: null, ok: null }); return; }
       const ecList = (e.forced || []).filter(f => !f.pending && pulseBkkMs(f.time) >= sinceMs).map(f => ({ ...f, ms: pulseBkkMs(f.time), used: false }));
       const ecBaht = ecList.reduce((s, f) => s + (f.pulses || 0), 0) * PULSE_BAHT;
       const missing = [];
-      appList.forEach(l => {
+      const matchEc = (l) => {
         const t = l.sentAt || l.createdAt || 0; // sentAt = เวลาฝั่ง EC (แม่นกว่านาฬิกามือถือ)
         let best = null;
         ecList.forEach(f => { if (!f.used && f.pulses === l.pulses && Math.abs(f.ms - t) <= 120000 && (!best || Math.abs(f.ms - t) < Math.abs(best.ms - t))) best = f; });
         if (best) best.used = true;
-        else if (ec.at - (l.createdAt || 0) > 60000) missing.push(l); // เพิ่งยิงไม่ถึงนาที ยังไม่ขึ้นประวัติ — ข้ามไปก่อน
+        return best;
+      };
+      appList.forEach(l => {
+        if (!matchEc(l) && ec.at - (l.createdAt || 0) > 60000) missing.push(l); // เพิ่งยิงไม่ถึงนาที ยังไม่ขึ้นประวัติ — ข้ามไปก่อน
       });
+      // ↩️ คืนเครดิตแล้ว: จับคู่ทีหลัง (ไม่แย่งของที่ยิงจริง) · ไม่เจอก็ไม่เป็นไร = เครื่องไม่ได้รับ
+      refList.forEach(l => { const hit = matchEc(l); refundSeen[l.id] = !!hit; if (hit) appBaht += l.baht || 0; });
       const outside = ecList.filter(f => !f.used);
       const noSignal = (e.forcedNoSignal || []).filter(t => pulseBkkMs(t) >= sinceMs);
       machineRows.push({ id: m.id, label: m.label, appBaht, ecBaht, ok: !outside.length && !missing.length });
@@ -8299,9 +8379,11 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
     dateKey, records, issues, errors,
     need: records.reduce((s, r) => s + r.need, 0),
     firedForRecords: records.reduce((s, r) => s + r.fired, 0),
-    appBaht: sumBaht(dayLogs),
+    appBaht: sumBaht(dayLogs) + sumBaht(dayRefunded),
     ecBaht: ec && ec.byMachine && Object.keys(ec.byMachine).length ? machineRows.reduce((s, r) => s + (r.ecBaht || 0), 0) : null,
     machineRows, ecAt: ec ? ec.at : null, ecErrors: ec ? ec.errors : null,
+    refunds: dayRefunded.map(l => ({ id: l.id, machineLabel: l.machineLabel, refLabel: l.refLabel || '', baht: l.baht || 0, reason: l.refundReason, note: l.refundNote || '', ecSeen: l.id in refundSeen ? refundSeen[l.id] : null })),
+    refundBaht: sumBaht(dayRefunded),
     active: dateKey >= dateKeyOf(new Date(sinceMs || Date.now())),
   };
 }
@@ -8464,7 +8546,7 @@ function allocatePulseLogs(order, config, logs) {
 }
 
 // ---------- รูปผนังเครื่อง (สัดส่วน/สีตามแบบสติกเกอร์หน้าเครื่องจริง Teddy 2 · หน่วย = ซม.) ----------
-function MachineWall({ config, stacks, marks, selected, onPick }) {
+function MachineWall({ config, stacks, marks, selected, onPick, problems }) {
   const W = 81, GAP = 2, TOP = 20, H = 207.5;
   const vbW = stacks.length * W + (stacks.length - 1) * GAP + 8;
   const vbH = TOP + H + 8;
@@ -8490,6 +8572,12 @@ function MachineWall({ config, stacks, marks, selected, onPick }) {
       <g key={m.id}>
         {st === 'target' && <rect x={x + 1.5} y={y + 1.5} width={W - 3} height={h - 3} rx="4" fill="none" stroke={GOLD} strokeWidth="4" className="animate-pulse" />}
         {sel && <rect x={x + 1} y={y + 1} width={W - 2} height={h - 2} rx="4" fill="rgba(15,23,42,0.06)" stroke="#0F172A" strokeWidth="5" />}
+        {problems && problems.has(m.id) && (
+          <g>
+            <circle cx={x + 12} cy={y + 27} r="9" fill="#DC2626" stroke="#fff" strokeWidth="1.8" />
+            <text x={x + 12} y={y + 31.6} textAnchor="middle" fontSize="13" fontWeight="900" fill="#fff">!</text>
+          </g>
+        )}
         <rect data-m={m.id} role="button" aria-label={m.label} x={x} y={y} width={W} height={h} fill="transparent" style={{ cursor: 'pointer' }} onClick={() => onPick(m)} />
       </g>
     );
@@ -8594,7 +8682,7 @@ function jobOpenText(config, alloc) {
 
 // ---------- หน้าเลือกเครื่อง (เต็มจอ) ----------
 // jobs = [{ order, alloc }] · fixed = เปิดจากใบงาน (ใบงานเดียว) · ไม่ fixed = เปิดจากหน้าแรก (แตะเครื่องก่อน แล้วเลือกใบงาน)
-function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onClose, busyText, msg, banner }) {
+function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onClose, busyText, msg, banner, jobLogs, isOwner }) {
   const stacks = pulseStacks(config);
   const ms = pulseMachines(config);
   const [sel, setSel] = useState(preset ? preset.machine : null);
@@ -8623,6 +8711,11 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   });
 
   const selM = ms.find(m => m.id === sel) || null;
+  // ❗ เครื่องที่แม่บ้านแจ้งปัญหาวันนี้ (ยิงแล้วไม่ทำงาน / หยุดกลางคัน)
+  const todayKey0 = dateKeyOf(new Date());
+  const problems = new Set((dayLogs || []).filter(l => l.dateKey === todayKey0 && (
+    (pulseRefundPending(l) && refundIsFault(l.refundReq.reason)) || (pulseRefunded(l) && refundIsFault(l.refundReason))
+  )).map(l => l.machine));
 
   // ค่าที่แนะนำตามใบงาน
   const suggest = (m, j) => {
@@ -8685,6 +8778,8 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   }
   if (block) warn = '';
   if (selM && marks[selM.id] === 'busy') warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้เพิ่งเปิดให้งานอื่น');
+  if (selM && problems.has(selM.id)) warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้มีแจ้งปัญหาวันนี้ — เช็กเครื่องก่อน');
+  const firedHere = fixed && (jobLogs || []).some(l => pulseLive(l));
   const ready = selM && job && !block && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : !!heat);
 
   const tile = (active, color, onClick, top, bottom, badge) => (
@@ -8733,11 +8828,12 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
         )}
 
         <div className="rounded-2xl border border-slate-200 p-2" style={{ background: 'linear-gradient(#FBF6EC, #F3EBDD)' }}>
-          <MachineWall config={config} stacks={stacks} marks={marks} selected={sel} onPick={pick} />
+          <MachineWall config={config} stacks={stacks} marks={marks} selected={sel} onPick={pick} problems={problems} />
           <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2 text-[11px] font-bold text-slate-600">
             <span><span className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ border: '2px solid #C68B4A' }}></span>{tr(config, fixed ? 'ตามใบงาน' : 'มีใบงานรอ')}</span>
             {fixed && <span>✅ {tr(config, 'เปิดแล้ว')}</span>}
             <span>⏳ {tr(config, fixed ? 'เพิ่งเปิดให้งานอื่น' : 'เพิ่งเปิด')}</span>
+            {problems.size > 0 && <span><span className="inline-block rounded-full text-white text-center align-middle mr-1" style={{ width: 14, height: 14, lineHeight: '14px', fontSize: 10, fontWeight: 900, background: '#DC2626' }}>!</span>{tr(config, 'มีปัญหา')}</span>}
             <span>{tr(config, 'แตะ อบ (บน) หรือ ซัก (ล่าง)')}</span>
           </div>
         </div>
@@ -8783,6 +8879,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
             )}
 
             {block && <p className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">🚫 {block}</p>}
+            {block && firedHere && <p className="text-xs font-bold text-slate-600 px-1">💡 {tr(config, 'เครื่องมีปัญหา? กด ⚠️ ที่รายการด้านล่าง ให้เจ้าของคืนเครดิต')}</p>}
             {(fixed || job) && !block && (selM.kind === 'wash' ? (
               <div>
                 <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกน้ำ')}</p>
@@ -8822,6 +8919,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
         )}
 
         {msg && <p className={`text-sm font-bold text-center ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
+        {fixed && <JobFiredList config={config} logs={jobLogs} isOwner={isOwner} />}
       </div>
 
       {selM && (fixed || job) && (
@@ -8840,7 +8938,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
 }
 
 // ---------- การ์ดในใบรับงาน ----------
-function PulseStarterCard({ config, order }) {
+function PulseStarterCard({ config, order, isOwner }) {
   const [logs, setLogs] = useState([]);
   const [dayLogs, setDayLogs] = useState([]);
   const [picker, setPicker] = useState(null); // null | { preset, retryLog }
@@ -8915,7 +9013,8 @@ function PulseStarterCard({ config, order }) {
         {pulseLogDetail(config, l) && <span className="text-[11px] font-bold text-slate-600">{pulseLogDetail(config, l)}</span>}
         <span className="text-[11px] text-slate-500">{new Date(l.createdAt).toTimeString().slice(0, 5)} · ฿{part ? shown : l.baht}{part ? ` (${tr(config, 'จาก')} ฿${l.baht})` : ''}{amtNote ? ` · ${amtNote}` : ''}</span>
         {statusChip(l)}
-        {unconfirmed && (
+        <RefundAction config={config} log={l} isOwner={isOwner} hideRequest={unconfirmed} />
+        {unconfirmed && !pulseRefundPending(l) && (
           <>
             <button onClick={() => recheck(l)} disabled={!!busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-300 text-slate-600 active:scale-95">🔄 {tr(config, 'เช็กอีกครั้ง')}</button>
             <button onClick={() => setPicker({ retryLog: l, preset: { machine: l.machine, temp: l.temp, heat: l.heat, baht: l.baht } })} disabled={!!busy}
@@ -8961,6 +9060,14 @@ function PulseStarterCard({ config, order }) {
             {alloc.extra.map(x => logRow(x.log, x.amt, tr(config, x.why)))}
           </div>
         )}
+        {logs.some(pulseRefunded) && (
+          <div className="rounded-xl p-2.5 border bg-sky-50 border-sky-200">
+            <p className="text-sm font-bold text-sky-800">↩️ {tr(config, 'คืนเครดิตแล้ว')}</p>
+            {logs.filter(pulseRefunded).map(l => (
+              <p key={l.id} className="text-[11px] text-slate-600 mt-1"><span className="line-through font-bold">🧺 {l.machineLabel} ฿{l.baht}</span> · {new Date(l.createdAt || 0).toTimeString().slice(0, 5)} · {tr(config, refundReasonLabel(l.refundReason))}{l.refundNote ? ' — ' + l.refundNote : ''}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       <button onClick={() => setPicker({ preset: null, retryLog: null })} disabled={!!busy}
@@ -8973,7 +9080,7 @@ function PulseStarterCard({ config, order }) {
       {msg && !picker && <p className={`mt-2 text-sm font-bold ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
       {picker && (
         <MachinePickerSheet config={config} jobs={[{ order, alloc: pickerAlloc }]} fixed={true} dayLogs={dayLogs} preset={picker.preset}
-          onFire={fire} onClose={() => { setPicker(null); }} busyText={busy} msg={msg} />
+          onFire={fire} onClose={() => { setPicker(null); }} busyText={busy} msg={msg} jobLogs={logs} isOwner={isOwner} />
       )}
     </div>
   );
@@ -9066,7 +9173,7 @@ function buildLinkQrDataUrl(text, cell, margin) {
   catch (e) { console.error('buildLinkQrDataUrl:', e); return null; }
 }
 
-function JobStartSheet({ config, orderId, orders, onClose }) {
+function JobStartSheet({ config, orderId, orders, onClose, isOwner }) {
   const [logs, setLogs] = useState([]);
   const [dayLogs, setDayLogs] = useState([]);
   const [busy, setBusy] = useState(null);
@@ -9136,7 +9243,7 @@ function JobStartSheet({ config, orderId, orders, onClose }) {
     </div>
   );
   return <MachinePickerSheet config={config} jobs={[{ order, alloc }]} fixed={true} dayLogs={dayLogs} preset={null}
-    onFire={fire} onClose={onClose} busyText={busy} msg={msg} banner={banner} />;
+    onFire={fire} onClose={onClose} busyText={busy} msg={msg} banner={banner} jobLogs={logs} isOwner={isOwner} />;
 }
 
 // กล้องสแกน QR ในแอป (สำรอง — iPhone ที่สแกนด้วยกล้องแล้วเปิด Safari จะไม่ได้ล็อกอิน)
@@ -9212,6 +9319,214 @@ function QrScanSheet({ config, onResult, onClose }) {
   );
 }
 
+// ---------- ↩️ คืนเครดิตเมื่อเครื่องมีปัญหา (v146) ----------
+// แม่บ้านกด ⚠️ เครื่องมีปัญหา → เจ้าของอนุมัติ (หน้าเจ้าของ → ⚡ พัลส์ หรือกดเองในใบงาน) → ใบงานกลับมาเปิดเครื่องได้
+function usePulseRefundInbox(config, days) {
+  const on = pulseOn(config);
+  const [list, setList] = useState([]);
+  const todayKey = dateKeyOf(new Date());
+  const keys = useMemo(() => {
+    const out = [];
+    for (let k = 0; k < Math.min(days || 7, 10); k++) { const d = new Date(); d.setDate(d.getDate() - k); out.push(dateKeyOf(d)); }
+    return out;
+  }, [todayKey, days]);
+  useEffect(() => {
+    if (!on || !window.db) { setList([]); return; }
+    const u = subscribePulseLogsByDays(keys, l => setList(l.filter(x => x.brand === config.brand)));
+    return () => { if (u) u(); };
+  }, [on, keys.join(','), config.brand]);
+  return list;
+}
+
+// ปุ่ม/ป้ายคืนเครดิต ต่อท้ายรายการยิง 1 ครั้ง
+function RefundAction({ config, log, isOwner, hideRequest }) {
+  const [sheet, setSheet] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const owner = pulseIsOwnerNow(config, isOwner);
+  const chip = (cls, text) => <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cls}`}>{text}</span>;
+  const run = async (fn) => {
+    if (busy) return;
+    setBusy(true);
+    try { await fn(); } catch (e) { alert('❌ ' + tr(config, 'ส่งไม่สำเร็จ') + ': ' + (e && e.message ? e.message : e)); }
+    setBusy(false);
+  };
+  if (!log) return null;
+  // หน้าต่างแจ้งปัญหาต้องอยู่ต่อแม้สถานะรายการเปลี่ยน (ส่งคำขอแล้วยังเห็นข้อความ 'ส่งแล้ว')
+  const sheetEl = sheet ? <PulseRefundSheet config={config} log={log} owner={owner} onClose={() => setSheet(false)} /> : null;
+  if (pulseRefunded(log)) return <>{chip('bg-sky-100 text-sky-800', '↩️ ' + tr(config, 'คืนเครดิตแล้ว'))}{sheetEl}</>;
+  if (!pulseLive(log) || log.status === 'sending') return sheetEl;
+  const btn = (cls, onClick, text) => (
+    <button onClick={onClick} disabled={busy} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border active:scale-95 disabled:opacity-50 ${cls}`}>{busy ? '…' : text}</button>
+  );
+  if (pulseRefundPending(log)) {
+    return (
+      <>
+        {chip('bg-amber-100 text-amber-800', '⏳ ' + tr(config, 'รอเจ้าของคืนเครดิต'))}
+        {owner ? (
+          <>
+            {btn('bg-emerald-50 border-emerald-400 text-emerald-700', () => {
+              if (!confirm(`↩️ ${tr(config, 'คืนเครดิต')} ฿${log.baht}\n\n📋 ${log.refLabel || ''}\n🧺 ${log.machineLabel || ''}\n⚠️ ${tr(config, refundReasonLabel(log.refundReq.reason))}${log.refundReq.note ? ' — ' + log.refundReq.note : ''}\n\nใบงานจะกลับมาเปิดเครื่องได้อีก ฿${log.baht}`)) return;
+              run(() => approvePulseRefund(config, log));
+            }, '✅ ' + tr(config, 'คืนเครดิต'))}
+            {btn('bg-white border-slate-300 text-slate-600', () => {
+              const n = prompt('เหตุผลที่ไม่คืน (แม่บ้านจะเห็น)', '');
+              if (n === null) return;
+              run(() => clearPulseRefundReq(config, log, n.trim() || 'ไม่คืน'));
+            }, '✕ ' + tr(config, 'ไม่คืน'))}
+          </>
+        ) : btn('bg-white border-slate-300 text-slate-500', () => { if (confirm(tr(config, 'ยกเลิกคำขอ') + '?')) run(() => clearPulseRefundReq(config, log, null)); }, tr(config, 'ยกเลิกคำขอ'))}
+        {sheetEl}
+      </>
+    );
+  }
+  return (
+    <>
+      {log.refundRejected && log.refundRejected.note && chip('bg-slate-100 text-slate-600', `✕ ${tr(config, 'เจ้าของไม่คืน')}: ${log.refundRejected.note}`)}
+      {owner
+        ? btn('bg-sky-50 border-sky-400 text-sky-800', () => setSheet(true), '↩️ ' + tr(config, 'คืนเครดิต'))
+        : !hideRequest && btn('bg-rose-50 border-rose-300 text-rose-700', () => setSheet(true), '⚠️ ' + tr(config, 'เครื่องมีปัญหา'))}
+      {sheetEl}
+    </>
+  );
+}
+
+// หน้าต่างแจ้งปัญหา (แม่บ้าน = ส่งคำขอ · เจ้าของ = คืนเลย)
+function PulseRefundSheet({ config, log, owner, onClose }) {
+  const [reason, setReason] = useState(null);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const submit = async () => {
+    if (!reason) return;
+    if (reason === 'other' && !note.trim()) { alert(tr(config, 'ใส่รายละเอียดก่อน')); return; }
+    if (owner && !confirm(`↩️ ${tr(config, 'คืนเครดิต')} ฿${log.baht}\n\n📋 ${log.refLabel || ''}\n🧺 ${log.machineLabel || ''}\n\nใบงานจะกลับมาเปิดเครื่องได้อีก ฿${log.baht}`)) return;
+    setSaving(true);
+    try {
+      if (owner) await approvePulseRefund(config, log, reason, note.trim());
+      else await requestPulseRefund(config, log, reason, note.trim());
+      playSuccessSound();
+      if (owner) onClose(); else setDone(true);
+    } catch (e) { alert('❌ ' + tr(config, 'ส่งไม่สำเร็จ') + ': ' + (e && e.message ? e.message : e)); }
+    setSaving(false);
+  };
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center" style={{ zIndex: 70 }} onClick={onClose}>
+      <div className="bg-white rounded-t-3xl w-full max-w-md p-4 pb-8 max-h-[92vh] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-lg font-extrabold text-slate-900 flex-1">{owner ? '↩️ ' + tr(config, 'คืนเครดิต') : '⚠️ ' + tr(config, 'แจ้งเครื่องมีปัญหา')}</p>
+          <button onClick={onClose} className="text-slate-400 text-2xl leading-none px-2">✕</button>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">{tr(config, 'ขอคืนเครดิตให้ใบงานนี้ เพื่อสแกนเริ่มเครื่องใหม่')}</p>
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2 mb-3">
+          <p className="text-sm font-extrabold text-slate-800">🧺 {log.machineLabel} · ฿{log.baht} <span className="text-xs font-bold text-slate-500">({log.pulses} {tr(config, 'พัลส์')})</span></p>
+          <p className="text-xs text-slate-600">📋 {log.refLabel || '-'} · 🕐 {new Date(log.createdAt || 0).toTimeString().slice(0, 5)}{pulseLogDetail(config, log) ? ' · ' + pulseLogDetail(config, log) : ''}</p>
+        </div>
+        {done ? (
+          <div className="rounded-2xl bg-emerald-50 border-2 border-emerald-300 p-4 text-center">
+            <p className="text-3xl">📨</p>
+            <p className="font-extrabold text-emerald-800 mt-1">{tr(config, 'ส่งแล้ว — แจ้งเจ้าของให้อนุมัติ')}</p>
+            <p className="text-xs text-emerald-700 mt-1">{tr(config, 'พอเจ้าของคืนแล้ว สแกนใบงานเริ่มเครื่องใหม่ได้เลย')}</p>
+            <button onClick={onClose} className="mt-3 w-full py-3 rounded-xl bg-emerald-600 text-white font-bold active:scale-95">OK</button>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เกิดอะไรขึ้น')}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {REFUND_REASONS.map(r => (
+                <button key={r.id} onClick={() => setReason(r.id)}
+                  className={`rounded-2xl px-2 py-3 border-2 text-sm font-bold active:scale-95 transition ${reason === r.id ? 'bg-rose-500 border-rose-500 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>
+                  {r.emoji} {tr(config, r.label)}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs font-bold text-slate-500 mt-3 mb-1">{tr(config, 'รายละเอียดเพิ่มเติม')}{reason === 'other' ? ' *' : ''}</p>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+              className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 text-sm" placeholder={tr(config, 'เช่น ซัก 5 ขึ้น E21 หยุดตอน 20 นาที')} />
+            <button onClick={submit} disabled={!reason || saving}
+              className={`w-full mt-3 py-3.5 rounded-2xl text-white text-base font-extrabold active:scale-95 transition disabled:opacity-40 ${owner ? 'bg-sky-600' : 'bg-rose-500'}`}>
+              {saving ? '…' : owner ? `↩️ ${tr(config, 'คืนเครดิต')} ฿${log.baht}` : `📨 ${tr(config, 'ส่งให้เจ้าของอนุมัติ')}`}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// รายการที่เปิดเครื่องไปแล้วของใบงาน (หน้าเลือกเครื่องจาก QR / ใบงาน)
+function JobFiredList({ config, logs, isOwner }) {
+  const list = (logs || []).filter(l => pulseLive(l) || pulseRefunded(l)).slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  if (!list.length) return null;
+  return (
+    <div className="rounded-2xl bg-white border border-slate-200 p-3">
+      <p className="text-xs font-bold text-slate-500 mb-1">✅ {tr(config, 'เปิดแล้วสำหรับใบงานนี้')}</p>
+      {list.map(l => (
+        <div key={l.id} className={`flex items-center gap-1.5 flex-wrap py-1.5 border-t border-slate-100 ${pulseRefunded(l) ? 'opacity-70' : ''}`}>
+          <span className={`text-xs font-bold text-slate-800 ${pulseRefunded(l) ? 'line-through' : ''}`}>🧺 {l.machineLabel}</span>
+          {pulseLogDetail(config, l) && <span className="text-[11px] font-bold text-slate-600">{pulseLogDetail(config, l)}</span>}
+          <span className="text-[11px] text-slate-500">{new Date(l.createdAt || 0).toTimeString().slice(0, 5)} · ฿{l.baht}</span>
+          <RefundAction config={config} log={l} isOwner={isOwner} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// กล่องคำขอคืนเครดิต (หน้าเจ้าของ → ⚡ พัลส์)
+function PulseRefundInbox({ config }) {
+  const list = usePulseRefundInbox(config, 7);
+  const [busy, setBusy] = useState(null);
+  const pending = list.filter(pulseRefundPending).sort((a, b) => (b.refundReq.at || 0) - (a.refundReq.at || 0));
+  const recent = list.filter(pulseRefunded).sort((a, b) => (b.refundedAt || 0) - (a.refundedAt || 0)).slice(0, 8);
+  const when = (t) => { const d = new Date(t || 0); return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) + ' ' + d.toTimeString().slice(0, 5); };
+  const act = async (l, fn) => {
+    if (busy) return;
+    setBusy(l.id);
+    try { await fn(); playSuccessSound(); } catch (e) { alert('❌ ' + (e && e.message ? e.message : e)); }
+    setBusy(null);
+  };
+  if (!pending.length && !recent.length) return null;
+  return (
+    <div className="space-y-2 mb-3">
+      {pending.length > 0 && (
+        <div className="rounded-2xl p-3 bg-amber-50 border-2 border-amber-300">
+          <p className="font-extrabold text-amber-900 mb-2">↩️ แม่บ้านขอคืนเครดิต {pending.length} รายการ</p>
+          <div className="space-y-2">
+            {pending.map(l => (
+              <div key={l.id} className="bg-white rounded-xl p-3 border border-amber-200">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-extrabold text-slate-900 flex-1">🧺 {l.machineLabel} · ฿{l.baht}</p>
+                  <span className="text-[11px] text-slate-500">{when(l.createdAt)}</span>
+                </div>
+                <p className="text-xs text-slate-600">📋 {l.refLabel || '-'}{pulseLogDetail(config, l) ? ' · ' + pulseLogDetail(config, l) : ''}</p>
+                <p className="text-sm font-bold text-rose-700 mt-1">⚠️ {refundReasonLabel(l.refundReq.reason)}{l.refundReq.note ? ' — ' + l.refundReq.note : ''}</p>
+                <p className="text-[11px] text-slate-500">แจ้งโดย {l.refundReq.by || '-'} · {when(l.refundReq.at)} · ยิงโดย {l.staffName || '-'}</p>
+                <div className="flex gap-2 mt-2">
+                  <button disabled={busy === l.id} onClick={() => { if (confirm(`คืนเครดิต ฿${l.baht} ให้ ${l.refLabel || ''}?\n\nใบงานจะกลับมาเปิดเครื่องได้อีก ฿${l.baht}\n(ร้านรับภาระพัลส์ที่ยิงไปแล้ว)`)) act(l, () => approvePulseRefund(config, l)); }}
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-extrabold active:scale-95 disabled:opacity-50">{busy === l.id ? '…' : `✅ คืนเครดิต ฿${l.baht}`}</button>
+                  <button disabled={busy === l.id} onClick={() => { const n = prompt('เหตุผลที่ไม่คืน (แม่บ้านจะเห็น)', ''); if (n !== null) act(l, () => clearPulseRefundReq(config, l, n.trim() || 'ไม่คืน')); }}
+                    className="px-4 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-600 text-sm font-bold active:scale-95 disabled:opacity-50">✕ ไม่คืน</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {recent.length > 0 && (
+        <div className="rounded-2xl p-3 bg-white border border-slate-200">
+          <p className="text-xs font-bold text-slate-500 mb-1">↩️ คืนเครดิตแล้ว (7 วัน)</p>
+          {recent.map(l => (
+            <div key={l.id} className="text-xs text-slate-700 py-1 border-t border-slate-100">
+              <b>{l.machineLabel} ฿{l.baht}</b> · {l.refLabel || '-'} · {refundReasonLabel(l.refundReason)}{l.refundNote ? ' — ' + l.refundNote : ''}
+              <span className="text-slate-400"> · {when(l.refundedAt)}{l.refundReqBy ? ' · แจ้งโดย ' + l.refundReqBy : ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------- ⚡ กระทบยอด: เนื้อหา (ใช้ทั้งหน้าแม่บ้านและหน้าเจ้าของ) ----------
 function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc }) {
   const { recon, ecBusy, refreshEc, note, unexplained } = usePulseRecon(config, orders, dateKey);
@@ -9270,6 +9585,16 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc 
               </div>
             ))}
           </div>
+
+          {recon.refunds.length > 0 && (
+            <div className="rounded-2xl p-3 bg-sky-50 border border-sky-200">
+              <p className="text-sm font-extrabold text-sky-900">↩️ {tr(config, 'คืนเครดิตโดยเจ้าของ')} ฿{formatMoney(recon.refundBaht)} · {recon.refunds.length} {tr(config, 'รายการ')}</p>
+              <p className="text-[11px] text-sky-800">{tr(config, 'เครื่องได้รับพัลส์แล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)')}</p>
+              {recon.refunds.map(r => (
+                <p key={r.id} className="text-xs text-slate-700 mt-1">• <b>{r.machineLabel} ฿{r.baht}</b> · {r.refLabel} · {tr(config, refundReasonLabel(r.reason))}{r.note ? ' — ' + r.note : ''}{r.ecSeen === false ? ' · ' + tr(config, 'เครื่องไม่ได้รับ') : ''}</p>
+              ))}
+            </div>
+          )}
 
           {recon.errors.length === 0 ? (
             <div className="rounded-2xl p-3 bg-emerald-50 border-2 border-emerald-300 text-center">
@@ -9407,6 +9732,7 @@ function PulseReconCard({ config, orders, currentStaff }) {
           <p className="text-xs text-slate-600">
             {tr(config, 'งาน')} ฿{formatMoney(recon.need)} · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)} · EC {ecBusy ? `⏳ ${ecBusy}` : recon.ecBaht == null ? '…' : '฿' + formatMoney(recon.ecBaht)}
             {bad > 0 && unexplained.length === 0 ? ` · 📝 ${tr(config, 'ใส่เหตุผลแล้ว')}` : ''}
+            {recon.issues.some(i => i.key.startsWith('r:')) ? ` · ⏳ ${tr(config, 'รอเจ้าของคืนเครดิต')} ${recon.issues.filter(i => i.key.startsWith('r:')).length}` : ''}
           </p>
         </div>
         <Icon name="chevron-right" className="w-5 h-5 text-slate-500" />
@@ -9466,7 +9792,12 @@ function PulseSettingsCard({ config }) {
 
 function OwnerPulseView({ config, orders }) {
   const [d, setD] = useState(() => dateKeyOf(new Date()));
-  return <PulseReconPanel config={config} orders={orders} dateKey={d} setDateKey={setD} isOwner={true} autoEc={true} />;
+  return (
+    <div>
+      <PulseRefundInbox config={config} />
+      <PulseReconPanel config={config} orders={orders} dateKey={d} setDateKey={setD} isOwner={true} autoEc={true} />
+    </div>
+  );
 }
 
 // ============ 🎟️ เครดิตแม่บ้าน / กระทบยอด (เจ้าของ) — เฟส 3 ============
@@ -9869,6 +10200,7 @@ function CreditView({ config, orders, staffList }) {
 
 function OwnerDashboardView({ config, orders, collections, tokenExchanges, staffList, onLogout, onSelectOrder, onCollect, onPayFees, onDeleteToken, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
   const [tab, setTab] = useState('cash');
+  const refundPendingN = usePulseRefundInbox(config, 7).filter(pulseRefundPending).length; // ↩️ v146
   const [showShare, setShowShare] = useState(false);
   const [listMode, setListMode] = useState('all');
   const [listDate, setListDate] = useState(() => new Date());
@@ -10184,7 +10516,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
           {config.hasChecklist && <TabBtn active={tab === 'checklist'} onClick={() => setTab('checklist')}>📋 งานแม่บ้าน</TabBtn>}
           {config.hasAttendance && <TabBtn active={tab === 'attendance'} onClick={() => setTab('attendance')}>🕐 เข้า-ออก</TabBtn>}
           <TabBtn active={tab === 'coins'} onClick={() => setTab('coins')}>💰 นับเหรียญ</TabBtn>
-          {pulseOn(config) && <TabBtn active={tab === 'pulse'} onClick={() => setTab('pulse')}>⚡ พัลส์</TabBtn>}
+          {pulseOn(config) && <TabBtn active={tab === 'pulse'} onClick={() => setTab('pulse')}>⚡ พัลส์{refundPendingN > 0 ? ` 🔴${refundPendingN}` : ''}</TabBtn>}
           <TabBtn active={tab === 'credit'} onClick={() => setTab('credit')}>🎟️ เครดิต</TabBtn>
           {config.tokenEnabled !== false && menuOn(config, 'exchange') && <TabBtn active={tab === 'token'} onClick={() => setTab('token')}>🪙 {exchangeName(config)} ({(tokenExchanges || []).filter(t => !t.cleared).length})</TabBtn>}
           {config.foldPricePerBasket > 0 && <TabBtn active={tab === 'service'} onClick={() => setTab('service')}>🧺 ค่าพับ ({unpaidServiceOrders.length})</TabBtn>}
@@ -10260,6 +10592,12 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
       </div>
 
       <div className="px-5 py-4 pb-8">
+        {refundPendingN > 0 && tab !== 'pulse' && (
+          <button onClick={() => setTab('pulse')} className="w-full mb-3 rounded-2xl p-3 bg-amber-50 border-2 border-amber-300 text-left active:scale-95 transition">
+            <p className="font-extrabold text-amber-900">↩️ แม่บ้านขอคืนเครดิต {refundPendingN} รายการ — แตะดู</p>
+            <p className="text-xs text-amber-800">เครื่องมีปัญหา · อนุมัติแล้วใบงานจะกลับมาเปิดเครื่องได้</p>
+          </button>
+        )}
         {tab === 'stats' ? (
           <StatsView stats={stats} config={config} orders={orders} onResetAll={onResetAll} />
         ) : tab === 'discount' ? (
