@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v144-2026-10-26';
+  window.APP_VERSION = 'v145-2026-10-26';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2015,6 +2015,25 @@ const MM_DICT = {
   'ขนาดเครื่องไม่ตรงใบงาน': 'စက်အရွယ်အစား အလုပ်စာရွက်နှင့် မကိုက်',
   'ยังไม่ต้องเริ่มตอนนี้ก็ได้ — กดปุ่ม 🧺 เริ่มเครื่อง ที่หน้าแรกทีหลัง': 'ယခု မစတင်လည်းရ — နောက်မှ ပင်မစာမျက်နှာရှိ 🧺 စက်စတင် ခလုတ်ကို နှိပ်ပါ',
   'แตะเครื่อง → เลือกใบงาน → เริ่ม': 'စက်နှိပ် → အလုပ်စာရွက်ရွေး → စတင်',
+  // 📷 QR ใบงาน (v145) — รอพนักงานพม่าตรวจคำแปล
+  'สแกนใบงาน': 'အလုပ်စာရွက် စကင်ဖတ်',
+  'ส่อง QR ที่ใบงาน': 'အလုပ်စာရွက်ပေါ်ရှိ QR ကို ချိန်ပါ',
+  'กำลังเปิดกล้อง…': 'ကင်မရာ ဖွင့်နေသည်…',
+  'QR นี้ไม่ใช่ใบงานของร้าน': 'ဤ QR သည် ဆိုင်၏ အလုပ်စာရွက် မဟုတ်',
+  'เปิดกล้องไม่ได้': 'ကင်မရာ ဖွင့်၍မရ',
+  'กำลังโหลดใบงาน…': 'အလုပ်စာရွက် ဖွင့်နေသည်…',
+  'ไม่พบใบงานนี้ (อาจถูกลบ)': 'ဤအလုပ်စာရွက်ကို မတွေ့ (ဖျက်ထားနိုင်)',
+  'ระบบเริ่มเครื่องจากแอปยังปิดอยู่': 'အက်ပ်မှ စက်စတင်စနစ် ပိတ်ထားဆဲ',
+  'งานนี้ไม่ต้องใช้เครื่อง': 'ဤအလုပ်တွင် စက်မလိုပါ',
+  'คิว': 'တန်းစီ',
+  'รับงาน': 'လက်ခံချိန်',
+  'งานนี้เริ่มเครื่องครบแล้ว — ยิงซ้ำไม่ได้': 'ဤအလုပ်အတွက် စက်စတင်ပြီး — ထပ်မပို့ရ',
+  'ใบงานนี้ไม่มีซัก — แก้ใบงานเพิ่มซักก่อน': 'ဤအလုပ်စာရွက်တွင် လျှော်ခြင်းမရှိ — အရင်ပြင်ဆင်ထည့်ပါ',
+  'ใบงานนี้ไม่มีอบ — แก้ใบงานเพิ่มอบก่อน': 'ဤအလုပ်စာရွက်တွင် အခြောက်ခံမရှိ — အရင်ပြင်ဆင်ထည့်ပါ',
+  'ใบงานนี้เริ่มซักครบแล้ว — ยิงซ้ำไม่ได้': 'ဤအလုပ်စာရွက်အတွက် လျှော်စက်စတင်ပြီး — ထပ်မပို့ရ',
+  'อบครบแล้ว — เพิ่มเวลาได้เฉพาะเครื่องที่อบงานนี้': 'အခြောက်ခံပြီး — ဤအလုပ်ကို ခြောက်နေသောစက်တွင်သာ အချိန်တိုးနိုင်',
+  'เพิ่มเวลาเกินใบงาน (ขึ้นในกระทบยอด)': 'အလုပ်စာရွက်ထက် အချိန်ပိုတိုး (စာရင်းတိုက်စစ်တွင် ပေါ်မည်)',
+  'ยิงไม่ได้': 'မပို့နိုင်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -2139,8 +2158,21 @@ function ensureDemoData(brand) {
 }
 
 // ============ MAIN APP ============
+// 📷 เปิดจาก QR ใบงาน (?go=start&b=<ร้าน>&o=<ใบงาน>) — อ่านครั้งเดียวตอนโหลด
+const DEEP_START = (() => {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('go') === 'start' && p.get('b') && p.get('o')) return { b: p.get('b'), o: p.get('o') };
+  } catch (e) {}
+  return null;
+})();
+
 function App() {
-  const [brand, setBrand] = useState(null);
+  const [deep, setDeep] = useState(DEEP_START);
+  const [brand, setBrand] = useState(DEEP_START ? DEEP_START.b : null);
+  useEffect(() => {
+    if (DEEP_START) { try { window.history.replaceState(null, '', window.location.pathname + window.location.hash); } catch (e) {} }
+  }, []);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
 
@@ -2159,7 +2191,7 @@ function App() {
   }
   
   const config = brand === 'otteri' ? OTTERI_CONFIG : brand === 'trainee' ? TRAINEE_CONFIG : brand === 'teddy2' ? TEDDY2_CONFIG : TEDDY_CONFIG;
-  return <BrandApp config={config} onChangeBrand={() => setBrand(null)} />;
+  return <BrandApp config={config} onChangeBrand={() => { setDeep(null); setBrand(null); }} deepJobId={deep && deep.b === brand ? deep.o : null} onDeepDone={() => setDeep(null)} />;
 }
 
 // ============ คู่มือ/คลังรูปช่วยงาน ============
@@ -2810,7 +2842,7 @@ function StaffLoginView({ config, staffList, staffStatus = 'ok', onLogin, onTogg
   );
 }
 
-function BrandApp({ config: baseConfig, onChangeBrand }) {
+function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) {
   // 🛵 ไรเดอร์ที่เพิ่มเองจาก Firestore — merge เข้า config เพื่อให้ทุกหน้าที่ใช้ config.riders เห็นอัตโนมัติ
   const [cloudRiders, setCloudRiders] = useState([]);
   const [shopSettings, setShopSettings] = useState({});
@@ -3230,6 +3262,7 @@ function BrandApp({ config: baseConfig, onChangeBrand }) {
           🔄 กำลังเชื่อมต่อ cloud...
         </div>
       )}
+      {deepJobId && <JobStartSheet config={config} orderId={deepJobId} orders={orders} onClose={onDeepDone} />}
       {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
@@ -6072,6 +6105,21 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened }) 
 
               {order.note && <div style={{ fontSize: '19px', marginBottom: '8px' }}><b>หมายเหตุ:</b> {order.note}</div>}
 
+              {/* 📷 QR เริ่มเครื่อง — แม่บ้านสแกนแล้วเข้าหน้าเลือกเครื่องของงานนี้ (v145) */}
+              {pulseOn(config) && order.id && creditForOrder(order, config) > 0 && (() => {
+                const qrSrc = buildLinkQrDataUrl(jobQrUrl(config, order), 6, 12);
+                return qrSrc ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', border: '3px solid #000', borderRadius: '10px', padding: '14px', margin: '4px 0 10px' }}>
+                    <img src={qrSrc} alt="QR" style={{ display: 'block', imageRendering: 'pixelated' }} />
+                    <div style={{ lineHeight: 1.3 }}>
+                      <div style={{ fontSize: '24px', fontWeight: 900 }}>สแกนเริ่มเครื่อง</div>
+                      <div style={{ fontSize: '19px', fontWeight: 600 }}>แม่บ้านสแกนด้วยมือถือ</div>
+                      <div style={{ fontSize: '19px', fontWeight: 600 }}>→ เลือกเครื่อง → เริ่ม</div>
+                      <div style={{ fontSize: '21px', fontWeight: 800, marginTop: '4px' }}>คิว {queueNo}</div>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
               <div style={{ textAlign: 'center', fontSize: '18px', borderTop: '1px dashed #000', paddingTop: '6px' }}>
                 {config.subtitle}<br/>ขอบคุณที่ใช้บริการ
               </div>
@@ -8546,7 +8594,7 @@ function jobOpenText(config, alloc) {
 
 // ---------- หน้าเลือกเครื่อง (เต็มจอ) ----------
 // jobs = [{ order, alloc }] · fixed = เปิดจากใบงาน (ใบงานเดียว) · ไม่ fixed = เปิดจากหน้าแรก (แตะเครื่องก่อน แล้วเลือกใบงาน)
-function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onClose, busyText, msg }) {
+function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onClose, busyText, msg, banner }) {
   const stacks = pulseStacks(config);
   const ms = pulseMachines(config);
   const [sel, setSel] = useState(preset ? preset.machine : null);
@@ -8585,7 +8633,8 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
     }
     const base = os.find(x => x.kind === 'dry' && x.kg === m.kg);
     const top = os.filter(x => x.kind === 'topup' && x.kg === m.kg).reduce((a, x) => a + slotOpenLeft(x), 0);
-    const amt = base ? slotOpenLeft(base) + top : top > 0 ? top : dryPriceFor(config, m.kg);
+    const usedHere = j && j.alloc.slots.some(s => s.logs.some(l => l.machine === m.id));
+    const amt = base ? slotOpenLeft(base) + top : top > 0 ? top : usedHere ? PULSE_BAHT : dryPriceFor(config, m.kg);
     return { temp: null, amount: Math.min(maxBaht, Math.max(PULSE_BAHT, amt)) };
   };
   // ใบงานที่เลือกได้ เมื่อแตะเครื่องนี้ (หน้าแรก): ตรงขนาดก่อน → ชนิดเดียวกันแต่ขนาดไม่ตรง · เก่าก่อน
@@ -8620,8 +8669,23 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
     else if (!ks.some(s => s.kg === selM.kg)) warn = `${tr(config, 'ใบงานเป็นเครื่อง')} ${[...new Set(ks.map(s => s.kg))].join('/')}kg`;
     else if (selM.kind === 'wash' && temp && !ks.some(s => s.kg === selM.kg && s.temp === temp)) warn = `${tr(config, 'ใบงานเป็น')}${[...new Set(ks.filter(s => s.kg === selM.kg).map(s => tr(config, washTempLabel(s.temp))))].join('/')}`;
   }
+  // เริ่มครบแล้ว = ยิงซ้ำไม่ได้ (กันกดเบิ้ล/สแกนซ้ำ) · อบเพิ่มเวลาได้เฉพาะเครื่องที่อบงานนี้
+  let block = '';
+  if (selM && job) {
+    const all = job.alloc.slots;
+    const custom = all.find(s => s.kind === 'custom');
+    const usedHere = all.some(s => s.logs.some(l => l.machine === selM.id));
+    if (custom) { if (custom.got >= custom.baht) block = tr(config, 'งานนี้เริ่มเครื่องครบแล้ว — ยิงซ้ำไม่ได้'); }
+    else if (!all.some(s => slotSameKind(s, selM))) block = selM.kind === 'wash' ? tr(config, 'ใบงานนี้ไม่มีซัก — แก้ใบงานเพิ่มซักก่อน') : tr(config, 'ใบงานนี้ไม่มีอบ — แก้ใบงานเพิ่มอบก่อน');
+    else if (!openSlots.some(s => slotSameKind(s, selM))) {
+      if (selM.kind === 'wash') block = tr(config, 'ใบงานนี้เริ่มซักครบแล้ว — ยิงซ้ำไม่ได้');
+      else if (!usedHere) block = tr(config, 'อบครบแล้ว — เพิ่มเวลาได้เฉพาะเครื่องที่อบงานนี้');
+      else warn = tr(config, 'เพิ่มเวลาเกินใบงาน (ขึ้นในกระทบยอด)');
+    }
+  }
+  if (block) warn = '';
   if (selM && marks[selM.id] === 'busy') warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้เพิ่งเปิดให้งานอื่น');
-  const ready = selM && job && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : !!heat);
+  const ready = selM && job && !block && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : !!heat);
 
   const tile = (active, color, onClick, top, bottom, badge) => (
     <button onClick={onClick} disabled={!!busyText}
@@ -8646,6 +8710,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
       </div>
 
       <div className="p-3 space-y-3 pb-28">
+        {banner}
         {fixed ? (
           <div className={`rounded-2xl px-3 py-2 border ${openSlots.length ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
             <p className={`text-xs font-bold ${openSlots.length ? 'text-amber-800' : 'text-emerald-700'}`}>
@@ -8717,7 +8782,8 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               </div>
             )}
 
-            {(fixed || job) && (selM.kind === 'wash' ? (
+            {block && <p className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">🚫 {block}</p>}
+            {(fixed || job) && !block && (selM.kind === 'wash' ? (
               <div>
                 <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกน้ำ')}</p>
                 <div className="flex gap-2">
@@ -8763,7 +8829,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
           <button disabled={!ready || !!busyText}
             onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn }, () => setSel(null))}
             className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: config.gradient }}>
-            {busyText ? `⏳ ${busyText}` : !ready
+            {busyText ? `⏳ ${busyText}` : block ? `🚫 ${tr(config, 'ยิงไม่ได้')}` : !ready
               ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกความร้อนก่อน'))
               : `⚡ ${tr(config, 'เริ่มเครื่อง')} ${selM.label} · ฿${baht} (${baht / PULSE_BAHT} ${tr(config, 'พัลส์')})`}
           </button>
@@ -8794,6 +8860,8 @@ function PulseStarterCard({ config, order }) {
   }, [!!picker, todayKey, config.brand]);
 
   const alloc = useMemo(() => allocatePulseLogs(order, config, logs), [order, config, logs]);
+  const retryId = picker && picker.retryLog ? picker.retryLog.id : null;
+  const pickerAlloc = useMemo(() => retryId ? allocatePulseLogs(order, config, logs.filter(l => l.id !== retryId)) : alloc, [retryId, alloc, order, config, logs]);
   if (alloc.slots.length === 0) return null;
 
   const liveLogs = logs.filter(pulseLive);
@@ -8904,7 +8972,7 @@ function PulseStarterCard({ config, order }) {
 
       {msg && !picker && <p className={`mt-2 text-sm font-bold ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
       {picker && (
-        <MachinePickerSheet config={config} jobs={[{ order, alloc }]} fixed={true} dayLogs={dayLogs} preset={picker.preset}
+        <MachinePickerSheet config={config} jobs={[{ order, alloc: pickerAlloc }]} fixed={true} dayLogs={dayLogs} preset={picker.preset}
           onFire={fire} onClose={() => { setPicker(null); }} busyText={busy} msg={msg} />
       )}
     </div>
@@ -8915,6 +8983,8 @@ function PulseStarterCard({ config, order }) {
 function HomePulseStartCard({ config, orders }) {
   const [logs, setLogs] = useState([]);
   const [open, setOpen] = useState(false);
+  const [scan, setScan] = useState(false);
+  const [scanJob, setScanJob] = useState(null);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
   const lockRef = useRef(false);
@@ -8953,8 +9023,9 @@ function HomePulseStartCard({ config, orders }) {
   const n = jobs.length;
   return (
     <div className="px-5 mt-3">
+      <div className="flex gap-2">
       <button onClick={() => { setMsg(null); setOpen(true); }}
-        className={`w-full rounded-2xl p-4 shadow-lg active:scale-95 transition flex items-center gap-4 border-2 ${n ? 'bg-white border-amber-300' : 'bg-white border-slate-100'}`}>
+        className={`flex-1 min-w-0 rounded-2xl p-4 shadow-lg active:scale-95 transition flex items-center gap-3 border-2 ${n ? 'bg-white border-amber-300' : 'bg-white border-slate-100'}`}>
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow" style={{ background: 'linear-gradient(135deg, #113D6C 0%, #5BB8E8 100%)' }}>🧺</div>
         <div className="text-left flex-1 min-w-0">
           <p className="text-slate-900 font-bold text-lg">{tr(config, 'เริ่มเครื่อง')}</p>
@@ -8964,10 +9035,179 @@ function HomePulseStartCard({ config, orders }) {
         </div>
         <Icon name="chevron-right" className="w-5 h-5 text-slate-400" />
       </button>
+      <button onClick={() => setScan(true)} className="w-24 flex-shrink-0 rounded-2xl bg-slate-900 text-white shadow-lg active:scale-95 transition flex flex-col items-center justify-center">
+        <span className="text-3xl leading-none">📷</span>
+        <span className="text-[11px] font-bold mt-1.5 leading-tight text-center">{tr(config, 'สแกนใบงาน')}</span>
+      </button>
+      </div>
+      {scan && <QrScanSheet config={config} onClose={() => setScan(false)} onResult={(id) => { setScan(false); setScanJob(id); }} />}
+      {scanJob && <JobStartSheet config={config} orderId={scanJob} orders={orders} onClose={() => setScanJob(null)} />}
       {open && (
         <MachinePickerSheet config={config} jobs={jobs} fixed={false} dayLogs={logs} preset={null}
           onFire={fire} onClose={() => setOpen(false)} busyText={busy} msg={msg} />
       )}
+    </div>
+  );
+}
+
+// ---------- 📷 QR ใบงาน: ปริ้นบนใบงาน → แม่บ้านสแกน → เปิดหน้าเริ่มเครื่องของงานนั้น (v145) ----------
+const jobQrUrl = (config, order) => `${APP_SHARE_URL}?go=start&b=${encodeURIComponent(config.brand)}&o=${encodeURIComponent(order.id)}`;
+function parseJobQr(text, config) {
+  try {
+    const u = new URL(String(text).trim());
+    const p = u.searchParams;
+    if (p.get('go') === 'start' && p.get('o') && (!config || p.get('b') === config.brand)) return p.get('o');
+  } catch (e) {}
+  return null;
+}
+function buildLinkQrDataUrl(text, cell, margin) {
+  if (!window.qrcode) return null;
+  try { const q = window.qrcode(0, 'M'); q.addData(text); q.make(); return q.createDataURL(cell || 4, margin != null ? margin : 8); }
+  catch (e) { console.error('buildLinkQrDataUrl:', e); return null; }
+}
+
+function JobStartSheet({ config, orderId, orders, onClose }) {
+  const [logs, setLogs] = useState([]);
+  const [dayLogs, setDayLogs] = useState([]);
+  const [busy, setBusy] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [waited, setWaited] = useState(false);
+  const lockRef = useRef(false);
+  const todayKey = dateKeyOf(new Date());
+  useEffect(() => {
+    if (!window.db || !orderId) return;
+    const u = subscribePulseLogsByRef(orderId, list => setLogs(list.filter(l => l.brand === config.brand)));
+    return () => { if (u) u(); };
+  }, [orderId, config.brand]);
+  useEffect(() => {
+    if (!window.db) return;
+    const u = subscribePulseLogsByDays([todayKey], list => setDayLogs(list.filter(l => l.brand === config.brand)));
+    return () => { if (u) u(); };
+  }, [todayKey, config.brand]);
+  useEffect(() => { const t = setTimeout(() => setWaited(true), 8000); return () => clearTimeout(t); }, []);
+
+  const order = (orders || []).find(o => o.id === orderId) || null;
+  const alloc = useMemo(() => (order ? allocatePulseLogs(order, config, logs) : null), [order, config, logs]);
+  const settingsLoaded = !!(config.settings && Object.keys(config.settings).length > 0);
+
+  const fire = async (job, params, onDone) => {
+    if (lockRef.current || !order) return;
+    lockRef.current = true;
+    try {
+      setBusy(pulseMachineLabel(config, params.machine));
+      setMsg(null);
+      const res = await fireForOrder(config, order, params, null);
+      if (!res) return;
+      setMsg(fireResultMsg(config, res));
+      if (res.status === 'confirmed') playSuccessSound();
+      if (res.status !== 'failed' && onDone) onDone();
+    } finally { lockRef.current = false; setBusy(null); }
+  };
+
+  const plain = (icon, text, sub) => (
+    <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col">
+      <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-2">
+        <p className="font-extrabold text-slate-900 flex-1">📷 {tr(config, 'สแกนใบงาน')}</p>
+        <button onClick={onClose} className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 text-xl font-bold active:scale-95">✕</button>
+      </div>
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+        <p className="text-5xl">{icon}</p>
+        <p className="text-lg font-extrabold text-slate-800 mt-3">{text}</p>
+        {sub && <p className="text-sm text-slate-500 mt-1">{sub}</p>}
+      </div>
+    </div>
+  );
+  if (!order) return waited ? plain('❓', tr(config, 'ไม่พบใบงานนี้ (อาจถูกลบ)')) : plain('⏳', tr(config, 'กำลังโหลดใบงาน…'));
+  if (!settingsLoaded) return plain('⏳', tr(config, 'กำลังโหลดใบงาน…'));
+  if (!pulseOn(config)) return plain('⛔', tr(config, 'ระบบเริ่มเครื่องจากแอปยังปิดอยู่'));
+  if (!alloc || alloc.slots.length === 0) return plain('🧺', tr(config, 'งานนี้ไม่ต้องใช้เครื่อง'));
+
+  const banner = (
+    <div className="rounded-2xl bg-slate-900 text-white px-4 py-3 flex items-center gap-4">
+      <div className="text-center flex-shrink-0">
+        <p className="text-[11px] font-bold opacity-70">{tr(config, 'คิว')}</p>
+        <p className="text-4xl font-extrabold leading-none">{order.queueNo != null ? order.queueNo : '-'}</p>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-lg font-extrabold truncate">{isInternalOrder(order) ? pulseRefLabel(order, config) : (order.customerName || '-')}</p>
+        <p className="text-xs opacity-80">{tr(config, 'รับงาน')} {formatDate(order.createdAt)}</p>
+      </div>
+      <span className="text-[11px] font-bold px-2 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)' }}>📷 QR</span>
+    </div>
+  );
+  return <MachinePickerSheet config={config} jobs={[{ order, alloc }]} fixed={true} dayLogs={dayLogs} preset={null}
+    onFire={fire} onClose={onClose} busyText={busy} msg={msg} banner={banner} />;
+}
+
+// กล้องสแกน QR ในแอป (สำรอง — iPhone ที่สแกนด้วยกล้องแล้วเปิด Safari จะไม่ได้ล็อกอิน)
+function QrScanSheet({ config, onResult, onClose }) {
+  const videoRef = useRef(null);
+  const [err, setErr] = useState('');
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let stream = null, stop = false, timer = null;
+    const canvas = document.createElement('canvas');
+    const loadJsQR = () => (window.jsQR ? Promise.resolve() : new Promise((res, rej) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+      sc.onload = res; sc.onerror = () => rej(new Error('load jsQR'));
+      document.head.appendChild(sc);
+    }));
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        if (stop) { stream.getTracks().forEach(t => t.stop()); return; }
+        const v = videoRef.current;
+        v.srcObject = stream; v.setAttribute('playsinline', ''); v.muted = true;
+        await v.play();
+        setReady(true);
+        let detector = null;
+        if ('BarcodeDetector' in window) {
+          try { const f = await window.BarcodeDetector.getSupportedFormats(); if (f.includes('qr_code')) detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) {}
+        }
+        if (!detector) await loadJsQR();
+        const tick = async () => {
+          if (stop) return;
+          try {
+            let text = null;
+            if (detector) { const r = await detector.detect(v); if (r && r[0]) text = r[0].rawValue; }
+            else if (v.videoWidth && window.jsQR) {
+              const w = 480, h = Math.round(v.videoHeight * 480 / v.videoWidth);
+              canvas.width = w; canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(v, 0, 0, w, h);
+              const r = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
+              if (r) text = r.data;
+            }
+            if (text) {
+              const id = parseJobQr(text, config);
+              if (id) { stop = true; if (navigator.vibrate) navigator.vibrate(80); onResult(id); return; }
+              setErr(tr(config, 'QR นี้ไม่ใช่ใบงานของร้าน'));
+            }
+          } catch (e) {}
+          timer = setTimeout(tick, 250);
+        };
+        tick();
+      } catch (e) { setErr(tr(config, 'เปิดกล้องไม่ได้') + ' — ' + (e && e.message ? e.message : e)); }
+    })();
+    return () => { stop = true; if (timer) clearTimeout(timer); if (stream) stream.getTracks().forEach(t => t.stop()); };
+  }, []);
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      <div className="px-4 py-3 flex items-center gap-2 text-white">
+        <p className="font-extrabold flex-1">📷 {tr(config, 'สแกนใบงาน')}</p>
+        <button onClick={onClose} className="w-10 h-10 rounded-xl bg-white bg-opacity-15 text-xl font-bold active:scale-95">✕</button>
+      </div>
+      <div className="flex-1 relative overflow-hidden">
+        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-64 h-64 rounded-3xl" style={{ border: '4px solid #FBBF24', boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }}></div>
+        </div>
+      </div>
+      <div className="p-4 text-center">
+        <p className="text-white font-bold">{ready ? tr(config, 'ส่อง QR ที่ใบงาน') : tr(config, 'กำลังเปิดกล้อง…')}</p>
+        {err && <p className="text-amber-300 text-sm font-bold mt-1">{err}</p>}
+      </div>
     </div>
   );
 }
