@@ -9,7 +9,7 @@
 
 ## เฟสตอนนี้
 v141 เพิ่ม ⚡ ยิงพัลส์เข้าเครื่องจากแอป (ผ่านเว็บ qrcode.ec.in.th) + กระทบยอดเปิดเครื่องรายวัน เฉพาะ Teddy 2
-ส่งไฟล์แล้ว รอ: ตั้ง Worker + Rules → เปิดสวิตช์ในตั้งค่า → ทดสอบยิง 1 พัลส์กับเครื่องว่าง
+ขึ้นแล้ว (26 ต.ค. 2569): repo v141 · Rules · Worker teddy-pulse + secrets (ping ✅ ล็อกอิน EC ผ่าน, อ่านประวัติเครื่องจริงตรงกับหน้าเว็บ EC) · รอ: เปิดสวิตช์ในตั้งค่า → ยิงทดสอบ 1 พัลส์กับเครื่องว่าง
 
 ## การตัดสินใจที่ล็อกแล้ว
 - 1 พัลส์ = 10 บาท (ดูจากประวัติ EC: QR 60฿ → Signal out 6 พัลส์) · ยิงได้ไม่เกิน 12 พัลส์ต่อครั้ง
@@ -28,8 +28,8 @@ v141 เพิ่ม ⚡ ยิงพัลส์เข้าเครื่อ�
 - Firestore: `pulseLogs` (1 doc = ยิง 1 ครั้ง, id = reqId, status confirmed/forced/sent/unknown/failed/void) · `pulseDayNotes` (id = brand_YYYY-MM-DD)
 
 ## งานถัดไป
-- [ ] สร้าง Worker teddy-pulse + ใส่ EC_USER / EC_PASS (Secret)
-- [ ] เพิ่ม Firestore Rules: pulseLogs, pulseDayNotes (ก่อน catch-all)
+- [x] สร้าง Worker teddy-pulse + ใส่ EC_USER / EC_PASS (Secret) — 26 ต.ค.
+- [x] เพิ่ม Firestore Rules: pulseLogs, pulseDayNotes — 26 ต.ค.
 - [ ] ตั้งค่า → ⚡ → ทดสอบการเชื่อมต่อ → เปิดสวิตช์
 - [ ] ทดสอบยิงจริง 1 พัลส์กับเครื่องว่างตอนมีแม่บ้านอยู่ร้าน แล้วดูช่อง `reply` / `status` ใน pulseLogs (ข้อความตอบกลับจริงของ EC ยังไม่เคยเห็น)
 - [ ] เปลี่ยนรหัสเว็บ EC หลังตั้ง Worker เสร็จ (แม่บ้านไม่ต้องรู้รหัส EC อีก → ยิงนอกแอปไม่ได้)
