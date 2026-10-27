@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v152-2026-10-27';
+  window.APP_VERSION = 'v153-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -8371,7 +8371,7 @@ function recordManualStart(config, order, { machine, kind, kg, temp, heat, baht,
   const now = Date.now();
   const id = `${config.brand}-manual-${now}-${Math.random().toString(36).slice(2, 8)}`;
   const log = {
-    brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine, machineLabel: pulseMachineLabel(config, machine),
+    brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine, machineLabel: machine ? pulseMachineLabel(config, machine) : 'นอกแอป (ระบบเก่า)',
     pulses: Math.round(baht / PULSE_BAHT), baht, method: 'manual', status: 'manual',
     refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null, refLabel: pulseRefLabel(order, config),
     staffId: 'owner', staffName: 'เจ้าของ', createdAt: now,
@@ -9444,6 +9444,27 @@ function PulseStarterCard({ config, order, isOwner }) {
         {allDone ? `🧺 ${tr(config, 'เปิดเครื่องเพิ่ม / เพิ่มเวลาอบ')}` : `🧺 ${tr(config, 'เลือกเครื่อง')} (${tr(config, 'ขาด')} ฿${need - fired})`}
       </button>
       {!allDone && <p className="text-[11px] text-slate-500 mt-1.5 text-center">{tr(config, 'ยังไม่ต้องเริ่มตอนนี้ก็ได้ — กดปุ่ม 🧺 เริ่มเครื่อง ที่หน้าแรกทีหลัง')}</p>}
+      {/* ✍️ v153: เจ้าของเคลียร์ทั้งใบงาน — เปิดเครื่องด้วยระบบเก่า/นอกแอปไปแล้ว */}
+      {!allDone && pulseIsOwnerNow(config, isOwner) && (() => {
+        const open = alloc.slots.filter(x => x.got < x.baht);
+        const left = open.reduce((a, x) => a + (x.baht - x.got), 0);
+        if (!open.length || left <= 0) return null;
+        const bulk = () => {
+          const cashNote = (order.paymentMethod === 'cash' || order.paymentMethod === 'split') ? '\n\n💡 ใบงานนี้ลงว่าจ่ายเงินสด — เงินสดยังอยู่กับแม่บ้าน (รอเก็บตามเดิม) · ถ้าลูกค้าโอนจริง ให้แก้วิธีจ่ายเป็น "โอน"' : '';
+          if (!confirm(`✍️ เจ้าของบันทึกว่าเริ่มเครื่องแล้ว (ระบบเก่า/นอกแอป)\n\n📋 ${pulseRefLabel(order, config)}\n${open.map(x => '• ' + pulseSlotLabel(config, x) + ' ฿' + (x.baht - x.got)).join('\n')}\nรวม ฿${left}\n\n⚠️ แอปจะไม่สั่งเครื่อง — ใช้กับงานที่เปิดเครื่องไปแล้วด้วยวิธีอื่น${cashNote}`)) return;
+          open.forEach(x => recordManualStart(config, order, {
+            machine: null, kind: x.kind === 'topup' ? 'dry' : (x.kind === 'custom' ? null : x.kind),
+            kg: x.kg || null, temp: x.temp || null, heat: null, baht: x.baht - x.got, warn: null,
+          }));
+          setMsg({ ok: true, text: `✍️ ${tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)')} ฿${left}` });
+        };
+        return (
+          <button onClick={bulk} disabled={!!busy}
+            className="mt-2 w-full py-2.5 rounded-xl border-2 text-sm font-extrabold active:scale-95 transition disabled:opacity-40" style={{ borderColor: '#8B5CF6', background: '#F5F3FF', color: '#5B21B6' }}>
+            ✍️ เจ้าของ: เปิดด้วยระบบเก่า/นอกแอปแล้ว — บันทึกที่เหลือ ฿{left}
+          </button>
+        );
+      })()}
 
       {msg && !picker && <p className={`mt-2 text-sm font-bold ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
       {picker && (
