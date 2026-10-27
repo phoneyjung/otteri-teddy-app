@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v153-2026-10-27';
+  window.APP_VERSION = 'v154-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -1604,8 +1604,8 @@ const INTERNAL_TYPES = [
   { id: 'other', label: 'อื่นๆ', emoji: '📝' },
 ];
 const isInternalOrder = (o) => !!(o && o.internalType);
-// 🔧 สิทธิ์งานภายใน (v150): แม่บ้าน = ล้างเครื่อง (เครื่องละ 1 ครั้งต่อ 7 วัน) + ซักซ้ำให้ลูกค้า · ซ่อม/ทดสอบ + อื่นๆ = เจ้าของ
-const INTERNAL_OWNER_ONLY = ['test', 'other'];
+// 🔧 สิทธิ์งานภายใน (v154): แม่บ้าน = ล้างเครื่องเท่านั้น (เฉพาะซัก เครื่องละ 1 ครั้งต่อ 7 วัน) · ซ่อม/ทดสอบ + ซักซ้ำ + อื่นๆ = เจ้าของ
+const INTERNAL_OWNER_ONLY = ['test', 'redo', 'other'];
 const CLEAN_EVERY_DAYS = 7;
 // เครื่องที่ล้างไปแล้วภายใน 7 วัน → { label: { at, until } }
 function cleanLocksOf(orders, exceptId) {
@@ -2126,6 +2126,8 @@ const MM_DICT = {
   'ไม่มีใบงานที่ใช้เครื่องขนาดนี้': 'ဤအရွယ်စက်ကို သုံးမည့် အလုပ်စာရွက် မရှိ',
   'ถ้าจะเปลี่ยนขนาดเครื่อง ให้แก้บิลก่อน': 'စက်အရွယ် ပြောင်းလိုလျှင် ဘေလ်ကို အရင်ပြင်ပါ',
   'สีเทา = ไม่มีใบงานที่ใช้เครื่องขนาดนี้': 'မီးခိုးရောင် = ဤအရွယ်စက်ကို သုံးမည့် အလုပ်စာရွက် မရှိ',
+  // 🔁 ซักซ้ำเฉพาะเจ้าของ (v154)
+  'งานภายในนี้ เจ้าของเป็นคนเริ่มเครื่อง': 'ဤဆိုင်တွင်းအလုပ်ကို ပိုင်ရှင်က စက်စတင်ရမည်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -4722,7 +4724,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const cleanLocks = !isOwner && isInternal ? cleanLocksOf(orders, editingOrder && editingOrder.id) : {};
   const internalMaidIssues = [];
   if (isInternal && !isOwner) {
-    if (INTERNAL_OWNER_ONLY.includes(internalType)) internalMaidIssues.push('ซ่อม/ทดสอบ และ อื่นๆ — เฉพาะเจ้าของ');
+    if (INTERNAL_OWNER_ONLY.includes(internalType)) internalMaidIssues.push('ซ่อม/ทดสอบ ซักซ้ำ และอื่นๆ — เฉพาะเจ้าของ');
     if (internalType === 'clean') {
       const lockedSel = internalMachines.filter(lb => cleanLocks[lb]);
       if (lockedSel.length) internalMaidIssues.push(`ล้างไปแล้วใน ${CLEAN_EVERY_DAYS} วัน: ${lockedSel.join(', ')}`);
@@ -5039,7 +5041,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                 );
               })}
             </div>
-            {!isOwner && <p className="text-[11px] font-bold text-slate-700 -mt-2 mb-3">🧼 แม่บ้านล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ {CLEAN_EVERY_DAYS} วัน · 🔒 ซ่อม/ทดสอบ และอื่นๆ ให้เจ้าของทำ</p>}
+            {!isOwner && <p className="text-[11px] font-bold text-slate-700 -mt-2 mb-3">🧼 แม่บ้านล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ {CLEAN_EVERY_DAYS} วัน · 🔒 ซ่อม/ทดสอบ ซักซ้ำ และอื่นๆ ให้เจ้าของทำ</p>}
             <p className="text-xs font-bold text-slate-700 mb-1.5">เครื่องที่ทำ <span className="text-rose-600">*บังคับ</span> (เลือกได้หลายเครื่อง)</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
@@ -9088,7 +9090,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
     }
   }
   // 🔧 งานภายใน (v150): แม่บ้านเปิดได้เฉพาะเครื่องที่ระบุในใบงาน · เจ้าของเปิดได้ (มีเตือน)
-  if (selM && job && INTERNAL_OWNER_ONLY.includes(job.order.internalType) && !owner && !block) block = tr(config, 'งานซ่อม/ทดสอบ — เจ้าของเป็นคนเริ่มเครื่อง'); // v151
+  if (selM && job && INTERNAL_OWNER_ONLY.includes(job.order.internalType) && !owner && !block) block = tr(config, 'งานภายในนี้ เจ้าของเป็นคนเริ่มเครื่อง'); // v151/v154: ซ่อม/ทดสอบ ซักซ้ำ อื่นๆ
   if (selM && job && isInternalOrder(job.order) && !block) {
     const ids = (job.order.internalMachines || []).map(lb => (ms.find(m => m.label === lb) || {}).id).filter(Boolean);
     if (ids.length && !ids.includes(selM.id)) {
