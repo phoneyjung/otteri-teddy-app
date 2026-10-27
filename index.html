@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v165-2026-10-27';
+  window.APP_VERSION = 'v166-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2233,6 +2233,21 @@ const MM_DICT = {
   // 💵 v164
   'บันทึกหยอดเหรียญแล้ว': 'အကြွေထည့်ကြောင်း မှတ်ပြီး',
   'เป็นหยอดเหรียญ': 'အကြွေထည့်ခြင်းအဖြစ်',
+  // 🧴 v166 ขายน้ำยา
+  'ขายน้ำยา': 'ဆပ်ပြာ ရောင်း',
+  'ไม่ใช่รับงาน': 'အလုပ်လက်ခံ မဟုတ်',
+  'ครั้งวันนี้': 'ကြိမ် ယနေ့',
+  'ไม่ใช่รับงาน · ไม่ต้องเริ่มเครื่อง': 'အလုပ်လက်ခံ မဟုတ် · စက်စရန် မလို',
+  'ลูกค้าจ่ายแบบไหน': 'ဖောက်သည် ဘယ်လိုပေးလဲ',
+  'บันทึกแล้วจะขึ้น QR ให้ลูกค้าสแกน': 'သိမ်းပြီးရင် ဖောက်သည်စကင်ဖတ်ရန် QR ပေါ်မည်',
+  'เงินสดจะรวมใน 💵 เงินสดในมือ': 'ငွေသားကို 💵 လက်ထဲရှိ ငွေသားထဲ ပေါင်းမည်',
+  'ให้ลูกค้าสแกนจ่าย · ทุกธนาคาร': 'ဖောက်သည် စကင်ဖတ်ပေးချေ · ဘဏ်အားလုံး',
+  'รวมใน 💵 เงินสดในมือ แล้ว': '💵 လက်ထဲရှိ ငွေသားထဲ ပေါင်းပြီး',
+  'ขายอีก': 'ထပ်ရောင်း',
+  'ขายน้ำยาวันนี้': 'ယနေ့ ဆပ်ပြာရောင်း',
+  'แตะเพื่อเปิด QR': 'QR ဖွင့်ရန် နှိပ်ပါ',
+  'ลบรายการขายน้ำยานี้?': 'ဆပ်ပြာရောင်းစာရင်း ဖျက်မလား?',
+  'ใส่จำนวนน้ำยาก่อน': 'ဆပ်ပြာအရေအတွက် အရင်ထည့်ပါ',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3330,7 +3345,12 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
     let activeTokens = [];
     if (method === 'cash') {
       activeTokens = tokenExchanges.filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
+    } else {
+      activeTokens = tokenExchanges.filter(t => !t.cleared && t.kind === 'detergent' && t.paymentMethod === 'transfer'); // 🧴 v166 ขายน้ำยา (โอน)
     }
+    const detTokens = activeTokens.filter(t => t.kind === 'detergent'); // 🧴 v166: ขายน้ำยา = รายได้ร้าน
+    const coinTokens = activeTokens.filter(t => t.kind !== 'detergent');
+    const detSum = detTokens.reduce((s, t) => s + (t.amount || 0), 0);
     
     if (uncollected.length === 0 && splitOrders.length === 0 && activeTokens.length === 0) {
       alert(`ไม่มีรายการ${method === 'cash' ? 'เงินสด' : 'เงินโอน'}ที่ต้องเคลียร์`);
@@ -3338,7 +3358,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
     }
     // ยอดจาก order ปกติ + ยอด portion จาก split
     const splitPortion = splitOrders.reduce((s, o) => s + (method === 'cash' ? cashHeldOf(o, config) : (o.transferAmount || 0)), 0);
-    const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config) - (method === 'cash' ? cashInMachineOf(o, config) : 0), 0) + splitPortion;
+    const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config) - (method === 'cash' ? cashInMachineOf(o, config) : 0), 0) + splitPortion + detSum;
     const inMachineSum = method === 'cash' ? [...uncollected, ...splitOrders].reduce((s, o) => s + cashInMachineOf(o, config), 0) : 0; // 💵 v147
     const methodLabel = method === 'cash' ? 'เก็บเงินสดจากแม่บ้าน' : 'เคลียร์ยอดโอน';
     
@@ -3347,9 +3367,10 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
     if (splitOrders.length > 0) {
       extraInfo += `\n\n💵💳 รวมส่วนแบ่งจ่าย: ${splitOrders.length} ใบ • ฿${formatMoney(splitPortion)}`;
     }
-    if (method === 'cash' && activeTokens.length > 0) {
-      const tokenSum = activeTokens.reduce((s, t) => s + (t.amount || 0), 0);
-      extraInfo += `\n\n🪙 เงินแลก token เงินสด (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
+    if (detTokens.length > 0) extraInfo += `\n\n🧴 ขายน้ำยา (${method === 'cash' ? 'เงินสด' : 'โอน'} · รวมในรายได้แล้ว):\n   ${detTokens.length} ครั้ง • ฿${formatMoney(detSum)}`;
+    if (method === 'cash' && coinTokens.length > 0) {
+      const tokenSum = coinTokens.reduce((s, t) => s + (t.amount || 0), 0);
+      extraInfo += `\n\n🪙 เงินแลก token เงินสด (ไม่ใช่รายได้):\n   ${coinTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
     }
     if (method === 'cash') { // 💵 v163: แม่บ้านนับเงินหลังรอบเก็บล่าสุด ไม่ตรง → เตือนให้นับจริงก่อนยืนยัน
       const lastCashAt = (collections || []).filter(r => r.method === 'cash' && !r.undone).reduce((m, r) => Math.max(m, r.collectedAt || 0), 0);
@@ -3362,7 +3383,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
     let savedRound = null, savedId = null;
     try {
       const allOrderIds = [...uncollected.map(o => o.id), ...splitOrders.map(o => o.id)];
-      if (allOrderIds.length > 0) {
+      if (allOrderIds.length > 0 || detTokens.length > 0) {
         const round = {
           // v161: ค่าเดิมของใบงาน ไว้กด ↶ ยกเลิก
           prev: [...uncollected, ...splitOrders].map(o => ({ id: o.id, collected: !!o.collected, collectedAt: o.collectedAt || null,
@@ -3376,6 +3397,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
           totalShould,
           splitCount: splitOrders.length,       // จำนวนงานแบ่งจ่ายในรอบนี้
           splitPortion: splitPortion,            // ยอดจากส่วนแบ่งจ่าย
+          detergentIds: detTokens.map(t => t.id), // 🧴 v166
+          detergentSum: detSum,
         };
         savedId = await saveCollectionToCloud(config.brand, round);
         savedRound = round;
@@ -3399,7 +3422,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
       }
       
       // ถ้าเป็นเงินสด → mark cash-paid token exchanges ว่า cleared แล้วด้วย
-      if (method === 'cash' && activeTokens.length > 0) {
+      if (activeTokens.length > 0) { // v166: โอน = ขายน้ำยาแบบโอน
         const batch = window.db.batch();
         activeTokens.forEach(t => {
           batch.update(window.db.collection('tokenExchanges').doc(t.id), { cleared: true, clearedAt: Date.now() });
@@ -3873,7 +3896,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
 
   // รายการแลก token ที่ยังไม่ถูกเคลีย (= แม่บ้านยังถือเงินอยู่)
   // นับเฉพาะเงินสด — เพราะโอนไม่ได้ทำให้แม่บ้านถือเงินเพิ่ม
-  const activeTokens = (tokenExchanges || []).filter(t => !t.cleared);
+  const activeTokens = (tokenExchanges || []).filter(t => !t.cleared && t.kind !== 'detergent'); // 🧴 v166: ขายน้ำยาไม่ใช่แลกเหรียญ
   const activeCashTokens = activeTokens.filter(t => (t.paymentMethod || 'cash') === 'cash');
   const activeTokenSum = activeCashTokens.reduce((s, t) => s + (t.amount || 0), 0);
 
@@ -4119,6 +4142,8 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   const lastCount = T2H ? (collections || []).filter(r => r.method === 'cashcount').sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0))[0] : null;
   const ownerNow = !!(currentStaff && currentStaff.isOwnerLogin);
   const exOn = config.tokenEnabled !== false && menuOn(config, 'exchange');
+  const [detSheet, setDetSheet] = useState(false); // 🧴 v166
+  const detTodayN = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return (tokenExchanges || []).filter(t => t.kind === 'detergent' && (t.createdAt || 0) >= d.getTime()).length; })();
   const rowStatus = (o) => {
     if (isInternalOrder(o)) return { t: 'งานภายใน', c: '#475569', bg: '#F1F5F9' };
     const held = t2CashPending(o) ? (o.paymentMethod === 'cash' ? calculateTotal(o, config) - cashInMachineOf(o, config) : t2CashHeld(o, config)) : 0;
@@ -4342,33 +4367,34 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       )}
 
       {/* 🔧 งานภายในร้าน — ล้าง/ทดสอบเครื่อง (ไม่ใช่รายได้) */}
-      {T2H && (menuOn(config, 'internal') || menuOn(config, 'promoCredit') || exOn) && (
-        <div className={`px-5 mt-3 grid gap-2 ${[menuOn(config, 'internal'), menuOn(config, 'promoCredit'), exOn].filter(Boolean).length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {menuOn(config, 'internal') && (
-            <button onClick={onInternalOrder} className="bg-white rounded-2xl p-3 border border-slate-200 text-left active:scale-95 transition flex flex-col justify-start min-w-0">
-              <p className="text-2xl leading-none">{ownerNow ? '🔧' : '🧼'}</p>
-              <p className="font-extrabold text-slate-900 text-sm mt-1.5 truncate">{ownerNow ? tr(config, 'งานภายในร้าน') : tr(config, 'ล้างเครื่อง')}</p>
-              <p className="text-xs text-slate-500 leading-snug">{ownerNow ? tr(config, 'ไม่ใช่รายได้') : tr(config, 'ทุก 7 วัน')}</p>
-            </button>
-          )}
-          {menuOn(config, 'promoCredit') && (
-            <button onClick={() => setShowPromoForm(v => !v)} className={`rounded-2xl p-3 border text-left active:scale-95 transition flex flex-col justify-start min-w-0 ${showPromoForm ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-200'}`}>
-              <p className="text-2xl leading-none">🎟️</p>
-              <p className={`font-extrabold text-sm mt-1.5 ${showPromoForm ? 'text-white' : 'text-slate-900'}`}>{tr(config, 'ลูกค้าใช้โปร')}</p>
-              <p className={`text-xs leading-snug ${showPromoForm ? 'text-slate-300' : 'text-slate-500'}`}>{tr(config, pulseOn(config) ? 'ซักเอง ไม่ฝาก' : 'สแกนเครดิตให้ลูกค้า')}</p>
-            </button>
-          )}
-          {exOn && (() => { const fs = coinFloatStatus(config, tokenExchanges); const low = fs && fs.remain <= 10; return (
-            <button onClick={() => setShowTokenForm(v => !v)} className={`rounded-2xl p-3 border text-left active:scale-95 transition flex flex-col justify-start min-w-0 ${showTokenForm ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-200'}`}>
-              <p className="text-2xl leading-none">🪙</p>
-              <p className={`font-extrabold text-sm mt-1.5 ${showTokenForm ? 'text-white' : 'text-slate-900'}`}>{tr(config, exchangeName(config))}</p>
-              <p className={`text-xs leading-snug ${low ? 'font-bold' : ''} ${showTokenForm ? 'text-slate-300' : low ? 'text-red-600' : 'text-slate-500'}`}>
-                {low ? `${tr(config, exchangeUnit(config))} ${tr(config, 'ใกล้หมด')}` : activeTokenSum > 0 ? <><b className={showTokenForm ? 'text-white' : 'text-slate-800'}>฿{formatMoney(activeTokenSum)}</b> {tr(config, 'รอเคลียร์')}</> : tr(config, 'ตู้แลกเสีย')}
-              </p>
-            </button>
-          ); })()}
-        </div>
-      )}
+      {T2H && (() => {
+        // v166: ไทล์ข้อมูลชุดเดียว — 3 ปุ่ม = แถวเดียว (ไอคอนบน) · 2/4 ปุ่ม = 2 คอลัมน์ (ไอคอนซ้าย)
+        const fs = exOn ? coinFloatStatus(config, tokenExchanges) : null;
+        const low = !!(fs && fs.remain <= 10);
+        const tiles = [
+          menuOn(config, 'internal') && { k: 'clean', icon: ownerNow ? '🔧' : '🧼', title: ownerNow ? tr(config, 'งานภายในร้าน') : tr(config, 'ล้างเครื่อง'), sub: ownerNow ? tr(config, 'ไม่ใช่รายได้') : tr(config, 'ทุก 7 วัน'), on: false, click: onInternalOrder },
+          menuOn(config, 'promoCredit') && { k: 'promo', icon: '🎟️', title: tr(config, 'ลูกค้าใช้โปร'), sub: tr(config, pulseOn(config) ? 'ซักเอง ไม่ฝาก' : 'สแกนเครดิตให้ลูกค้า'), on: showPromoForm, click: () => setShowPromoForm(v => !v) },
+          { k: 'det', icon: '🧴', title: tr(config, 'ขายน้ำยา'), sub: detTodayN > 0 ? <><b className="text-slate-800">{detTodayN}</b> {tr(config, 'ครั้งวันนี้')}</> : tr(config, 'ไม่ใช่รับงาน'), on: false, click: () => setDetSheet(true) },
+          exOn && { k: 'ex', icon: '🪙', title: tr(config, exchangeName(config)), warn: low,
+            sub: low ? `${tr(config, exchangeUnit(config))} ${tr(config, 'ใกล้หมด')}` : activeTokenSum > 0 ? <><b className={showTokenForm ? 'text-white' : 'text-slate-800'}>฿{formatMoney(activeTokenSum)}</b> {tr(config, 'รอเคลียร์')}</> : tr(config, 'ตู้แลกเสีย'),
+            on: showTokenForm, click: () => setShowTokenForm(v => !v) },
+        ].filter(Boolean);
+        const row = tiles.length !== 3;
+        return (
+          <div className={`px-5 mt-3 grid gap-2 ${tiles.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            {tiles.map(t => (
+              <button key={t.k} onClick={t.click} className={`rounded-2xl border text-left active:scale-95 transition min-w-0 ${row ? 'px-3 py-2.5 flex items-center gap-2.5' : 'p-3 flex flex-col justify-start'} ${t.on ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-200'}`}>
+                <span className={`text-2xl leading-none ${row ? 'flex-shrink-0' : ''}`}>{t.icon}</span>
+                <span className={`min-w-0 ${row ? '' : 'mt-1.5'}`}>
+                  <span className={`block font-extrabold text-sm ${t.on ? 'text-white' : 'text-slate-900'}`}>{t.title}</span>
+                  <span className={`block text-xs leading-snug ${t.warn ? 'font-bold' : ''} ${t.on ? 'text-slate-300' : t.warn ? 'text-red-600' : 'text-slate-500'}`}>{t.sub}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+      {detSheet && <T2DetergentSheet config={config} tokenExchanges={tokenExchanges} currentStaff={currentStaff} onClose={() => setDetSheet(false)} />}
       {menuOn(config, 'internal') && !T2H && <div className="px-5 mt-3">
         <button onClick={onInternalOrder}
           className="w-full rounded-2xl p-3 border-2 border-amber-400 bg-amber-50 active:scale-95 transition flex items-center gap-3">
@@ -11510,10 +11536,11 @@ const t2CashPending = (o) => (o.paymentMethod === 'cash' ? !o.collected : o.paym
 const t2TransferPending = (o) => (o.paymentMethod === 'transfer' ? !o.collected : o.paymentMethod === 'split' ? !o.collected && !o.transferCollected : false);
 
 // รวมยอดของช่วงเวลา (ใบงานลูกค้า + งานภายใน)
-function t2Agg(config, orders, from, to) {
+function t2Agg(config, orders, from, to, dets) {
   const A = { jobs: 0, sales: 0, cash: 0, transfer: 0, coin: 0, held: 0, heldPending: 0, cashN: 0, transferN: 0,
     discount: 0, discN: 0, lineDisc: 0, promoDisc: 0, internal: 0, internalN: 0, intType: {},
-    delivN: 0, delivCharge: 0, riderFee: 0, riderUnpaid: 0, foldN: 0, noFoldN: 0, topUp: 0, customers: 0, list: [], ilist: [] };
+    delivN: 0, delivCharge: 0, riderFee: 0, riderUnpaid: 0, foldN: 0, noFoldN: 0, topUp: 0, customers: 0, list: [], ilist: [],
+    det: 0, detN: 0, detCash: 0, detTransfer: 0, dlist: [] };
   const phones = new Set();
   (orders || []).forEach(o => {
     const t = t2Ts(o.createdAt);
@@ -11549,6 +11576,16 @@ function t2Agg(config, orders, from, to) {
     A.topUp += b.dryTopUpTotal || 0;
     const ph = (o.customerPhone || '').trim();
     if (ph) phones.add(ph);
+  });
+  // 🧴 v166: ขายน้ำยา (ไม่ใช่งาน) — รวมในยอดขาย/เงินสด/โอน
+  (dets || []).forEach(t => {
+    if (!t || t.kind !== 'detergent') return;
+    const ts = t2Ts(t.createdAt);
+    if (ts < from || ts >= to) return;
+    const v = t.amount || 0;
+    A.det += v; A.detN++; A.sales += v; A.dlist.push(t);
+    if ((t.paymentMethod || 'cash') === 'cash') { A.detCash += v; A.cash += v; A.held += v; if (!t.cleared) A.heldPending += v; }
+    else { A.detTransfer += v; A.transfer += v; }
   });
   A.customers = phones.size;
   A.list.sort((a, b) => t2Ts(b.createdAt) - t2Ts(a.createdAt));
@@ -11655,9 +11692,12 @@ function T2Stat({ label, value, sub, color }) {
 function t2CashInHand(config, orders, tokenExchanges) {
   const owe = (o) => (o.paymentMethod === 'cash' ? calculateTotal(o, config) - cashInMachineOf(o, config) : t2CashHeld(o, config));
   const list = (orders || []).filter(o => !isInternalOrder(o) && t2CashPending(o) && owe(o) > 0).sort((a, b) => t2Ts(b.createdAt) - t2Ts(a.createdAt));
-  const tokens = (tokenExchanges || []).filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
+  const cashTok = (tokenExchanges || []).filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
+  const tokens = cashTok.filter(t => t.kind !== 'detergent');
+  const dets = cashTok.filter(t => t.kind === 'detergent'); // 🧴 v166 ขายน้ำยา (เงินสด)
   const tokenSum = tokens.reduce((s, t) => s + (t.amount || 0), 0);
-  return { list, owe, tokens, tokenSum, total: list.reduce((s, o) => s + owe(o), 0) + tokenSum };
+  const detSum = dets.reduce((s, t) => s + (t.amount || 0), 0);
+  return { list, owe, tokens, tokenSum, dets, detSum, total: list.reduce((s, o) => s + owe(o), 0) + tokenSum + detSum };
 }
 const t2CountTone = (diff) => (diff === 0 ? { c: '#047857', bg: '#ECFDF5', t: 'ตรง ✓' } : diff < 0 ? { c: '#DC2626', bg: '#FEF2F2', t: 'ขาด' } : { c: '#B45309', bg: '#FEF3C7', t: 'เกิน' });
 
@@ -11732,7 +11772,7 @@ function T2CashSheet({ config, orders, tokenExchanges, collections, currentStaff
 
           <div className="bg-white rounded-2xl p-3 border border-slate-200">
             <p className="text-sm font-extrabold text-slate-900 px-1 mb-1">{tr(config, 'มาจากใบงานไหน')} <span className="text-slate-500 font-bold">· {C.list.length} {tr(config, 'ใบ')}</span></p>
-            {!C.list.length && !C.tokenSum && <p className="text-sm text-slate-500 px-1 py-2">{tr(config, 'ไม่มีเงินสดค้าง — เจ้าของเก็บครบแล้ว')}</p>}
+            {!C.list.length && !C.tokenSum && !C.detSum && <p className="text-sm text-slate-500 px-1 py-2">{tr(config, 'ไม่มีเงินสดค้าง — เจ้าของเก็บครบแล้ว')}</p>}
             <div className="divide-y divide-slate-100">
               {C.list.map(o => {
                 const coin = cashInMachineOf(o, config);
@@ -11746,6 +11786,12 @@ function T2CashSheet({ config, orders, tokenExchanges, collections, currentStaff
                   </button>
                 );
               })}
+              {C.detSum > 0 && (
+                <div className="flex items-center gap-2 px-1 py-2">
+                  <span className="flex-1 text-sm font-bold text-slate-900">🧴 {tr(config, 'ขายน้ำยา')} · {C.dets.length} {tr(config, 'ครั้ง')}</span>
+                  <span className="text-base font-extrabold tabular-nums" style={{ color: '#047857' }}>฿{formatMoney(C.detSum)}</span>
+                </div>
+              )}
               {C.tokenSum > 0 && (
                 <div className="flex items-center gap-2 px-1 py-2">
                   <span className="flex-1 text-sm font-bold text-slate-900">{tr(config, 'แลกเหรียญ')} · {C.tokens.length} {tr(config, 'ครั้ง')}</span>
@@ -11753,7 +11799,7 @@ function T2CashSheet({ config, orders, tokenExchanges, collections, currentStaff
                 </div>
               )}
             </div>
-            {(C.list.length > 0 || C.tokenSum > 0) && (
+            {(C.list.length > 0 || C.tokenSum > 0 || C.detSum > 0) && (
               <div className="flex items-center gap-2 px-1 pt-2 mt-1 border-t-2 border-slate-200">
                 <span className="flex-1 text-sm font-extrabold text-slate-900">{tr(config, 'รวม')}</span>
                 <span className="text-lg font-extrabold tabular-nums" style={{ color: '#047857' }}>฿{formatMoney(C.total)}</span>
@@ -11763,6 +11809,154 @@ function T2CashSheet({ config, orders, tokenExchanges, collections, currentStaff
         </div>
       </div>
     </div>
+  );
+}
+
+// 🧴 v166: ขายน้ำยาแยก (ไม่ใช่รับงาน) — เก็บใน tokenExchanges kind 'detergent'
+// โอน (ค่าเริ่มต้น) = บันทึกแล้วขึ้น QR พร้อมยอด · เงินสด = รวมใน 💵 เงินสดในมือ (เจ้าของเก็บพร้อมเงินสดอื่น)
+const t2DetItems = (config, t) => [
+  (t.detergentQty || 0) > 0 && `${tr(config, 'น้ำยาซัก')} ×${t.detergentQty}`,
+  (t.softenerQty || 0) > 0 && `${tr(config, 'น้ำยาปรับผ้านุ่ม')} ×${t.softenerQty}`,
+].filter(Boolean).join(' · ') || tr(config, 'ขายน้ำยา');
+const t2HHMM = (ts) => new Date(ts || 0).toTimeString().slice(0, 5);
+
+function T2DetergentSheet({ config, tokenExchanges, currentStaff, onClose }) {
+  const [det, setDet] = useState(0);
+  const [soft, setSoft] = useState(0);
+  const [pay, setPay] = useState('transfer');
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(null);
+  const total = det * (config.detergentPrice || 0) + soft * (config.softenerPrice || 0);
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const today = (tokenExchanges || []).filter(t => t.kind === 'detergent' && (t.createdAt || 0) >= d0.getTime())
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const todaySum = today.reduce((s, t) => s + (t.amount || 0), 0);
+  const who = currentStaff ? (currentStaff.isOwnerLogin ? 'เจ้าของ' : currentStaff.name) : '';
+  const save = async () => {
+    if (saving) return;
+    if (!(total > 0)) { alert(tr(config, 'ใส่จำนวนน้ำยาก่อน')); return; }
+    setSaving(true);
+    try {
+      const rec = { kind: 'detergent', amount: total, detergentQty: det, softenerQty: soft, paymentMethod: pay,
+        tokenCount: 0, coinCount: 0, staffName: who, staffId: currentStaff && currentStaff.id ? currentStaff.id : null,
+        createdAt: Date.now(), cleared: false };
+      const id = await saveTokenExchangeToCloud(config.brand, rec);
+      setDone({ ...rec, id });
+      setDet(0); setSoft(0); setPay('transfer');
+      playSuccessSound();
+    } catch (e) { alert(tr(config, 'บันทึกไม่สำเร็จ') + ': ' + (e && e.message ? e.message : e)); }
+    setSaving(false);
+  };
+  const del = async (t) => {
+    if (!confirm(`🗑️ ${tr(config, 'ลบรายการขายน้ำยานี้?')}\n\n${t2DetItems(config, t)} · ฿${formatMoney(t.amount || 0)}`)) return;
+    try { await deleteTokenExchangeFromCloud(t.id); if (done && done.id === t.id) setDone(null); }
+    catch (e) { alert(tr(config, 'บันทึกไม่สำเร็จ') + ': ' + (e && e.message ? e.message : e)); }
+  };
+  const qr = done && done.paymentMethod === 'transfer' ? (buildPromptPayQr(config.brand, done.amount) || PAYMENT_QRS[config.brand] || null) : null;
+  const payBtn = (k, label, color) => (
+    <button onClick={() => setPay(k)} className={`py-3 rounded-xl font-extrabold text-base active:scale-95 transition border-2 ${pay === k ? 'text-white' : 'bg-white text-slate-600 border-slate-200'}`}
+      style={pay === k ? { background: color, borderColor: color } : {}}>{label}</button>
+  );
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="bg-slate-100 rounded-t-3xl w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 bg-slate-100 px-4 pt-4 pb-2 flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-lg font-extrabold text-slate-900">🧴 {tr(config, 'ขายน้ำยา')}</p>
+            <p className="text-xs font-bold text-slate-500">{tr(config, 'ไม่ใช่รับงาน · ไม่ต้องเริ่มเครื่อง')}</p>
+          </div>
+          <button onClick={onClose} aria-label={tr(config, 'ปิด')} className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-600 text-lg font-bold">✕</button>
+        </div>
+        <div className="px-4 pb-8 space-y-3">
+          {done ? (
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 text-center">
+              {qr ? (
+                <>
+                  <p className="text-sm font-extrabold" style={{ color: '#6D28D9' }}>💳 {tr(config, 'ให้ลูกค้าสแกนจ่าย · ทุกธนาคาร')}</p>
+                  <img src={qr} alt="QR" className="mx-auto my-2 rounded-xl border border-slate-200" style={{ width: '240px', height: '240px', display: 'block' }} />
+                  <p className="text-4xl font-extrabold text-slate-900 tabular-nums">฿{formatMoney(done.amount)}</p>
+                  <p className="text-xs text-slate-500">{PAYMENT_ACCOUNT_NAMES[config.brand] || ''}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-4xl">✅</p>
+                  <p className="text-lg font-extrabold text-slate-900">{tr(config, 'บันทึกแล้ว')} · {tr(config, 'เงินสด')} ฿{formatMoney(done.amount)}</p>
+                  <p className="text-sm font-bold" style={{ color: '#047857' }}>{tr(config, 'รวมใน 💵 เงินสดในมือ แล้ว')}</p>
+                </>
+              )}
+              <p className="text-xs font-bold text-slate-500 mt-1">{t2DetItems(config, done)}</p>
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <button onClick={() => setDone(null)} className="py-3 rounded-xl bg-slate-100 font-extrabold text-slate-700 active:scale-95">+ {tr(config, 'ขายอีก')}</button>
+                <button onClick={onClose} className="py-3 rounded-xl bg-slate-900 text-white font-extrabold active:scale-95">{tr(config, 'เสร็จ')}</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="bg-white rounded-2xl p-3 border border-slate-200 space-y-2">
+                <CounterRow iconEmoji="🧴" label={tr(config, 'น้ำยาซัก')} sublabel={`฿${config.detergentPrice} / ${tr(config, 'ซอง')}`} unit={tr(config, 'ซอง')} qty={det}
+                  onAdd={() => setDet(q => q + 1)} onRemove={() => setDet(q => Math.max(0, q - 1))} />
+                <CounterRow iconEmoji="🌸" label={tr(config, 'น้ำยาปรับผ้านุ่ม')} sublabel={`฿${config.softenerPrice} / ${tr(config, 'ซอง')}`} unit={tr(config, 'ซอง')} qty={soft}
+                  onAdd={() => setSoft(q => q + 1)} onRemove={() => setSoft(q => Math.max(0, q - 1))} />
+              </div>
+              <div className="bg-white rounded-2xl p-3 border border-slate-200">
+                <p className="text-sm font-extrabold text-slate-900 mb-2">{tr(config, 'ลูกค้าจ่ายแบบไหน')}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {payBtn('transfer', `💳 ${tr(config, 'โอน')}`, '#6D28D9')}
+                  {payBtn('cash', `💵 ${tr(config, 'เงินสด')}`, '#047857')}
+                </div>
+                <p className="text-xs text-slate-500 mt-2">{pay === 'transfer' ? tr(config, 'บันทึกแล้วจะขึ้น QR ให้ลูกค้าสแกน') : tr(config, 'เงินสดจะรวมใน 💵 เงินสดในมือ')}</p>
+              </div>
+              <button onClick={save} disabled={saving} className="w-full py-3.5 rounded-2xl text-white font-extrabold text-base active:scale-95 transition disabled:opacity-40"
+                style={{ background: total > 0 ? (pay === 'transfer' ? '#6D28D9' : '#047857') : '#94A3B8' }}>
+                {saving ? '⏳' : `${tr(config, 'บันทึก')} · ฿${formatMoney(total)}`}
+              </button>
+            </>
+          )}
+
+          {today.length > 0 && (
+            <div className="bg-white rounded-2xl p-3 border border-slate-200">
+              <p className="text-sm font-extrabold text-slate-900 px-1 mb-1">{tr(config, 'ขายน้ำยาวันนี้')} <span className="text-slate-500 font-bold">· {today.length} {tr(config, 'ครั้ง')} · ฿{formatMoney(todaySum)}</span></p>
+              <div className="divide-y divide-slate-100">
+                {today.map(t => {
+                  const tr2 = t.paymentMethod === 'transfer';
+                  return (
+                    <div key={t.id} className="flex items-center gap-2 px-1 py-2">
+                      <button onClick={() => { if (tr2) setDone(t); }} className="flex-1 min-w-0 text-left">
+                        <span className="block text-sm font-bold text-slate-900 truncate">{t2DetItems(config, t)}</span>
+                        <span className="block text-xs text-slate-500">{t2HHMM(t.createdAt)} · {t.staffName || '-'}{tr2 ? ` · ${tr(config, 'แตะเพื่อเปิด QR')}` : ''}</span>
+                      </button>
+                      <span className="text-xs font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap" style={tr2 ? { background: '#F5F3FF', color: '#6D28D9' } : { background: '#ECFDF5', color: '#047857' }}>{tr(config, tr2 ? 'โอน' : 'เงินสด')}</span>
+                      <span className="text-sm font-extrabold tabular-nums text-slate-900">฿{formatMoney(t.amount || 0)}</span>
+                      {!t.cleared && <button onClick={() => del(t)} aria-label={tr(config, 'ลบ')} className="w-8 h-8 rounded-lg text-slate-400 active:bg-slate-100">🗑</button>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// หน้าเจ้าของ: รายการขายน้ำยาในช่วงเวลา
+function T2DetList({ config, items, title, k }) {
+  const sum = (items || []).reduce((s, t) => s + (t.amount || 0), 0);
+  return (
+    <T2Box k={k || 'cash'} title={title} right={<span className="text-xs font-bold text-slate-500">{items.length} ครั้ง · ฿{formatMoney(sum)}</span>}>
+      <div className="divide-y divide-slate-100">
+        {items.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30).map(t => (
+          <div key={t.id} className="flex items-center gap-2 py-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-800 truncate">{t2DetItems(config, t)}</p>
+              <p className="text-xs text-slate-500">{t2When(t.createdAt)} · {t.staffName || '-'}{t.cleared ? ' · เก็บแล้ว' : ''}</p>
+            </div>
+            <span className="text-sm font-extrabold tabular-nums text-slate-900">฿{formatMoney(t.amount || 0)}</span>
+          </div>
+        ))}
+      </div>
+    </T2Box>
   );
 }
 
@@ -11793,7 +11987,8 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   }, [R.fromKey, R.toKey]);
   useEffect(() => { setSelecting(false); setSel(new Set()); setAskPwd(false); }, [tab, mode, anchor]);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
-  const A = useMemo(() => t2Agg(config, orders, R.from, R.to), [config, orders, R.from, R.to]);
+  const detAll = useMemo(() => (tokenExchanges || []).filter(t => t.kind === 'detergent'), [tokenExchanges]); // 🧴 v166
+  const A = useMemo(() => t2Agg(config, orders, R.from, R.to, detAll), [config, orders, R.from, R.to, detAll]);
   const PB = useMemo(() => pulseBucketsFor(config, orders, logs, R.from, R.to), [config, orders, logs, R.from, R.to]);
   const stats = useMemo(() => {
     const phoneMap = new Map();
@@ -11822,8 +12017,13 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   const cashPend = cashPendList.reduce((s, o) => s + cashOwe(o), 0);
   const tokenCash = (tokenExchanges || []).filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
   const tokenCashSum = tokenCash.reduce((s, t) => s + (t.amount || 0), 0);
+  const detCashList = tokenCash.filter(t => t.kind === 'detergent'); // 🧴 v166
+  const detCashSum = detCashList.reduce((s, t) => s + (t.amount || 0), 0);
+  const coinCashSum = tokenCashSum - detCashSum;
+  const detTrList = detAll.filter(t => !t.cleared && t.paymentMethod === 'transfer');
+  const detTrSum = detTrList.reduce((s, t) => s + (t.amount || 0), 0);
   const trPendList = cust.filter(t2TransferPending);
-  const trPend = trPendList.reduce((s, o) => s + (o.paymentMethod === 'split' ? (o.transferAmount || 0) : calculateTotal(o, config)), 0);
+  const trPend = trPendList.reduce((s, o) => s + (o.paymentMethod === 'split' ? (o.transferAmount || 0) : calculateTotal(o, config)), 0) + detTrSum;
   const riderUnpaidList = cust.filter(o => o.deliveryZone && !o.deliveryFeePaid);
   const riderUnpaid = riderUnpaidList.reduce((s, o) => s + riderFeeFor(o, config), 0);
   const rounds = (collections || []).slice().sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0));
@@ -11935,21 +12135,22 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
     const rows = [];
     const start = new Date(R.from);
     const src = A.list.concat(A.ilist);
+    const dsrc = A.dlist;
     if (mode === 'month') {
       const days = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
       for (let d = 1; d <= days; d++) {
         const f = new Date(start.getFullYear(), start.getMonth(), d).getTime();
         if (f > Date.now()) break;
-        rows.push({ t: f, label: new Date(f).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' }), a: t2Agg(config, src, f, f + 86400000) });
+        rows.push({ t: f, label: new Date(f).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' }), a: t2Agg(config, src, f, f + 86400000, dsrc) });
       }
     } else {
       for (let m = 0; m < 12; m++) {
         const f = new Date(start.getFullYear(), m, 1).getTime();
         if (f > Date.now()) break;
-        rows.push({ t: f, label: T2_MONTHS[m], a: t2Agg(config, src, f, new Date(start.getFullYear(), m + 1, 1).getTime()) });
+        rows.push({ t: f, label: T2_MONTHS[m], a: t2Agg(config, src, f, new Date(start.getFullYear(), m + 1, 1).getTime(), dsrc) });
       }
     }
-    return rows.filter(r => r.a.jobs > 0 || r.a.internalN > 0).reverse();
+    return rows.filter(r => r.a.jobs > 0 || r.a.internalN > 0 || r.a.detN > 0).reverse();
   }, [mode, R.from, A, config]);
   const maxSales = breakdownRows.reduce((m, r) => Math.max(m, r.a.sales), 1);
 
@@ -11968,10 +12169,10 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   );
   const group = T2_GROUPS.find(g => g.tabs.includes(tab)) || T2_GROUPS[0];
   const todo = [];
-  if (cashPend + tokenCashSum > 0) todo.push({ k: 'cash', title: 'เงินสดที่แม่บ้านถือ', sub: `${cashPendList.length} ใบ · ค่าน้ำยา/ยังไม่หยอดเครื่อง${tokenCashSum > 0 ? ` · แลกเหรียญ ฿${formatMoney(tokenCashSum)}` : ''}`, act: `เก็บ ฿${formatMoney(cashPend + tokenCashSum)}`, onAct: () => doCollect('cash'), go: 'cash' });
+  if (cashPend + tokenCashSum > 0) todo.push({ k: 'cash', title: 'เงินสดที่แม่บ้านถือ', sub: `${cashPendList.length} ใบ · ค่าน้ำยา/ยังไม่หยอดเครื่อง${coinCashSum > 0 ? ` · แลกเหรียญ ฿${formatMoney(coinCashSum)}` : ''}${detCashSum > 0 ? ` · ขายน้ำยา ฿${formatMoney(detCashSum)}` : ''}`, act: `เก็บ ฿${formatMoney(cashPend + tokenCashSum)}`, onAct: () => doCollect('cash'), go: 'cash' });
   // 💵 v163: แม่บ้านนับเงินสดขาด → แจ้งต่อจากรายการเก็บเงินสด
   if (shortCount) todo.push({ k: 'warn', title: `แม่บ้านนับเงินสดขาด ฿${formatMoney(Math.abs(shortCount.diff))}`, sub: `${shortCount.staffName || '-'} · ${t2When(shortCount.collectedAt)} · ควรมี ฿${formatMoney(shortCount.expected || 0)} นับได้ ฿${formatMoney(shortCount.counted || 0)}`, nav: 'ดู', go: 'cash' });
-  if (trPend > 0) todo.push({ k: 'transfer', title: 'โอนที่ยังไม่เคลียร์ยอด', sub: `${formatMoney(trPendList.length)} ใบ · เช็กยอดธนาคารก่อน`, act: `เคลียร์ ฿${formatMoney(trPend)}`, onAct: () => doCollect('transfer'), go: 'transfer' });
+  if (trPend > 0) todo.push({ k: 'transfer', title: 'โอนที่ยังไม่เคลียร์ยอด', sub: `${formatMoney(trPendList.length)} ใบ${detTrList.length ? ` · ขายน้ำยา ${detTrList.length} ครั้ง` : ''} · เช็กยอดธนาคารก่อน`, act: `เคลียร์ ฿${formatMoney(trPend)}`, onAct: () => doCollect('transfer'), go: 'transfer' });
   if (riderUnpaid > 0) todo.push({ k: 'delivery', title: `ค่าไรเดอร์ค้างจ่าย ฿${formatMoney(riderUnpaid)}`, sub: `${riderUnpaidList.length} งานส่ง · จ่ายแยกตามคน`, nav: 'ดูรายคน', go: 'delivery' });
   if (refundPendingN > 0) todo.push({ k: 'warn', title: `แม่บ้านขอคืนเครดิต ${refundPendingN} รายการ`, sub: 'เครื่องมีปัญหา · อนุมัติแล้วใบงานเปิดเครื่องใหม่ได้', nav: 'ดู', go: 'pulse' });
 
@@ -12015,7 +12216,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             </div>
             <div className="text-right pb-1">
               <p className="text-xl font-extrabold text-slate-900 tabular-nums">{formatMoney(A.jobs)} <span className="text-sm font-bold text-slate-500">งาน</span></p>
-              <p className="text-xs font-bold text-slate-500 tabular-nums">เฉลี่ย ฿{formatMoney(A.jobs ? Math.round(A.sales / A.jobs) : 0)}/งาน</p>
+              <p className="text-xs font-bold text-slate-500 tabular-nums">เฉลี่ย ฿{formatMoney(A.jobs ? Math.round((A.sales - A.det) / A.jobs) : 0)}/งาน</p>
             </div>
           </div>
           <div className="mt-3 h-3 rounded-full overflow-hidden flex bg-slate-100" aria-label={`สด ${cashPct}% โอน ${A.sales > 0 ? 100 - cashPct : 0}%`}>
@@ -12026,6 +12227,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             {moneyRow('cash', A.cash, `เข้าเครื่อง ฿${formatMoney(A.coin)} · แม่บ้านรับ ฿${formatMoney(A.held)}`, cashPct)}
             {moneyRow('transfer', A.transfer, `${formatMoney(A.transferN)} ใบ`, A.sales > 0 ? 100 - cashPct : 0)}
           </div>
+          {A.detN > 0 && <p className="text-xs font-bold text-slate-500 px-1 pb-2">🧴 รวมขายน้ำยา ฿{formatMoney(A.det)} · {A.detN} ครั้ง (สด ฿{formatMoney(A.detCash)} · โอน ฿{formatMoney(A.detTransfer)}) — ไม่นับเป็นงาน</p>}
           {(A.discount > 0 || A.internal > 0) && (
             <div className="bg-slate-50 rounded-xl px-3 mt-1 mb-2">
               <p className="text-xs font-extrabold text-slate-500 pt-2">ไม่นับเป็นรายได้</p>
@@ -12042,8 +12244,8 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
           <div className="bg-white rounded-2xl p-3 border border-slate-200">
             <p className="text-[15px] font-extrabold text-slate-900 mb-1.5 px-1">ต้องจัดการ <span className="ml-1 text-xs font-extrabold text-white bg-slate-900 rounded-full px-2 py-0.5">{todo.length}</span> <span className="text-xs font-bold text-slate-500">· ค้างทุกช่วงเวลา</span></p>
             <div className="space-y-1.5">
-              {todo.map(t => (
-                <div key={t.k} className="relative flex items-center gap-2 rounded-xl pl-4 pr-2 py-2 bg-slate-50 overflow-hidden">
+              {todo.map((t, ti) => (
+                <div key={t.k + ti} className="relative flex items-center gap-2 rounded-xl pl-4 pr-2 py-2 bg-slate-50 overflow-hidden">
                   <span className="absolute left-0 top-0 bottom-0 w-1.5" style={{ background: t.k === 'warn' ? T2_DANGER : (T2C[t.k] || T2C.overview).c }}></span>
                   <button onClick={() => openTab(t.go)} className="flex-1 text-left min-w-0">
                     <p className="text-sm font-extrabold text-slate-900">{t.title}</p>
@@ -12136,7 +12338,8 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             </T2Box>
             <T2Box k="cash" title={cashPend + tokenCashSum > 0 ? `รอเก็บจากแม่บ้าน ฿${formatMoney(cashPend + tokenCashSum)}` : 'รอเก็บจากแม่บ้าน'} right={<span className="text-xs font-bold text-slate-500">ค้างทั้งหมด · {cashPendList.length} ใบ</span>}>
               {cashPendList.length > 0 || tokenCashSum > 0
-                ? <div className="space-y-2">{actBtn('cash', `เก็บเงินสดแล้ว ฿${formatMoney(cashPend + tokenCashSum)}`, () => doCollect('cash'))}{list(cashPendList)}</div>
+                ? <div className="space-y-2">{actBtn('cash', `เก็บเงินสดแล้ว ฿${formatMoney(cashPend + tokenCashSum)}`, () => doCollect('cash'))}{list(cashPendList)}
+                    {(detCashSum > 0 || coinCashSum > 0) && <p className="text-xs font-bold text-slate-500 px-1">{[detCashSum > 0 && `🧴 ขายน้ำยา ${detCashList.length} ครั้ง ฿${formatMoney(detCashSum)}`, coinCashSum > 0 && `🪙 แลกเหรียญ ฿${formatMoney(coinCashSum)}`].filter(Boolean).join(' · ')}</p>}</div>
                 : <p className="text-sm font-bold text-emerald-700">✓ ไม่มีเงินสดค้างที่แม่บ้าน</p>}
             </T2Box>
             {cashCounts.length > 0 && (
@@ -12155,6 +12358,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
               </T2Box>
             )}
             {history(m => m === 'cash', 'cash')}
+            {A.dlist.some(t => (t.paymentMethod || 'cash') === 'cash') && <T2DetList config={config} items={A.dlist.filter(t => (t.paymentMethod || 'cash') === 'cash')} title={`ขายน้ำยา (เงินสด) · ${R.label}`} />}
             {listHead(`ใบงานเงินสด · ${R.label}`, A.list.filter(o => orderCashPart(o, config) > 0).length)}
             {list(A.list.filter(o => orderCashPart(o, config) > 0))}
           </div>
@@ -12169,10 +12373,11 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
               </div>
             </T2Box>
             <T2Box k="transfer" title={trPend > 0 ? `ยังไม่เคลียร์ยอด ฿${formatMoney(trPend)}` : 'ยังไม่เคลียร์ยอด'} right={<span className="text-xs font-bold text-slate-500">ค้างทั้งหมด · {formatMoney(trPendList.length)} ใบ</span>}>
-              {trPendList.length > 0
-                ? <div className="space-y-2">{actBtn('transfer', `ตรวจยอดธนาคารแล้ว · เคลียร์ ฿${formatMoney(trPend)}`, () => doCollect('transfer'))}<p className="text-xs text-slate-500">กดผิด? กด ↶ ยกเลิก ที่แถบด้านล่าง หรือในประวัติ</p></div>
+              {trPendList.length > 0 || detTrSum > 0
+                ? <div className="space-y-2">{actBtn('transfer', `ตรวจยอดธนาคารแล้ว · เคลียร์ ฿${formatMoney(trPend)}`, () => doCollect('transfer'))}{detTrSum > 0 && <p className="text-xs font-bold text-slate-500">รวม 🧴 ขายน้ำยา (โอน) {detTrList.length} ครั้ง ฿{formatMoney(detTrSum)}</p>}<p className="text-xs text-slate-500">กดผิด? กด ↶ ยกเลิก ที่แถบด้านล่าง หรือในประวัติ</p></div>
                 : <p className="text-sm font-bold text-emerald-700">✓ เคลียร์ครบแล้ว</p>}
             </T2Box>
+            {A.dlist.some(t => t.paymentMethod === 'transfer') && <T2DetList config={config} k="transfer" items={A.dlist.filter(t => t.paymentMethod === 'transfer')} title={`ขายน้ำยา (โอน) · ${R.label}`} />}
             {history(m => m === 'transfer', 'transfer')}
             {listHead(`ใบงานโอน · ${R.label}`, A.list.filter(o => orderTransferPart(o, config) > 0).length)}
             {list(A.list.filter(o => orderTransferPart(o, config) > 0))}
