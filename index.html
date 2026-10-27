@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v163-2026-10-27';
+  window.APP_VERSION = 'v164-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2230,6 +2230,9 @@ const MM_DICT = {
   'ซักเอง ไม่ฝาก': 'ကိုယ်တိုင်လျှော် · မအပ်',
   'สแกนเครดิตให้ลูกค้า': 'ဖောက်သည်အတွက် ခရက်ဒစ် စကင်န်',
   'เจ้าของเก็บแล้ว': 'ပိုင်ရှင် ကောက်ပြီး',
+  // 💵 v164
+  'บันทึกหยอดเหรียญแล้ว': 'အကြွေထည့်ကြောင်း မှတ်ပြီး',
+  'เป็นหยอดเหรียญ': 'အကြွေထည့်ခြင်းအဖြစ်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -8831,7 +8834,7 @@ function logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, bah
   const now = Date.now();
   const id = `${config.brand}-coin-${now}-${Math.random().toString(36).slice(2, 8)}`;
   const log = {
-    brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine, machineLabel: pulseMachineLabel(config, machine),
+    brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine, machineLabel: machine ? pulseMachineLabel(config, machine) : 'นอกแอป (ระบบเก่า)',
     pulses: Math.round(baht / PULSE_BAHT), baht, method: 'coin', status: 'coin',
     refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null, refLabel: pulseRefLabel(order, config),
     staffId: staff && staff.id ? staff.id : null, staffName: staff && staff.name ? staff.name : '',
@@ -8854,6 +8857,45 @@ function logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, bah
   }
   return { id, ...log };
 }
+
+// 💵 v164: ใบงานเงินสด — ตั้ง 'เงินสดเข้าเครื่อง' ตามยอดหยอดเหรียญทั้งหมด (+ เก็บแล้วผ่านเครื่อง ถ้าครบ)
+async function syncCashInMachine(config, order, coinSum) {
+  if (!order || !order.id) return;
+  try { const f = await window.db.collection('orders').doc(order.id).get(); if (f.exists) order = { ...order, ...f.data(), id: order.id }; } catch (e) {}
+  const cashPart = orderCashPart(order, config);
+  if (!(cashPart > 0)) return;
+  const now = Date.now();
+  const inMachine = Math.min(cashPart, Math.max(0, coinSum));
+  const upd = { brand: order.brand || config.brand, cashInMachine: inMachine, cashInMachineAt: now };
+  if (inMachine >= cashPart) {
+    if (order.paymentMethod === 'cash' && !order.collected) Object.assign(upd, { collected: true, collectedAt: now, collectedVia: 'machine' });
+    if (order.paymentMethod === 'split' && !order.cashCollected) {
+      Object.assign(upd, { cashCollected: true, collectedAt: now, collectedVia: 'machine' });
+      if (order.transferCollected || !((order.transferAmount || 0) > 0)) upd.collected = true;
+    }
+  }
+  await window.db.collection('orders').doc(order.id).set(upd, { merge: true });
+}
+// ✍️ → 💵 (เจ้าของ): รายการที่บันทึกแบบโอน จริงๆ แม่บ้านหยอดเหรียญ — เปลี่ยนเฉพาะส่วนที่ยังต้องหยอด (เกินแยกเป็น ✍️ ตามเดิม)
+async function convertManualToCoin(config, order, logs, log, amount) {
+  const amt = Math.min(log.baht || 0, Math.max(0, amount || 0));
+  if (!(amt > 0)) return 0;
+  const now = Date.now();
+  const tag = { convertedFrom: 'manual', convertedAt: now, convertedBy: 'เจ้าของ', manualNote: 'เจ้าของเปลี่ยนเป็นหยอดเหรียญ (เงินสดเข้าเครื่องแล้ว)' };
+  if (amt >= (log.baht || 0)) {
+    await pulseLogRef(log.id).set({ method: 'coin', status: 'coin', ...tag }, { merge: true });
+  } else {
+    const rest = (log.baht || 0) - amt;
+    await pulseLogRef(log.id).set({ baht: rest, pulses: Math.round(rest / PULSE_BAHT) }, { merge: true });
+    const { id: _old, ...base } = log;
+    const id = `${config.brand}-coin-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    await pulseLogRef(id).set({ ...base, baht: amt, pulses: Math.round(amt / PULSE_BAHT), method: 'coin', status: 'coin', splitOf: log.id, ...tag });
+  }
+  const before = (logs || []).filter(l => l.refId === order.id && l.id !== log.id && pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l))).reduce((a, l) => a + (l.baht || 0), 0);
+  await syncCashInMachine(config, order, before + amt);
+  return amt;
+}
+const MANUAL_COIN_ASK = (baht) => `💵 ใบงานนี้ลูกค้าจ่ายเงินสด — ส่วนที่ต้องหยอดเหรียญ ฿${baht}\n\nแม่บ้านหยอดเหรียญเข้าเครื่องไปแล้วใช่ไหม?\n\nตกลง = หยอดแล้ว (เงินสดเข้าเครื่อง ไม่ต้องเก็บจากแม่บ้าน)\nยกเลิก = ยังไม่ได้หยอด (แม่บ้านยังถือเงินสด รอเก็บ)`;
 
 // อ่านประวัติเครื่องของวันจาก EC (ผ่าน Worker) — ทีละ 4 เครื่องพร้อมกัน
 async function fetchEcDay(config, dateKey, machineIds, onProgress) {
@@ -9714,8 +9756,16 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               const o = job.order;
               const cashNote = (o.paymentMethod === 'cash' || o.paymentMethod === 'split') ? '\n\n💡 ใบงานนี้ลงว่าจ่ายเงินสด — ถ้าลูกค้าโอนจริง ให้แก้วิธีจ่ายในใบงานเป็น "โอน" ด้วย' : '';
               if (!confirm(`✍️ เจ้าของบันทึกว่าเริ่มเครื่องแล้ว (แบบโอน)\n\n📋 ${pulseRefLabel(o, config)}\n🧺 ${selM.label} (${selM.kg}kg) · ฿${baht}\n\n⚠️ แอปจะไม่สั่งเครื่อง — ใช้แก้ใบงานที่เริ่มเครื่องไปแล้วด้วยวิธีอื่น${cashNote}`)) return;
-              recordManualStart(config, o, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? tempUse : null, heat: selM.kind === 'dry' ? heat : null, baht, warn });
-              setOwnerMsg(`✍️ ${selM.label} ฿${baht} — ${tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)')}`);
+              const mp = { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? tempUse : null, heat: selM.kind === 'dry' ? heat : null, warn };
+              const coinPart = cp && cp.coin > 0 ? cp.coin : 0; // 💵 v164
+              if (coinPart > 0 && confirm(MANUAL_COIN_ASK(coinPart))) {
+                logCoinInsert(config, o, job.logs || jobLogs || [], { ...mp, baht: coinPart, dryMin: selM.kind === 'dry' ? dryMinutesFor(config, selM.kg, coinPart) : null });
+                if (baht - coinPart > 0) recordManualStart(config, o, { ...mp, baht: baht - coinPart });
+                setOwnerMsg(`💵 ${selM.label} ฿${coinPart} — ${tr(config, 'บันทึกหยอดเหรียญแล้ว')}${baht - coinPart > 0 ? ` · ✍️ ฿${baht - coinPart}` : ''}`);
+              } else {
+                recordManualStart(config, o, { ...mp, baht });
+                setOwnerMsg(`✍️ ${selM.label} ฿${baht} — ${tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)')}`);
+              }
               setSel(null);
             }}
               className="w-full mb-2 py-2.5 rounded-xl border-2 text-sm font-extrabold active:scale-95 transition" style={{ borderColor: '#8B5CF6', background: '#F5F3FF', color: '#5B21B6' }}>
@@ -9826,6 +9876,14 @@ function PulseStarterCard({ config, order: orderProp, isOwner }) {
         <span className="text-[11px] text-slate-500">{new Date(l.createdAt).toTimeString().slice(0, 5)} · ฿{part ? shown : l.baht}{part ? ` (${tr(config, 'จาก')} ฿${l.baht})` : ''}{amtNote ? ` · ${amtNote}` : ''}</span>
         {statusChip(l)}
         {pulseIsCoin(l) && <CoinCheckAction config={config} log={l} order={order} logs={logs} />}
+        {pulseIsManual(l) && pulseLive(l) && pay.coinLeft > 0 && pulseIsOwnerNow(config, isOwner) && (
+          <button onClick={async () => {
+            const amt = Math.min(l.baht || 0, pay.coinLeft);
+            if (!confirm(`💵 เปลี่ยนเป็น "หยอดเหรียญ"\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${l.machineLabel} ฿${amt}${amt < (l.baht || 0) ? ` (จาก ฿${l.baht} · ที่เหลือคง ✍️)` : ''}\n\nเงินสดส่วนนี้แม่บ้านหยอดเข้าเครื่องแล้ว → ไม่ต้องเก็บจากแม่บ้าน`)) return;
+            try { await convertManualToCoin(config, order, logs, l, amt); setMsg({ ok: true, text: `💵 ${tr(config, 'บันทึกหยอดเหรียญแล้ว')} ฿${amt}` }); }
+            catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
+          }} disabled={!!busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 active:scale-95">💵 {tr(config, 'เป็นหยอดเหรียญ')}</button>
+        )}
         <RefundAction config={config} log={l} isOwner={isOwner} hideRequest={unconfirmed || (pulseIsCoin(l) && l.coinSeen !== true)} />
         {unconfirmed && !pulseRefundPending(l) && (
           <>
@@ -9905,13 +9963,25 @@ function PulseStarterCard({ config, order: orderProp, isOwner }) {
         const left = open.reduce((a, x) => a + (x.baht - x.got), 0);
         if (!open.length || left <= 0) return null;
         const bulk = () => {
-          const cashNote = (order.paymentMethod === 'cash' || order.paymentMethod === 'split') ? '\n\n💡 ใบงานนี้ลงว่าจ่ายเงินสด — เงินสดยังอยู่กับแม่บ้าน (รอเก็บตามเดิม) · ถ้าลูกค้าโอนจริง ให้แก้วิธีจ่ายเป็น "โอน"' : '';
+          const cashNote = (order.paymentMethod === 'cash' || order.paymentMethod === 'split') ? '\n\n💡 ใบงานนี้ลงว่าจ่ายเงินสด — ถ้าลูกค้าโอนจริง ให้แก้วิธีจ่ายเป็น "โอน"' : '';
           if (!confirm(`✍️ เจ้าของบันทึกว่าเริ่มเครื่องแล้ว (ระบบเก่า/นอกแอป)\n\n📋 ${pulseRefLabel(order, config)}\n${open.map(x => '• ' + pulseSlotLabel(config, x) + ' ฿' + (x.baht - x.got)).join('\n')}\nรวม ฿${left}\n\n⚠️ แอปจะไม่สั่งเครื่อง — ใช้กับงานที่เปิดเครื่องไปแล้วด้วยวิธีอื่น${cashNote}`)) return;
-          open.forEach(x => recordManualStart(config, order, {
-            machine: null, kind: x.kind === 'topup' ? 'dry' : (x.kind === 'custom' ? null : x.kind),
-            kg: x.kg || null, temp: x.temp || null, heat: null, baht: x.baht - x.got, warn: null,
-          }));
-          setMsg({ ok: true, text: `✍️ ${tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)')} ฿${left}` });
+          // 💵 v164: ใบงานเงินสด — ถามว่าหยอดเหรียญแล้วไหม (ส่วนลดใช้กับเครื่องซักก่อน → เงินสด → ที่เหลือ ✍️)
+          const coinAll = Math.min(pay.coinLeft || 0, left);
+          const asCoin = coinAll > 0 && confirm(MANUAL_COIN_ASK(coinAll));
+          let discLeft = pay.discLeft || 0, coinLeft = asCoin ? coinAll : 0, coinDone = 0;
+          const acc = logs.slice();
+          open.forEach(x => {
+            const kind = x.kind === 'topup' ? 'dry' : (x.kind === 'custom' ? null : x.kind);
+            const a = x.baht - x.got;
+            const disc = kind === 'wash' ? Math.min(a, discLeft) : 0;
+            discLeft -= disc;
+            const coin = Math.min(a - disc, coinLeft);
+            coinLeft -= coin;
+            const base = { machine: null, kind, kg: x.kg || null, temp: x.temp || null, heat: null, warn: null };
+            if (coin > 0) { acc.push(logCoinInsert(config, order, acc, { ...base, baht: coin, dryMin: null })); coinDone += coin; }
+            if (a - coin > 0) recordManualStart(config, order, { ...base, baht: a - coin });
+          });
+          setMsg({ ok: true, text: coinDone > 0 ? `💵 ${tr(config, 'บันทึกหยอดเหรียญแล้ว')} ฿${coinDone}${left - coinDone > 0 ? ` · ✍️ ฿${left - coinDone}` : ''}` : `✍️ ${tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)')} ฿${left}` });
         };
         return (
           <button onClick={bulk} disabled={!!busy}
