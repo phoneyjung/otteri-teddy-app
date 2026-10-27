@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v157-2026-10-27';
+  window.APP_VERSION = 'v158-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2162,6 +2162,29 @@ const MM_DICT = {
   'สลับเป็นเจ้าของ': 'ပိုင်ရှင်အဖြစ် ပြောင်းရန်',
   'ต้องใส่รหัสเจ้าของ': 'ပိုင်ရှင် စကားဝှက် လိုအပ်သည်',
   'ออกจากระบบ / เปลี่ยนแม่บ้าน': 'ထွက်ရန် / အိမ်အကူ ပြောင်းရန်',
+  // 🔒 เปิดเครื่องตามใบงาน / ⏱️ ลูกค้าเพิ่มเวลาอบ (v158)
+  'อบครบตามใบงานแล้ว — ยิงเกินใบงานไม่ได้': 'အလုပ်စာရွက်အတိုင်း အခြောက်ခံပြီးပါပြီ — စာရွက်ထက်ပို၍ မဖွင့်ရ',
+  'อบครบตามใบงานแล้ว — ลูกค้าจะเพิ่มเวลา กด ⏱️ ลูกค้าเพิ่มเวลาอบ': 'အလုပ်စာရွက်အတိုင်း အခြောက်ခံပြီးပါပြီ — ဖောက်သည်က အချိန်တိုးလိုလျှင် ⏱️ ဖောက်သည် အခြောက်ခံချိန်တိုး ကိုနှိပ်ပါ',
+  'ลูกค้าเพิ่มเวลาอบ': 'ဖောက်သည် အခြောက်ခံချိန်တိုး',
+  'เงินสด — หยอดเหรียญที่เครื่อง': 'ငွေသား — စက်တွင် အကြွေစေ့ထည့်',
+  'โอน — ยิงจากแอป': 'ငွေလွှဲ — အက်ပ်မှ ပို့',
+  'ยอดใบงาน': 'အလုပ်စာရွက် စုစုပေါင်း',
+  'บันทึกเพิ่มในใบงาน แล้วค่อยกดเริ่มเครื่อง': 'အလုပ်စာရွက်တွင် ထည့်သိမ်းပြီးမှ စက်စတင်ပါ',
+  'เพิ่มในใบงานแล้ว': 'အလုပ်စာရွက်တွင် ထည့်ပြီး',
+  'กดเริ่มเครื่องด้านล่าง': 'အောက်တွင် စက်စတင်ကို နှိပ်ပါ',
+  'บันทึกไม่สำเร็จ': 'သိမ်းဆည်း၍ မရပါ',
+  'น้ำตามใบงาน (เปลี่ยนไม่ได้)': 'အလုပ်စာရွက်အတိုင်း ရေ (ပြောင်း၍မရ)',
+  'ใบงานมีหลายแบบ — แตะเลือกถังที่จะเปิดตอนนี้': 'စာရွက်တွင် အမျိုးအစား အများအပြား — ယခုဖွင့်မည့်အရာကို ရွေးပါ',
+  'เวลาอบตามใบงาน (เปลี่ยนไม่ได้)': 'အလုပ်စာရွက်အတိုင်း အခြောက်ခံချိန် (ပြောင်း၍မရ)',
+  'เพิ่มเวลา': 'အချိန်တိုး',
+  'เพิ่มเวลาตามใบงาน': 'အလုပ်စာရွက်အတိုင်း အချိန်တိုး',
+  'เปิดได้ครั้งละไม่เกิน': 'တစ်ကြိမ်လျှင် အများဆုံး',
+  'ที่เหลือกดเพิ่มที่เครื่องเดิมอีกครั้ง': 'ကျန်ငွေကို စက်ဟောင်းတွင် ထပ်နှိပ်ပါ',
+  'ลูกค้าจ่ายเพิ่มยังไง': 'ဖောက်သည် ဘယ်လိုပေးချေသလဲ',
+  'หยอดเหรียญที่เครื่อง': 'စက်တွင် အကြွေစေ့ထည့်',
+  'เพิ่มในใบงาน': 'အလုပ်စာရွက်တွင် ထည့်',
+  'กดโหมดที่หน้าเครื่องให้ตรงใบงาน': 'စက်ရှေ့တွင် မုဒ်ကို အလုပ်စာရွက်အတိုင်း နှိပ်ပါ',
+  'ความร้อนไม่ต้องเลือกในแอป — ทุกระดับราคาเท่ากัน': 'အပူချိန်ကို အက်ပ်တွင် ရွေးစရာမလို — အဆင့်တိုင်း ဈေးတူ',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -2999,6 +3022,12 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
   const [collections, setCollections] = useState([]);
   const [tokenExchanges, setTokenExchanges] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  // v158: ใบงานที่เปิดอยู่อัปเดตตามข้อมูลล่าสุด (เช่น ลูกค้าเพิ่มเวลาอบ → ยอดใหม่)
+  useEffect(() => {
+    if (!selectedOrder || !selectedOrder.id) return;
+    const f = (orders || []).find(o => o.id === selectedOrder.id);
+    if (f && f !== selectedOrder && JSON.stringify(f) !== JSON.stringify(selectedOrder)) setSelectedOrder(f);
+  }, [orders]);
   // v157: ล็อกอินแบบเจ้าของค้างไว้ → เปิดแอปใหม่ยังเป็นเจ้าของ
   const [isOwner, setIsOwner] = useState(() => { try { const st = JSON.parse(localStorage.getItem('staff-' + config.brand) || 'null'); return !!(st && st.isOwnerLogin); } catch { return false; } });
   const [syncStatus, setSyncStatus] = useState('connecting'); // connecting/synced/offline
@@ -9105,8 +9134,12 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
   const progLabel = kind === 'wash' ? tr(config, washTempLabel(temp)) : (heat ? tr(config, dryHeatLabel(heat)) : tr(config, 'ความร้อนตามใบงาน'));
   const steps = order && order.internalType === 'clean'
     ? `🧼 ${tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')}\n⚠️ ${tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}`
-    : `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n3) ${coin > 0 ? tr(config, 'หยอดเหรียญ แล้วกดตกลง') : tr(config, 'กดตกลง = ชำระเงิน เครื่องเริ่มทำงาน')}\n\n⚠️ ${tr(config, 'อย่าลืมกดเลือกอุณหภูมิหน้าเครื่องให้ตรงใบงาน')}`;
-  if (!confirm(`${head}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n${payTxt}${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${steps}`)) return null;
+    : `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n3) ${coin > 0 ? tr(config, 'หยอดเหรียญ แล้วกดตกลง') : tr(config, 'กดตกลง = ชำระเงิน เครื่องเริ่มทำงาน')}`;
+  // v158: เตือนทุกครั้งก่อนยิง — กดโหมดที่หน้าเครื่องให้ตรงใบงาน (บรรทัดแรก)
+  const modeLine = order && order.internalType === 'clean'
+    ? `⚠️ ${tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}`
+    : `⚠️ ${tr(config, 'กดโหมดที่หน้าเครื่องให้ตรงใบงาน')}: ${kind === 'wash' ? '💧' : '🌡️'} ${progLabel}`;
+  if (!confirm(`${head}\n${modeLine}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n${payTxt}${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${steps}`)) return null;
   const coinLog = coin > 0 ? logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, baht: coin, dryMin, warn }) : null;
   if (coinLog) watchCoinLog(config, coinLog); // 💵 v148: เช็กกับ EC ว่าเครื่องนับเหรียญแล้ว
   if (pulseBaht <= 0) return { ...coinLog, coinBaht: coin };
@@ -9138,6 +9171,31 @@ function jobOpenText(config, alloc) {
     : s.kind === 'wash' ? `💧 ${s.kg}kg ${tr(config, washTempLabel(s.temp))}` : s.kind === 'dry' ? `🌬️ ${s.kg}kg` : `🔧 ฿${slotOpenLeft(s)}`).join(' · ');
 }
 
+// ⏱️ v158: ลูกค้าเพิ่มเวลาอบ → เพิ่มเข้าใบงาน (dryItems.topUp ของขนาดนั้น) + ปรับวิธีจ่าย แล้วเปิดเครื่องตามใบงาน
+// pay 'cash' = ลูกค้าจ่ายสด → แม่บ้านหยอดเหรียญที่เครื่อง · 'transfer' = ลูกค้าโอน → ยิงจากแอป
+// ไม่รีเซ็ตสถานะเก็บเงินเดิม (กันนับซ้ำตอนเจ้าของเก็บเงิน) · จดประวัติใน dryAddOns
+async function addDryTime(config, order, { kg, baht, pay, machine }) {
+  const ref = window.db.collection('orders').doc(order.id);
+  let o = order;
+  try { const f = await ref.get(); if (f.exists) o = { ...order, ...f.data(), id: order.id }; } catch (e) {}
+  if (!(o.dryItems || []).some(i => i.size === kg)) throw new Error(`ใบงานไม่มีอบ ${kg}kg`);
+  const oldTotal = calculateTotal(o, config);
+  const dryItems = (o.dryItems || []).map(i => (i.size === kg ? { ...i, topUp: (i.topUp || 0) + baht } : i));
+  const staff = currentStaffLS(config);
+  const upd = { brand: o.brand || config.brand, dryItems, cashReceived: oldTotal + baht };
+  const pm = o.paymentMethod || 'cash';
+  if (pay === 'cash') {
+    if (pm === 'transfer') Object.assign(upd, { paymentMethod: 'split', cashAmount: baht, transferAmount: oldTotal, cashCollected: false, transferCollected: !!o.collected, collected: false });
+    else if (pm === 'split') upd.cashAmount = (o.cashAmount || 0) + baht;
+  } else {
+    if (pm === 'cash') Object.assign(upd, { paymentMethod: 'split', cashAmount: oldTotal, transferAmount: baht, cashCollected: !!o.collected, transferCollected: false, collected: false });
+    else if (pm === 'split') upd.transferAmount = (o.transferAmount || 0) + baht;
+  }
+  upd.dryAddOns = [...(o.dryAddOns || []), { kg, baht, pay, machine: machine || null, at: Date.now(), by: staff && staff.name ? staff.name : '' }];
+  await ref.set(upd, { merge: true });
+  return { ...o, ...upd };
+}
+
 // ---------- หน้าเลือกเครื่อง (เต็มจอ) ----------
 // jobs = [{ order, alloc }] · fixed = เปิดจากใบงาน (ใบงานเดียว) · ไม่ fixed = เปิดจากหน้าแรก (แตะเครื่องก่อน แล้วเลือกใบงาน)
 function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onClose, busyText, msg, banner, jobLogs, isOwner }) {
@@ -9149,6 +9207,11 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   const [heat, setHeat] = useState(preset ? preset.heat || null : null);
   const [amount, setAmount] = useState(preset ? preset.baht || 0 : 0);
   const [ownerMsg, setOwnerMsg] = useState(null); // ✍️ v149
+  const [addOpen, setAddOpen] = useState(false); // ⏱️ v158 ลูกค้าเพิ่มเวลาอบ
+  const [addAmt, setAddAmt] = useState(20);
+  const [addPay, setAddPay] = useState(null);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addMsg, setAddMsg] = useState(null);
   const maxBaht = ((config.pulse && config.pulse.maxPerShot) || 12) * PULSE_BAHT;
   const openOf = (j) => (j ? j.alloc.slots.filter(s => s.got < s.baht) : []);
   const job = jobs.find(j => j.order.id === jobId) || null;
@@ -9200,7 +9263,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   const applyJob = (m, j) => { const sg = suggest(m, j); setTemp(sg.temp); setAmount(sg.amount); };
   const pick = (m) => {
     if (busyText) return;
-    setSel(m.id); setHeat(null);
+    setSel(m.id); setHeat(null); setAddOpen(false); setAddMsg(null);
     let j = job;
     if (!fixed) { const c = jobChoices(m); j = c.length ? c[0].j : null; setJobId(j ? j.order.id : null); }
     applyJob(m, j);
@@ -9209,8 +9272,18 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
 
   // ซักที่เปิดไปบางส่วนแล้ว (เช่น หยอดเหรียญแล้วแต่ยิงส่วนโอนไม่สำเร็จ) → เติมเฉพาะส่วนที่ขาด
   const partialWash = selM && selM.kind === 'wash' && job ? openSlots.find(x => x.kind === 'wash' && x.got > 0 && x.kg === selM.kg && x.logs.some(l => l.machine === selM.id)) : null;
-  const washBaht = selM && selM.kind === 'wash' && temp ? (partialWash ? slotOpenLeft(partialWash) : washPriceFor(config, selM.kg, temp)) : 0;
-  const baht = selM ? (selM.kind === 'wash' ? washBaht : amount) : 0;
+  // 🔒 v158: เปิดเครื่องตามใบงานเท่านั้น — น้ำ/เวลาอบ เปลี่ยนในหน้านี้ไม่ได้ (งานภายในที่กรอกยอดเอง = เลือกได้)
+  const customOpen = openSlots.some(s => s.kind === 'custom');
+  const ticketTemps = selM && selM.kind === 'wash' && job && !customOpen ? [...new Set(openSlots.filter(s => s.kind === 'wash' && s.kg === selM.kg).map(s => s.temp).filter(Boolean))] : [];
+  const lockedWash = ticketTemps.length > 0 || !!partialWash;
+  const tempUse = partialWash ? (partialWash.temp || temp) : ticketTemps.length ? (ticketTemps.includes(temp) ? temp : ticketTemps[0]) : temp;
+  const dryBaseSlot = selM && selM.kind === 'dry' && job ? openSlots.find(x => x.kind === 'dry' && x.kg === selM.kg) : null;
+  const dryBaseLeft = dryBaseSlot ? slotOpenLeft(dryBaseSlot) : 0;
+  const dryTopLeft = selM && selM.kind === 'dry' && job ? openSlots.filter(x => x.kind === 'topup' && x.kg === selM.kg).reduce((a, x) => a + slotOpenLeft(x), 0) : 0;
+  const dryTicketAmt = dryBaseLeft + dryTopLeft;
+  const lockedDry = !!(selM && selM.kind === 'dry' && job && !customOpen);
+  const washBaht = selM && selM.kind === 'wash' && tempUse ? (partialWash ? slotOpenLeft(partialWash) : washPriceFor(config, selM.kg, tempUse)) : 0;
+  const baht = selM ? (selM.kind === 'wash' ? washBaht : lockedDry ? Math.min(maxBaht, dryTicketAmt) : amount) : 0;
   // 💵 ลูกค้าจ่ายเงินสด → หยอดเหรียญเอง · ส่วนโอน → ยิงจากแอป (v147)
   const pay = job ? payStateOf(job.order, config, job.logs || jobLogs || []) : null;
   const cp = splitCoinPulse(pay, baht, selM ? selM.kind : null);
@@ -9225,7 +9298,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
     if (custom) { if (!(custom.allowed || []).includes(selM.id)) warn = tr(config, 'ไม่ใช่เครื่องที่ระบุในงานภายใน'); }
     else if (!ks.length) warn = selM.kind === 'wash' ? tr(config, 'ใบงานนี้ไม่มีซักที่ยังไม่ได้เปิด') : tr(config, 'ใบงานนี้ไม่มีอบที่ยังไม่ได้เปิด');
     else if (!ks.some(s => s.kg === selM.kg)) warn = `${tr(config, 'ใบงานเป็นเครื่อง')} ${[...new Set(ks.map(s => s.kg))].join('/')}kg`;
-    else if (selM.kind === 'wash' && temp && !ks.some(s => s.kg === selM.kg && s.temp === temp)) warn = `${tr(config, 'ใบงานเป็น')}${[...new Set(ks.filter(s => s.kg === selM.kg).map(s => tr(config, washTempLabel(s.temp))))].join('/')}`;
+    else if (selM.kind === 'wash' && tempUse && !ks.some(s => s.kg === selM.kg && s.temp === tempUse)) warn = `${tr(config, 'ใบงานเป็น')}${[...new Set(ks.filter(s => s.kg === selM.kg).map(s => tr(config, washTempLabel(s.temp))))].join('/')}`;
   }
   // เริ่มครบแล้ว = ยิงซ้ำไม่ได้ (กันกดเบิ้ล/สแกนซ้ำ) · อบเพิ่มเวลาได้เฉพาะเครื่องที่อบงานนี้
   let block = '';
@@ -9239,7 +9312,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
     else if (!openSlots.some(s => slotSameKind(s, selM))) {
       if (selM.kind === 'wash') block = tr(config, 'ใบงานนี้เริ่มซักครบแล้ว — ยิงซ้ำไม่ได้');
       else if (!usedHere) block = tr(config, 'อบครบแล้ว — เพิ่มเวลาได้เฉพาะเครื่องที่อบงานนี้');
-      else warn = tr(config, 'เพิ่มเวลาเกินใบงาน (ขึ้นในกระทบยอด)');
+      else block = isInternalOrder(job.order) ? tr(config, 'อบครบตามใบงานแล้ว — ยิงเกินใบงานไม่ได้') : tr(config, 'อบครบตามใบงานแล้ว — ลูกค้าจะเพิ่มเวลา กด ⏱️ ลูกค้าเพิ่มเวลาอบ'); // v158: ห้ามยิงเกินใบงาน
     }
   }
   // 🔧 งานภายใน (v150): แม่บ้านเปิดได้เฉพาะเครื่องที่ระบุในใบงาน · เจ้าของเปิดได้ (มีเตือน)
@@ -9255,7 +9328,26 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   if (selM && marks[selM.id] === 'busy') warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้เพิ่งเปิดให้งานอื่น');
   if (selM && problems.has(selM.id)) warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้มีแจ้งปัญหาวันนี้ — เช็กเครื่องก่อน');
   const firedHere = fixed && (jobLogs || []).some(l => pulseLive(l));
-  const ready = selM && job && !block && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : true); // v156: อบไม่ต้องเลือกความร้อน
+  const ready = selM && job && !block && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!tempUse : true); // v156: อบไม่ต้องเลือกความร้อน
+  // ⏱️ v158: ลูกค้าเพิ่มเวลาอบ — ใบงานลูกค้าที่มีอบขนาดนี้ · เครื่องที่อบงานนี้อยู่ หรือยังไม่ได้เริ่มอบ
+  const usedHereDry = !!(selM && selM.kind === 'dry' && job && job.alloc.slots.some(s => s.logs.some(l => l.machine === selM.id)));
+  const canAddTime = !!(selM && selM.kind === 'dry' && job && !isInternalOrder(job.order) && !busyText
+    && job.alloc.slots.some(s => s.kind === 'dry' && s.kg === selM.kg) && (usedHereDry || !!dryBaseSlot));
+  const doAddTime = async () => {
+    if (!addPay || addBusy || !job || !selM) return;
+    const o = job.order;
+    const before = calculateTotal(o, config);
+    const mins = dryMinutesFor(config, selM.kg, addAmt);
+    if (!confirm(`⏱️ ${tr(config, 'ลูกค้าเพิ่มเวลาอบ')}\n\n📋 ${pulseRefLabel(o, config)}\n🌬️ ${selM.label} (${selM.kg}kg) +฿${addAmt}${mins ? ` ≈ +${mins} ${tr(config, 'นาที')}` : ''}\n${addPay === 'cash' ? '💵 ' + tr(config, 'เงินสด — หยอดเหรียญที่เครื่อง') : '💳 ' + tr(config, 'โอน — ยิงจากแอป')}\n\n${tr(config, 'ยอดใบงาน')} ฿${before} → ฿${before + addAmt}\n${tr(config, 'บันทึกเพิ่มในใบงาน แล้วค่อยกดเริ่มเครื่อง')}`)) return;
+    setAddBusy(true);
+    try {
+      await addDryTime(config, o, { kg: selM.kg, baht: addAmt, pay: addPay, machine: selM.id });
+      setAddOpen(false);
+      setAddMsg(`✅ ${tr(config, 'เพิ่มในใบงานแล้ว')} +฿${addAmt} — ${tr(config, 'กดเริ่มเครื่องด้านล่าง')}`);
+    } catch (e) {
+      alert(tr(config, 'บันทึกไม่สำเร็จ') + ': ' + (e && e.message ? e.message : e));
+    } finally { setAddBusy(false); }
+  };
 
   const tile = (active, color, onClick, top, bottom, badge) => (
     <button onClick={onClick} disabled={!!busyText}
@@ -9372,7 +9464,17 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
             )}
             {block && <p className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">🚫 {block}</p>}
             {block && firedHere && <p className="text-xs font-bold text-slate-600 px-1">💡 {tr(config, 'เครื่องมีปัญหา? กด ⚠️ ที่รายการด้านล่าง ให้เจ้าของคืนเครดิต')}</p>}
-            {(fixed || job) && !block && (selM.kind === 'wash' ? (
+            {(fixed || job) && !block && (selM.kind === 'wash' ? (lockedWash ? (
+              <div>
+                <p className="text-xs font-bold text-slate-500 mb-2">🔒 {tr(config, 'น้ำตามใบงาน (เปลี่ยนไม่ได้)')}</p>
+                <div className="flex gap-2">
+                  {WASH_TEMPS.filter(t => (partialWash ? t.id === tempUse : ticketTemps.includes(t.id))).map(t => tile(tempUse === t.id, t.color, () => setTemp(t.id), t.emoji,
+                    <span>{tr(config, t.label)}<br /><span className="text-xs font-bold opacity-80">฿{partialWash ? slotOpenLeft(partialWash) : washPriceFor(config, selM.kg, t.id)}</span></span>,
+                    tr(config, 'ตามใบงาน')))}
+                </div>
+                {ticketTemps.length > 1 && !partialWash && <p className="text-[11px] font-bold text-slate-500 mt-1">{tr(config, 'ใบงานมีหลายแบบ — แตะเลือกถังที่จะเปิดตอนนี้')}</p>}
+              </div>
+            ) : (
               <div>
                 <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกน้ำ')} <span className="font-normal">· {tr(config, 'ค่าเริ่มต้นตามใบงาน')}</span></p>
                 <div className="flex gap-2">
@@ -9381,13 +9483,18 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
                     openSlots.some(s => s.kind === 'wash' && s.kg === selM.kg && s.temp === t.id) ? tr(config, 'ตามใบงาน') : null))}
                 </div>
               </div>
-            ) : (
+            )) : (
               <div className="space-y-3">
-                {/* v156: ไม่ต้องเลือกความร้อนในแอป (ทุกระดับราคาเท่ากัน) → เตือนให้กดที่หน้าเครื่อง */}
-                <div className="rounded-xl px-3 py-2.5 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
-                  <p className="text-sm font-extrabold text-amber-900">🌡️ {tr(config, 'กดเลือกความร้อนที่หน้าเครื่องให้ตรงใบงาน')}</p>
-                  <p className="text-[11px] font-bold text-amber-800">{tr(config, 'ไม่ต้องเลือกในแอป — ทุกระดับราคาเท่ากัน')}</p>
-                </div>
+                {lockedDry ? (
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-2">🔒 {tr(config, 'เวลาอบตามใบงาน (เปลี่ยนไม่ได้)')}</p>
+                    <div className="rounded-2xl border-2 border-slate-200 bg-white px-3 py-3 text-center">
+                      <p className="text-2xl font-extrabold text-slate-900">฿{baht}</p>
+                      <p className="text-xs font-bold text-slate-500">≈ {dryMinutesFor(config, selM.kg, baht)} {tr(config, 'นาที')}{dryBaseLeft > 0 && dryTopLeft > 0 ? ` · ${tr(config, 'อบ')} ฿${dryBaseLeft} + ${tr(config, 'เพิ่มเวลา')} ฿${dryTopLeft}` : (dryBaseLeft === 0 && dryTopLeft > 0 ? ` · ⏱️ ${tr(config, 'เพิ่มเวลาตามใบงาน')}` : '')}</p>
+                    </div>
+                    {dryTicketAmt > maxBaht && <p className="text-[11px] font-bold text-amber-700 mt-1 text-center">{tr(config, 'เปิดได้ครั้งละไม่เกิน')} ฿{maxBaht} — {tr(config, 'ที่เหลือกดเพิ่มที่เครื่องเดิมอีกครั้ง')}</p>}
+                  </div>
+                ) : (
                 <div>
                   <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เวลาอบ')}</p>
                   <div className="flex items-center gap-2">
@@ -9402,13 +9509,53 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
                   </div>
                   {!dryBaseOpen && <p className="text-[11px] text-slate-500 mt-1 text-center">{tr(config, 'เพิ่มเวลาให้เครื่องที่อบอยู่ได้ (ทีละ ฿10)')}</p>}
                 </div>
+                )}
               </div>
             ))}
+
+            {/* ⏱️ v158: ลูกค้าเพิ่มเวลาอบ → เพิ่มในใบงานก่อน แล้วเปิดเครื่องตามใบงาน */}
+            {(fixed || job) && canAddTime && (!addOpen ? (
+              <button onClick={() => { setAddOpen(true); setAddAmt(PULSE_BAHT * 2); setAddPay(job.order.paymentMethod === 'transfer' ? 'transfer' : job.order.paymentMethod === 'cash' ? 'cash' : null); setAddMsg(null); }}
+                className="w-full py-3 rounded-2xl border-2 border-dashed text-sm font-extrabold active:scale-95 transition" style={{ borderColor: '#F59E0B', color: '#92400E', background: '#FFFBEB' }}>
+                ⏱️ {tr(config, 'ลูกค้าเพิ่มเวลาอบ')} ({selM.label})
+              </button>
+            ) : (
+              <div className="rounded-2xl border-2 px-3 py-3 space-y-2" style={{ borderColor: '#F59E0B', background: '#FFFBEB' }}>
+                <p className="text-sm font-extrabold text-amber-900">⏱️ {tr(config, 'ลูกค้าเพิ่มเวลาอบ')} · {selM.label} ({selM.kg}kg)</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setAddAmt(a => Math.max(PULSE_BAHT, a - PULSE_BAHT))} disabled={addBusy || addAmt <= PULSE_BAHT}
+                    className="w-12 h-12 rounded-2xl bg-white border border-amber-200 text-2xl font-extrabold text-slate-700 active:scale-95 disabled:opacity-30">−</button>
+                  <div className="flex-1 text-center">
+                    <p className="text-2xl font-extrabold text-slate-900">+฿{addAmt}</p>
+                    <p className="text-xs font-bold text-slate-500">≈ +{dryMinutesFor(config, selM.kg, addAmt)} {tr(config, 'นาที')}</p>
+                  </div>
+                  <button onClick={() => setAddAmt(a => Math.min(maxBaht, a + PULSE_BAHT))} disabled={addBusy || addAmt >= maxBaht}
+                    className="w-12 h-12 rounded-2xl bg-white border border-amber-200 text-2xl font-extrabold text-slate-700 active:scale-95 disabled:opacity-30">+</button>
+                </div>
+                <p className="text-xs font-bold text-slate-600">{tr(config, 'ลูกค้าจ่ายเพิ่มยังไง')}</p>
+                <div className="flex gap-2">
+                  {tile(addPay === 'cash', '#059669', () => setAddPay('cash'), '💵', <span>{tr(config, 'เงินสด')}<br /><span className="text-[11px] font-bold opacity-80">{tr(config, 'หยอดเหรียญที่เครื่อง')}</span></span>, null)}
+                  {tile(addPay === 'transfer', '#0284C7', () => setAddPay('transfer'), '💳', <span>{tr(config, 'โอน')}<br /><span className="text-[11px] font-bold opacity-80">{tr(config, 'ยิงจากแอป')}</span></span>, null)}
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setAddOpen(false)} disabled={addBusy} className="px-4 py-3 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-600 active:scale-95">{tr(config, 'ยกเลิก')}</button>
+                  <button onClick={doAddTime} disabled={!addPay || addBusy}
+                    className="flex-1 py-3 rounded-xl text-white text-sm font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: '#D97706' }}>
+                    {addBusy ? '⏳' : `➕ ${tr(config, 'เพิ่มในใบงาน')} +฿${addAmt}`}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {addMsg && <p className="text-sm font-bold text-center text-emerald-700">{addMsg}</p>}
 
             {(fixed || job) && !block && (job && job.order.internalType === 'clean' ? (
               <p className="text-sm font-extrabold text-rose-700 bg-rose-50 border-2 border-rose-200 rounded-xl px-3 py-2">🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>
             ) : (
-              <p className="text-[11px] font-bold text-slate-500">📝 {tr(config, 'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรมที่หน้าเครื่อง → กดเริ่ม (ชำระเงิน)')}</p>
+              <div className="rounded-xl px-3 py-2.5 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+                <p className="text-sm font-extrabold text-amber-900">⚠️ {tr(config, 'กดโหมดที่หน้าเครื่องให้ตรงใบงาน')}: {selM.kind === 'wash' ? `💧 ${tr(config, washTempLabel(tempUse))}` : `🌡️ ${tr(config, 'ความร้อนตามใบงาน')}`}</p>
+                {selM.kind === 'dry' && <p className="text-[11px] font-bold text-amber-800">{tr(config, 'ความร้อนไม่ต้องเลือกในแอป — ทุกระดับราคาเท่ากัน')}</p>}
+                <p className="text-[11px] font-bold text-slate-500 mt-0.5">📝 {tr(config, 'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรมที่หน้าเครื่อง → กดเริ่ม (ชำระเงิน)')}</p>
+              </div>
             ))}
             {warn && <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ {warn}</p>}
           </div>
@@ -9426,7 +9573,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               const o = job.order;
               const cashNote = (o.paymentMethod === 'cash' || o.paymentMethod === 'split') ? '\n\n💡 ใบงานนี้ลงว่าจ่ายเงินสด — ถ้าลูกค้าโอนจริง ให้แก้วิธีจ่ายในใบงานเป็น "โอน" ด้วย' : '';
               if (!confirm(`✍️ เจ้าของบันทึกว่าเริ่มเครื่องแล้ว (แบบโอน)\n\n📋 ${pulseRefLabel(o, config)}\n🧺 ${selM.label} (${selM.kg}kg) · ฿${baht}\n\n⚠️ แอปจะไม่สั่งเครื่อง — ใช้แก้ใบงานที่เริ่มเครื่องไปแล้วด้วยวิธีอื่น${cashNote}`)) return;
-              recordManualStart(config, o, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn });
+              recordManualStart(config, o, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? tempUse : null, heat: selM.kind === 'dry' ? heat : null, baht, warn });
               setOwnerMsg(`✍️ ${selM.label} ฿${baht} — ${tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)')}`);
               setSel(null);
             }}
@@ -9435,7 +9582,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
             </button>
           )}
           <button disabled={!ready || !!busyText}
-            onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin, discBaht: cp.disc }, () => setSel(null))}
+            onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? tempUse : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin, discBaht: cp.disc }, () => setSel(null))}
             className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: cp.coin > 0 && cp.pulse === 0 && !block ? '#D97706' : config.gradient }}>
             {busyText ? `⏳ ${busyText}` : block ? `🚫 ${tr(config, 'ยิงไม่ได้')}` : !ready
               ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกเวลาอบ'))
@@ -9450,7 +9597,15 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
 }
 
 // ---------- การ์ดในใบรับงาน ----------
-function PulseStarterCard({ config, order, isOwner }) {
+function PulseStarterCard({ config, order: orderProp, isOwner }) {
+  // v158: ฟังใบงานล่าสุด (เพิ่มเวลาอบแล้วช่องใหม่โผล่ทันที)
+  const [liveOrder, setLiveOrder] = useState(null);
+  useEffect(() => {
+    if (!window.db || !orderProp || !orderProp.id) return;
+    const u = window.db.collection('orders').doc(orderProp.id).onSnapshot(sn => { if (sn && sn.exists) setLiveOrder({ ...sn.data(), id: orderProp.id }); }, () => {});
+    return () => { if (u) u(); };
+  }, [orderProp && orderProp.id]);
+  const order = liveOrder && orderProp && liveOrder.id === orderProp.id ? { ...orderProp, ...liveOrder } : orderProp;
   const [logs, setLogs] = useState([]);
   const [dayLogs, setDayLogs] = useState([]);
   const [picker, setPicker] = useState(null); // null | { preset, retryLog }
