@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v149-2026-10-27';
+  window.APP_VERSION = 'v150-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -1599,11 +1599,26 @@ function subscribeToShopSettings(brand, callback) {
 // 🔧 งานภายในร้าน (ล้างเครื่อง/ทดสอบ) — ไม่ใช่รายได้ แต่ใช้เครดิตจริง
 const INTERNAL_TYPES = [
   { id: 'clean', label: 'ล้างเครื่อง', emoji: '🧼' },
-  { id: 'test', label: 'ทดสอบเครื่อง', emoji: '🔧' },
+  { id: 'test', label: 'ซ่อม/ทดสอบเครื่อง', emoji: '🔧' },
   { id: 'redo', label: 'ซักซ้ำให้ลูกค้า', emoji: '🔁' },
   { id: 'other', label: 'อื่นๆ', emoji: '📝' },
 ];
 const isInternalOrder = (o) => !!(o && o.internalType);
+// 🔧 สิทธิ์งานภายใน (v150): แม่บ้าน = ล้างเครื่อง (เครื่องละ 1 ครั้งต่อ 7 วัน) + ซักซ้ำให้ลูกค้า · ซ่อม/ทดสอบ + อื่นๆ = เจ้าของ
+const INTERNAL_OWNER_ONLY = ['test', 'other'];
+const CLEAN_EVERY_DAYS = 7;
+// เครื่องที่ล้างไปแล้วภายใน 7 วัน → { label: { at, until } }
+function cleanLocksOf(orders, exceptId) {
+  const out = {};
+  const now = Date.now();
+  (orders || []).forEach(o => {
+    if (o.internalType !== 'clean' || (exceptId && o.id === exceptId)) return;
+    const at = o.createdAt || 0;
+    if (now - at >= CLEAN_EVERY_DAYS * 86400000) return;
+    (o.internalMachines || []).forEach(lb => { if (!out[lb] || out[lb].at < at) out[lb] = { at, until: at + CLEAN_EVERY_DAYS * 86400000 }; });
+  });
+  return out;
+}
 
 // เครดิตที่แม่บ้านต้องสแกนให้ 1 ออเดอร์ = ราคาเครื่องล้วน (ซัก + อบ + หยอดเพิ่ม)
 // ไม่รวมน้ำยา/พับ/ค่าส่ง เพราะไม่ได้จ่ายผ่านเครื่อง
@@ -2097,6 +2112,8 @@ const MM_DICT = {
   'เจ้าของบันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)': 'ပိုင်ရှင်က စတင်ပြီးဟု မှတ်တမ်းတင် (တကယ် မပို့)',
   'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)': 'ပိုင်ရှင် မှတ်တမ်းတင်ပြီး (တကယ် မပို့)',
   'เจ้าของ: บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)': 'ပိုင်ရှင်: စတင်ပြီးဟု မှတ်တမ်းတင် (တကယ် မပို့)',
+  // 🔧 งานภายใน (v150)
+  'เครื่องนี้ไม่ได้อยู่ในใบงานภายใน': 'ဤစက်သည် ဆိုင်တွင်းအလုပ်စာရွက်တွင် မပါ',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3330,13 +3347,13 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
       {deepJobId && <JobStartSheet config={config} orderId={deepJobId} orders={orders} onClose={onDeepDone} isOwner={isOwner} />}
       {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
-      {view === 'newOrder' && <NewOrderView config={config} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
+      {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
-      {view === 'editOrder' && selectedOrder && <NewOrderView config={config} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
+      {view === 'editOrder' && selectedOrder && <NewOrderView config={config} orders={orders} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
   );
 }
@@ -4532,7 +4549,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   );
 }
 
-function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode, backdateDay }) {
+function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode, backdateDay, orders }) {
   const [webOrders, setWebOrders] = useState([]);
   const [showWeb, setShowWeb] = useState(false);
   const [webPicked, setWebPicked] = useState(null); // { id, code }
@@ -4689,13 +4706,33 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const phoneOk = !needPhone || phone.trim().length >= 9;
   const nameOk = !needCustomerInfo || name.trim().length > 0;
   const internalOk = !isInternal || (internalMachines.length > 0 && (!needInternalDetail || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0))));
+  // 🔧 กติกางานภายในสำหรับแม่บ้าน (v150) — เจ้าของไม่ติด
+  const cleanLocks = !isOwner && isInternal ? cleanLocksOf(orders, editingOrder && editingOrder.id) : {};
+  const internalMaidIssues = [];
+  if (isInternal && !isOwner) {
+    if (INTERNAL_OWNER_ONLY.includes(internalType)) internalMaidIssues.push('ซ่อม/ทดสอบ และ อื่นๆ — เฉพาะเจ้าของ');
+    if (internalType === 'clean') {
+      const lockedSel = internalMachines.filter(lb => cleanLocks[lb]);
+      if (lockedSel.length) internalMaidIssues.push(`ล้างไปแล้วใน ${CLEAN_EVERY_DAYS} วัน: ${lockedSel.join(', ')}`);
+      const allM = (COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || [];
+      const selW = allM.filter(m => /^w/i.test(m.id) && internalMachines.includes(m.label)).length;
+      const selD = allM.filter(m => /^d/i.test(m.id) && internalMachines.includes(m.label)).length;
+      const washQty = (washItems || []).reduce((a, i) => a + (i.qty || 0), 0);
+      const dryQty = (dryItems || []).reduce((a, i) => a + (i.qty || 0), 0);
+      const topUp = (dryItems || []).reduce((a, i) => a + (i.topUp || 0), 0);
+      if (washQty > selW) internalMaidIssues.push(`ล้างเครื่อง: ซักได้ไม่เกินจำนวนเครื่องซักที่เลือก (${selW})`);
+      if (dryQty > selD) internalMaidIssues.push(`ล้างเครื่อง: อบได้ไม่เกินจำนวนเครื่องอบที่เลือก (${selD})`);
+      if (topUp > 0) internalMaidIssues.push('ล้างเครื่อง: ไม่ต้องเพิ่มเวลาอบ');
+    }
+  }
   const canSubmit = isInternal
-    ? internalOk
+    ? internalOk && internalMaidIssues.length === 0
     : (hasAnyItem && nameOk && phoneOk && (!useLinePromo || promoPhotoOk));
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
   if (isInternal && internalMachines.length === 0) missingList.push('เลือกเครื่องที่ทำ (บังคับ)');
+  internalMaidIssues.forEach(t => missingList.push(t));
   if (isInternal && needInternalDetail) {
     if (!hasAnyItem && customAmt <= 0) missingList.push('เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง');
     if (!internalReason.trim()) missingList.push('ใส่เหตุผล (บังคับ)');
@@ -4981,21 +5018,27 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
             </div>
             <p className="text-xs font-bold text-slate-700 mb-1.5">ประเภทงาน</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {INTERNAL_TYPES.map(t => (
-                <button key={t.id} onClick={() => setInternalType(t.id)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${internalType === t.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>
-                  {t.emoji} {t.label}
-                </button>
-              ))}
+              {INTERNAL_TYPES.map(t => {
+                const locked = !isOwner && INTERNAL_OWNER_ONLY.includes(t.id);
+                return (
+                  <button key={t.id} onClick={() => { if (locked) { alert('🔒 ' + t.label + ' — เฉพาะเจ้าของ'); return; } setInternalType(t.id); }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${internalType === t.id ? 'bg-slate-900 text-white border-slate-900' : locked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
+                    {locked ? '🔒' : t.emoji} {t.label}
+                  </button>
+                );
+              })}
             </div>
+            {!isOwner && <p className="text-[11px] font-bold text-slate-700 -mt-2 mb-3">🧼 แม่บ้านล้างเครื่องได้เครื่องละ 1 ครั้งต่อ {CLEAN_EVERY_DAYS} วัน · 🔒 ซ่อม/ทดสอบ และอื่นๆ ให้เจ้าของทำ</p>}
             <p className="text-xs font-bold text-slate-700 mb-1.5">เครื่องที่ทำ <span className="text-rose-600">*บังคับ</span> (เลือกได้หลายเครื่อง)</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
                 const on = internalMachines.includes(m.label);
+                const lock = internalType === 'clean' ? cleanLocks[m.label] : null;
+                const until = lock ? new Date(lock.until).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '';
                 return (
-                  <button key={m.id} onClick={() => setInternalMachines(on ? internalMachines.filter(x => x !== m.label) : [...internalMachines, m.label])}
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>
-                    {m.label}
+                  <button key={m.id} onClick={() => { if (lock && !on) { alert(`🧼 ${m.label} ล้างไปแล้วเมื่อ ${new Date(lock.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}\nล้างได้อีกครั้ง ${until}`); return; } setInternalMachines(on ? internalMachines.filter(x => x !== m.label) : [...internalMachines, m.label]); }}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 ${on ? (lock ? 'bg-rose-600 text-white border-rose-600' : 'bg-slate-900 text-white border-slate-900') : lock ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
+                    {m.label}{lock ? ` 🔒${until}` : ''}
                   </button>
                 );
               })}
@@ -8983,6 +9026,14 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
       if (selM.kind === 'wash') block = tr(config, 'ใบงานนี้เริ่มซักครบแล้ว — ยิงซ้ำไม่ได้');
       else if (!usedHere) block = tr(config, 'อบครบแล้ว — เพิ่มเวลาได้เฉพาะเครื่องที่อบงานนี้');
       else warn = tr(config, 'เพิ่มเวลาเกินใบงาน (ขึ้นในกระทบยอด)');
+    }
+  }
+  // 🔧 งานภายใน (v150): แม่บ้านเปิดได้เฉพาะเครื่องที่ระบุในใบงาน · เจ้าของเปิดได้ (มีเตือน)
+  if (selM && job && isInternalOrder(job.order) && !block) {
+    const ids = (job.order.internalMachines || []).map(lb => (ms.find(m => m.label === lb) || {}).id).filter(Boolean);
+    if (ids.length && !ids.includes(selM.id)) {
+      if (owner) warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้ไม่ได้อยู่ในใบงานภายใน');
+      else block = tr(config, 'เครื่องนี้ไม่ได้อยู่ในใบงานภายใน');
     }
   }
   if (block) warn = '';
