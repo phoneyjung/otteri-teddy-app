@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v164-2026-10-27';
+  window.APP_VERSION = 'v165-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -3523,7 +3523,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
-      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
+      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} collections={collections} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {view === 'ownerDashboard' && config.brand === 'teddy2' && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'ownerDashboard' && config.brand !== 'teddy2' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
@@ -5975,7 +5975,7 @@ async function printImageDataUrl(dataUrl, onProgress) {
   await printCanvasViaBluetooth(c, onProgress);
 }
 
-function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, isOwner }) {
+function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, isOwner, collections }) {
   const receiptRef = useRef(null);
   const payQr = PAYMENT_QRS[config.brand]; // QR static สำรอง (กรณีไลบรารีโหลดไม่ทัน)
   const jobTicketRef = useRef(null);
@@ -6194,6 +6194,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
 
       <div className="p-4">
         {pulseOn(config) && order.id && (order.createdAt || 0) >= pulseSinceOf(config) && <PulseStarterCard config={config} order={order} isOwner={isOwner} />}
+        {config.brand === 'teddy2' && order.id && <CashCollectedNote config={config} order={order} collections={collections} isOwner={isOwner} />}
         <div ref={receiptRef} className="bg-white rounded-2xl overflow-hidden shadow-lg" style={{fontFamily: '"Noto Sans Thai", sans-serif'}}>
           <div className="relative" style={{ background: config.gradient }}>
             <div className="absolute top-0 left-0 right-0 h-1.5" style={{ background: headerStripe }}></div>
@@ -8896,6 +8897,57 @@ async function convertManualToCoin(config, order, logs, log, amount) {
   return amt;
 }
 const MANUAL_COIN_ASK = (baht) => `💵 ใบงานนี้ลูกค้าจ่ายเงินสด — ส่วนที่ต้องหยอดเหรียญ ฿${baht}\n\nแม่บ้านหยอดเหรียญเข้าเครื่องไปแล้วใช่ไหม?\n\nตกลง = หยอดแล้ว (เงินสดเข้าเครื่อง ไม่ต้องเก็บจากแม่บ้าน)\nยกเลิก = ยังไม่ได้หยอด (แม่บ้านยังถือเงินสด รอเก็บ)`;
+
+// ↶ v165: ใบงานเงินสดที่ติดไปกับรอบ 'เก็บเงินสด' ทั้งที่เจ้าของยังไม่ได้รับเงินใบนี้ → เอาออกจากรอบ กลับไปรอเก็บ
+function cashRoundOf(order, collections) {
+  return (collections || []).filter(r => r.method === 'cash' && !r.undone && (r.orderIds || []).includes(order.id))
+    .sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0))[0] || null;
+}
+async function uncollectCashOrder(config, order, round) {
+  const cashPart = orderCashPart(order, config);
+  const upd = order.paymentMethod === 'split'
+    ? { cashCollected: false, collected: false, collectedVia: null }
+    : { collected: false, collectedAt: null, collectedVia: null };
+  await window.db.collection('orders').doc(order.id).set({ brand: order.brand || config.brand, ...upd }, { merge: true });
+  if (!round || !round.id) return 0;
+  // ยอดที่รอบนั้นนับใบนี้ไว้ = เงินสดของใบ − ที่หยอดเครื่องไปก่อนเวลาเก็บ
+  const before = order.cashInMachineAt && order.cashInMachineAt <= (round.collectedAt || 0) ? cashInMachineOf(order, config) : 0;
+  const amt = Math.max(0, cashPart - before);
+  await window.db.collection('collections').doc(round.id).set({
+    brand: round.brand || config.brand,
+    orderIds: (round.orderIds || []).filter(x => x !== order.id),
+    orderCount: Math.max(0, (round.orderCount || 1) - 1),
+    totalReceived: Math.max(0, (round.totalReceived || 0) - amt),
+    totalShould: Math.max(0, (round.totalShould || 0) - amt),
+    removed: firebase.firestore.FieldValue.arrayUnion({ id: order.id, label: pulseRefLabel(order, config), amount: amt, at: Date.now(), by: 'เจ้าของ' }),
+  }, { merge: true });
+  return amt;
+}
+function CashCollectedNote({ config, order, collections, isOwner }) {
+  const [busy, setBusy] = useState(false);
+  const cashPart = orderCashPart(order, config);
+  const taken = order.paymentMethod === 'split' ? !!order.cashCollected : order.paymentMethod === 'cash' ? !!order.collected : false;
+  if (!(cashPart > 0) || !taken || order.collectedVia === 'machine' || !pulseIsOwnerNow(config, isOwner)) return null;
+  const round = cashRoundOf(order, collections);
+  const held = Math.max(0, cashPart - cashInMachineOf(order, config));
+  const go = async () => {
+    if (busy) return;
+    if (!confirm(`↶ ยังไม่ได้เก็บเงินสดใบนี้\n\n📋 ${pulseRefLabel(order, config)} · เงินสด ฿${formatMoney(cashPart)}${round ? `\n🧾 ตอนนี้อยู่ในรอบเก็บเงินสด ${t2When(round.collectedAt)} (฿${formatMoney(round.totalReceived || 0)} · ${round.orderCount || 0} ใบ) — จะตัดใบนี้ออกจากรอบ` : ''}\n\n💵 ใบนี้จะกลับไปอยู่ใน "เงินสดในมือ" ของแม่บ้าน ฿${formatMoney(held)}`)) return;
+    setBusy(true);
+    try { await uncollectCashOrder(config, order, round); }
+    catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
+    setBusy(false);
+  };
+  return (
+    <div className="rounded-2xl p-3 mb-3 bg-white border border-slate-200">
+      <p className="text-sm font-extrabold text-slate-900">💵 นับว่าเจ้าของเก็บเงินสดใบนี้แล้ว</p>
+      <p className="text-xs text-slate-500 mt-0.5">{round ? `รอบเก็บเงินสด ${t2When(round.collectedAt)} · ฿${formatMoney(round.totalReceived || 0)} · ${round.orderCount || 0} ใบ` : 'เก็บแล้ว (ไม่พบรอบ)'} · จึงไม่อยู่ใน "เงินสดในมือ"</p>
+      <button onClick={go} disabled={busy} className="mt-2 w-full py-2.5 rounded-xl border-2 border-slate-300 bg-white text-sm font-extrabold text-slate-700 active:scale-95 transition disabled:opacity-40">
+        {busy ? '⏳' : '↶ ยังไม่ได้เก็บเงินใบนี้'}
+      </button>
+    </div>
+  );
+}
 
 // อ่านประวัติเครื่องของวันจาก EC (ผ่าน Worker) — ทีละ 4 เครื่องพร้อมกัน
 async function fetchEcDay(config, dateKey, machineIds, onProgress) {
