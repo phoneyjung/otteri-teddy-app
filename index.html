@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v160-2026-10-27';
+  window.APP_VERSION = 'v161-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -1340,7 +1340,8 @@ async function saveCollectionToCloud(brand, item) {
     delete data.id;
     data = cleanUndefined(data);
     data = JSON.parse(JSON.stringify(data));
-    await window.db.collection('collections').add(data);
+    const ref = await window.db.collection('collections').add(data);
+    return ref && ref.id ? ref.id : null; // v161: คืน id ไว้กดยกเลิก
   } catch (e) { console.error('saveCollection error:', e); throw e; }
 }
 async function batchUpdateOrders(orderIds, updates) {
@@ -1348,12 +1349,15 @@ async function batchUpdateOrders(orderIds, updates) {
     // Clean undefined values to avoid Firestore errors
     let cleanedUpdates = cleanUndefined(updates);
     cleanedUpdates = JSON.parse(JSON.stringify(cleanedUpdates));
-    const batch = window.db.batch();
-    orderIds.forEach(id => {
-      const ref = window.db.collection('orders').doc(id);
-      batch.update(ref, cleanedUpdates);
-    });
-    await batch.commit();
+    // v161: Firestore batch ได้ไม่เกิน 500 รายการ → แบ่งชุดละ 400
+    for (let i = 0; i < orderIds.length; i += 400) {
+      const batch = window.db.batch();
+      orderIds.slice(i, i + 400).forEach(id => {
+        const ref = window.db.collection('orders').doc(id);
+        batch.update(ref, cleanedUpdates);
+      });
+      await batch.commit();
+    }
   } catch (e) { console.error('batchUpdate error:', e); throw e; }
 }
 // Subscribe — real-time updates
@@ -3281,7 +3285,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
     }
   };
 
-  const handleCollectMoney = async (method) => {
+  const handleCollectMoney = async (method, opts) => {
     const uncollected = orders.filter(o => !o.collected && o.paymentMethod === method);
     // รายการแบ่งจ่ายที่ยังไม่เก็บฝั่งของ method นี้
     const splitOrders = orders.filter(o => {
@@ -3318,10 +3322,15 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
     
     if (!confirm(`${methodLabel}?\n\n📋 รายได้ร้าน:\n   ${uncollected.length + splitOrders.length} รายการ • ฿${formatMoney(totalShould)}${extraInfo}`)) return;
 
+    let savedRound = null, savedId = null;
     try {
       const allOrderIds = [...uncollected.map(o => o.id), ...splitOrders.map(o => o.id)];
       if (allOrderIds.length > 0) {
-        const round = { 
+        const round = {
+          // v161: ค่าเดิมของใบงาน ไว้กด ↶ ยกเลิก
+          prev: [...uncollected, ...splitOrders].map(o => ({ id: o.id, collected: !!o.collected, collectedAt: o.collectedAt || null,
+            cashCollected: o.cashCollected == null ? null : !!o.cashCollected, transferCollected: o.transferCollected == null ? null : !!o.transferCollected })),
+          tokenIds: activeTokens.map(t => t.id),
           collectedAt: Date.now(), 
           method, 
           orderIds: allOrderIds, 
@@ -3331,7 +3340,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
           splitCount: splitOrders.length,       // จำนวนงานแบ่งจ่ายในรอบนี้
           splitPortion: splitPortion,            // ยอดจากส่วนแบ่งจ่าย
         };
-        await saveCollectionToCloud(config.brand, round);
+        savedId = await saveCollectionToCloud(config.brand, round);
+        savedRound = round;
         
         // order ปกติ → mark collected
         // split order → mark collected เฉพาะ side ที่เก็บ (ใช้ flag แยก)
@@ -3360,6 +3370,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
         await batch.commit();
       }
       
+      if (opts && opts.silent) return { id: savedId, round: savedRound, total: totalShould, count: (savedRound ? savedRound.orderCount : 0) };
       alert(`✓ ${methodLabel} เรียบร้อย`);
     } catch (e) {
       alert('เคลียร์ยอดล้มเหลว: ' + e.message);
@@ -3400,7 +3411,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
   };
 
   // จ่ายค่าพับ (Otteri) หรือค่า Delivery (Teddy/Trainee) — สำหรับ owner เคลียยอด
-  const handlePayFees = async (type, riderFilter) => {
+  const handlePayFees = async (type, riderFilter, opts) => {
     const isService = type === 'service';
     const flagField = isService ? 'serviceFeePaid' : 'deliveryFeePaid';
     const riderInfo = riderFilter && config.riders 
@@ -3443,12 +3454,14 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
         orderCount: matched.length,
         totalReceived: totalAmount,
         totalShould: totalAmount,
+        prev: matched.map(o => ({ id: o.id, [flagField]: !!o[flagField], [`${flagField}At`]: o[`${flagField}At`] || null })), // v161: ไว้ ↶ ยกเลิก
       };
-      await saveCollectionToCloud(config.brand, round);
+      const savedId = await saveCollectionToCloud(config.brand, round);
       
       // Mark orders as paid for this fee type
       await batchUpdateOrders(matched.map(o => o.id), { [flagField]: true, [`${flagField}At`]: Date.now() });
       
+      if (opts && opts.silent) return { id: savedId, round, total: totalAmount, count: matched.length };
       alert(`✓ ${label} เรียบร้อย`);
     } catch (e) {
       alert('จ่ายล้มเหลว: ' + e.message);
@@ -3475,7 +3488,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
-      {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && config.brand === 'teddy2' && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && config.brand !== 'teddy2' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} orders={orders} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
@@ -11151,6 +11165,774 @@ function CreditView({ config, orders, staffList }) {
               className="w-full mt-4 py-3.5 rounded-2xl bg-slate-800 text-white font-bold text-base active:scale-95 transition disabled:opacity-40">
               {saving ? 'กำลังบันทึก…' : 'บันทึก'}
             </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== 🏠 หน้าเจ้าของ Teddy 2 (v161) =====================
+// ดูเป็น วัน / เดือน / ปี · สีแยกงานชัด · ย้อนกลับ (undo) ได้: เก็บเงินสด / เคลียร์โอน / จ่ายค่าส่ง / ลบใบงาน
+const T2C = {
+  overview: { c: '#0F172A', bg: '#F8FAFC', bd: '#CBD5E1', ic: '📋', name: 'ภาพรวม' },
+  cash: { c: '#059669', bg: '#ECFDF5', bd: '#6EE7B7', ic: '💵', name: 'เงินสด' },
+  transfer: { c: '#7C3AED', bg: '#F5F3FF', bd: '#C4B5FD', ic: '💳', name: 'โอน' },
+  discount: { c: '#E11D48', bg: '#FFF1F2', bd: '#FDA4AF', ic: '🎟️', name: 'ส่วนลด' },
+  internal: { c: '#475569', bg: '#F1F5F9', bd: '#94A3B8', ic: '🔧', name: 'งานภายใน' },
+  delivery: { c: '#EA580C', bg: '#FFF7ED', bd: '#FDBA74', ic: '🚚', name: 'ค่าส่ง' },
+  pulse: { c: '#A16207', bg: '#FEFCE8', bd: '#FDE047', ic: '⚡', name: 'พัลส์' },
+  fold: { c: '#0D9488', bg: '#F0FDFA', bd: '#5EEAD4', ic: '🧺', name: 'ฝากพับ' },
+  coins: { c: '#92400E', bg: '#FEF3C7', bd: '#FCD34D', ic: '💰', name: 'นับเหรียญ' },
+  stats: { c: '#2563EB', bg: '#EFF6FF', bd: '#93C5FD', ic: '📊', name: 'สถิติ' },
+};
+const T2_TABS = ['overview', 'cash', 'transfer', 'discount', 'internal', 'delivery', 'pulse', 'fold', 'coins', 'stats'];
+const T2_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+// ช่วงเวลา: วัน / เดือน / ปี
+function t2Range(mode, anchor) {
+  const a = new Date(anchor);
+  let from, to;
+  if (mode === 'day') { from = new Date(a.getFullYear(), a.getMonth(), a.getDate()); to = new Date(a.getFullYear(), a.getMonth(), a.getDate() + 1); }
+  else if (mode === 'month') { from = new Date(a.getFullYear(), a.getMonth(), 1); to = new Date(a.getFullYear(), a.getMonth() + 1, 1); }
+  else { from = new Date(a.getFullYear(), 0, 1); to = new Date(a.getFullYear() + 1, 0, 1); }
+  const label = mode === 'day' ? from.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' })
+    : mode === 'month' ? from.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+    : 'ปี ' + (from.getFullYear() + 543);
+  const short = mode === 'day' ? 'วันนี้' : mode === 'month' ? 'เดือนนี้' : 'ปีนี้';
+  return { mode, from: from.getTime(), to: to.getTime(), label, fromKey: dateKeyOf(from), toKey: dateKeyOf(new Date(to.getTime() + 3 * 86400000)), short };
+}
+const t2Ts = (v) => (typeof v === 'number' ? v : (new Date(v).getTime() || 0));
+const t2CashHeld = (o, config) => Math.max(0, orderCashPart(o, config) - cashInMachineOf(o, config));
+const t2CashPending = (o) => (o.paymentMethod === 'cash' ? !o.collected : o.paymentMethod === 'split' ? !o.collected && !o.cashCollected : false);
+const t2TransferPending = (o) => (o.paymentMethod === 'transfer' ? !o.collected : o.paymentMethod === 'split' ? !o.collected && !o.transferCollected : false);
+
+// รวมยอดของช่วงเวลา (ใบงานลูกค้า + งานภายใน)
+function t2Agg(config, orders, from, to) {
+  const A = { jobs: 0, sales: 0, cash: 0, transfer: 0, coin: 0, held: 0, heldPending: 0, cashN: 0, transferN: 0,
+    discount: 0, discN: 0, lineDisc: 0, promoDisc: 0, internal: 0, internalN: 0, intType: {},
+    delivN: 0, delivCharge: 0, riderFee: 0, riderUnpaid: 0, foldN: 0, noFoldN: 0, topUp: 0, customers: 0, list: [], ilist: [] };
+  const phones = new Set();
+  (orders || []).forEach(o => {
+    const t = t2Ts(o.createdAt);
+    if (t < from || t >= to) return;
+    if (isInternalOrder(o)) {
+      const v = calculateTotal(o, config);
+      A.internal += v; A.internalN++;
+      const k = o.internalType || 'other';
+      A.intType[k] = A.intType[k] || { n: 0, v: 0 };
+      A.intType[k].n++; A.intType[k].v += v;
+      A.ilist.push(o);
+      return;
+    }
+    const b = calculateBreakdown(o, config);
+    A.jobs++; A.sales += b.total; A.list.push(o);
+    const cash = orderCashPart(o, config), tr = orderTransferPart(o, config);
+    A.cash += cash; A.transfer += tr;
+    if (cash > 0) A.cashN++;
+    if (tr > 0) A.transferN++;
+    const coin = cashInMachineOf(o, config);
+    A.coin += coin;
+    const held = Math.max(0, cash - coin);
+    A.held += held;
+    if (held > 0 && t2CashPending(o)) A.heldPending += held;
+    if (b.totalDiscount > 0) { A.discount += b.totalDiscount; A.discN++; A.lineDisc += b.lineDiscount || 0; A.promoDisc += b.promoDiscount || 0; }
+    if (o.deliveryZone) {
+      A.delivN++; A.delivCharge += b.deliveryTotal || 0;
+      const fee = riderFeeFor(o, config);
+      A.riderFee += fee;
+      if (!o.deliveryFeePaid) A.riderUnpaid += fee;
+    }
+    if (o.noFold) A.noFoldN++; else if (config.freeService || (o.foldBaskets || 0) > 0) A.foldN++;
+    A.topUp += b.dryTopUpTotal || 0;
+    const ph = (o.customerPhone || '').trim();
+    if (ph) phones.add(ph);
+  });
+  A.customers = phones.size;
+  A.list.sort((a, b) => t2Ts(b.createdAt) - t2Ts(a.createdAt));
+  A.ilist.sort((a, b) => t2Ts(b.createdAt) - t2Ts(a.createdAt));
+  return A;
+}
+
+// ↶ ย้อนกลับรอบเก็บเงิน/เคลียร์โอน/จ่ายค่าส่ง (ใช้ค่าเดิมที่จดไว้ใน prev — รอบเก่าที่ไม่มี prev ย้อนตามชนิด)
+async function undoCollectionRound(config, round, orders) {
+  if (!round || !round.id || round.undone) return 0;
+  const now = Date.now();
+  const m = round.method || '';
+  let rows = [];
+  if (Array.isArray(round.prev) && round.prev.length) {
+    rows = round.prev.map(p => { const f = { ...p }; delete f.id; return { id: p.id, f }; });
+  } else {
+    rows = (round.orderIds || []).map(id => {
+      const o = (orders || []).find(x => x.id === id) || {};
+      if (m === 'cash') return { id, f: o.paymentMethod === 'split' ? { cashCollected: false, collected: false } : { collected: false, collectedAt: null } };
+      if (m === 'transfer') return { id, f: o.paymentMethod === 'split' ? { transferCollected: false, collected: false } : { collected: false, collectedAt: null } };
+      if (m === 'service') return { id, f: { serviceFeePaid: false, serviceFeePaidAt: null } };
+      return { id, f: { deliveryFeePaid: false, deliveryFeePaidAt: null } };
+    });
+  }
+  for (let i = 0; i < rows.length; i += 400) {
+    const batch = window.db.batch();
+    rows.slice(i, i + 400).forEach(r => batch.set(window.db.collection('orders').doc(r.id), { ...r.f, brand: config.brand }, { merge: true }));
+    await batch.commit();
+  }
+  if (Array.isArray(round.tokenIds) && round.tokenIds.length) {
+    const batch = window.db.batch();
+    round.tokenIds.forEach(id => batch.set(window.db.collection('tokenExchanges').doc(id), { cleared: false, clearedAt: null, brand: config.brand }, { merge: true }));
+    await batch.commit();
+  }
+  await window.db.collection('collections').doc(round.id).set({ undone: true, undoneAt: now, brand: config.brand }, { merge: true });
+  return rows.length;
+}
+const t2RoundLabel = (m) => (m === 'cash' ? '💵 เก็บเงินสด' : m === 'transfer' ? '💳 เคลียร์ยอดโอน' : m === 'service' ? '🧺 จ่ายค่าพับ' : String(m || '').startsWith('delivery') ? '🚚 จ่ายค่าส่ง' : m);
+
+// แถวใบงาน (สีตามวิธีจ่าย/ประเภท)
+function T2OrderRow({ config, o, onClick, selecting, checked }) {
+  const internal = isInternalOrder(o);
+  const it = internal ? (INTERNAL_TYPES.find(t => t.id === o.internalType) || {}) : null;
+  const b = calculateBreakdown(o, config);
+  const coin = cashInMachineOf(o, config);
+  const pm = o.paymentMethod;
+  const col = internal ? T2C.internal : pm === 'transfer' ? T2C.transfer : pm === 'split' ? T2C.transfer : T2C.cash;
+  const chip = (txt, c, key) => <span key={key} className="text-[11px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: c.bg, color: c.c, border: `1px solid ${c.bd}` }}>{txt}</span>;
+  return (
+    <button onClick={onClick} className={`w-full rounded-2xl p-3 active:scale-95 transition flex items-center gap-3 text-left shadow-sm border-l-4 ${selecting && checked ? 'bg-rose-50 ring-2 ring-rose-400' : 'bg-white'}`} style={{ borderLeftColor: col.c }}>
+      {selecting && (
+        <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${checked ? 'bg-rose-500' : 'bg-white border-2 border-slate-300'}`}>
+          {checked && <span className="text-white text-sm font-extrabold">✓</span>}
+        </div>
+      )}
+      {(o.basketThumb || o.basketPhoto) ? <img src={o.basketThumb || o.basketPhoto} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
+        : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{ background: col.bg }}>{internal ? (it.emoji || '🔧') : col.ic}</div>}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1 flex-wrap">
+          <p className="font-bold text-slate-900 truncate">{internal ? `${it.label || 'งานภายใน'}${o.internalMachines && o.internalMachines.length ? ' · ' + o.internalMachines.join(', ') : ''}` : (o.queueNo != null ? `#${o.queueNo} ` : '') + (o.customerName || '-')}</p>
+          {internal ? chip('ภายใน', T2C.internal, 'i')
+            : pm === 'split' ? [chip(`สด ฿${formatMoney(o.cashAmount || 0)}`, T2C.cash, 'c'), chip(`โอน ฿${formatMoney(o.transferAmount || 0)}`, T2C.transfer, 't')]
+            : pm === 'transfer' ? chip('โอน', T2C.transfer, 't') : chip('สด', T2C.cash, 'c')}
+          {b.totalDiscount > 0 && chip(`ลด ฿${formatMoney(b.totalDiscount)}`, T2C.discount, 'd')}
+          {o.deliveryZone && chip('🚚 ส่ง', T2C.delivery, 'v')}
+          {coin > 0 && chip(`หยอดเครื่อง ฿${formatMoney(coin)}`, T2C.cash, 'm')}
+          {(b.dryTopUpTotal || 0) > 0 && chip(`⏱️ +฿${formatMoney(b.dryTopUpTotal)}`, T2C.pulse, 'u')}
+        </div>
+        <p className="text-xs text-slate-400">{formatDate(o.createdAt)}{o.staffName ? <span className="ml-1 text-teal-600 font-medium">• {o.staffName}</span> : null}</p>
+      </div>
+      <p className="font-extrabold text-slate-900 flex-shrink-0">฿{formatMoney(calculateTotal(o, config))}</p>
+    </button>
+  );
+}
+
+// กล่องหัวข้อสีประจำหมวด
+function T2Box({ k, title, right, children }) {
+  const c = T2C[k];
+  return (
+    <div className="rounded-2xl p-3 border-2" style={{ background: c.bg, borderColor: c.bd }}>
+      {(title || right) && (
+        <div className="flex items-center gap-2 mb-2">
+          <p className="font-extrabold flex-1" style={{ color: c.c }}>{title}</p>
+          {right}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+function T2Stat({ label, value, sub, color }) {
+  return (
+    <div className="bg-white rounded-xl px-3 py-2 border border-slate-100">
+      <p className="text-[11px] font-bold text-slate-500">{label}</p>
+      <p className="text-lg font-extrabold" style={{ color: color || '#0F172A' }}>{value}</p>
+      {sub && <p className="text-[11px] text-slate-500">{sub}</p>}
+    </div>
+  );
+}
+
+// จำแท็บ/ช่วงเวลาไว้ระหว่างเปิดใบงานแล้วกดกลับ (ในรอบการใช้งานนี้)
+const T2_DASH_MEM = { tab: 'overview', mode: 'day', anchor: null };
+function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffList, onLogout, onSelectOrder, onCollect, onPayFees, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
+  const [tab, setTab] = useState(T2_DASH_MEM.tab);
+  const [mode, setMode] = useState(T2_DASH_MEM.mode);
+  const [anchor, setAnchor] = useState(() => T2_DASH_MEM.anchor || Date.now());
+  useEffect(() => { T2_DASH_MEM.tab = tab; T2_DASH_MEM.mode = mode; T2_DASH_MEM.anchor = anchor; }, [tab, mode, anchor]);
+  const [toast, setToast] = useState(null); // { text, undo: async fn }
+  const [busy, setBusy] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState(() => new Set());
+  const [pwd, setPwd] = useState('');
+  const [askPwd, setAskPwd] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [reconDay, setReconDay] = useState(() => dateKeyOf(new Date()));
+  const refundPendingN = usePulseRefundInbox(config, 7).filter(pulseRefundPending).length;
+  const toastTimer = useRef(null);
+  const R = useMemo(() => t2Range(mode, anchor), [mode, anchor]);
+  useEffect(() => {
+    if (!window.db) return;
+    const u = window.db.collection('pulseLogs').where('dateKey', '>=', R.fromKey).where('dateKey', '<=', R.toKey).onSnapshot(
+      sn => setLogs(sn.docs.map(x => ({ id: x.id, ...x.data() }))), e => console.error('t2 logs error:', e));
+    return () => { if (u) u(); };
+  }, [R.fromKey, R.toKey]);
+  useEffect(() => { setSelecting(false); setSel(new Set()); setAskPwd(false); }, [tab, mode, anchor]);
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+  const A = useMemo(() => t2Agg(config, orders, R.from, R.to), [config, orders, R.from, R.to]);
+  const PB = useMemo(() => pulseBucketsFor(config, orders, logs, R.from, R.to), [config, orders, logs, R.from, R.to]);
+  const stats = useMemo(() => {
+    const phoneMap = new Map();
+    orders.forEach(o => {
+      const key = (o.customerPhone || '').trim();
+      if (!key) return;
+      if (!phoneMap.has(key)) phoneMap.set(key, { name: o.customerName, phone: key, count: 0, total: 0 });
+      const e = phoneMap.get(key); e.count += 1; e.total += calculateTotal(o, config);
+    });
+    const allCustomers = Array.from(phoneMap.values()).sort((a, b) => b.count - a.count);
+    const cashOrders = orders.filter(o => o.paymentMethod === 'cash');
+    const transferOrders = orders.filter(o => o.paymentMethod === 'transfer');
+    const splitOrders = orders.filter(o => o.paymentMethod === 'split');
+    return {
+      uniqueCustomers: allCustomers.length, repeatCustomers: allCustomers.filter(c => c.count >= 2), topCustomers: allCustomers.slice(0, 5),
+      totalRevenue: orders.reduce((s, o) => s + calculateTotal(o, config), 0), cashCount: cashOrders.length, transferCount: transferOrders.length,
+      cashRevenue: cashOrders.reduce((s, o) => s + calculateTotal(o, config), 0) + splitOrders.reduce((s, o) => s + (o.cashAmount || 0), 0),
+      transferRevenue: transferOrders.reduce((s, o) => s + calculateTotal(o, config), 0) + splitOrders.reduce((s, o) => s + (o.transferAmount || 0), 0),
+    };
+  }, [orders, config]);
+
+  // ---------- งานค้าง (ทุกช่วงเวลา) ----------
+  const cust = orders.filter(o => !isInternalOrder(o));
+  const cashPendList = cust.filter(o => t2CashPending(o) && (o.paymentMethod === 'cash' ? calculateTotal(o, config) - cashInMachineOf(o, config) : t2CashHeld(o, config)) > 0);
+  const cashPend = cashPendList.reduce((s, o) => s + (o.paymentMethod === 'cash' ? calculateTotal(o, config) - cashInMachineOf(o, config) : t2CashHeld(o, config)), 0);
+  const tokenCash = (tokenExchanges || []).filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
+  const tokenCashSum = tokenCash.reduce((s, t) => s + (t.amount || 0), 0);
+  const trPendList = cust.filter(t2TransferPending);
+  const trPend = trPendList.reduce((s, o) => s + (o.paymentMethod === 'split' ? (o.transferAmount || 0) : calculateTotal(o, config)), 0);
+  const riderUnpaidList = cust.filter(o => o.deliveryZone && !o.deliveryFeePaid);
+  const riderUnpaid = riderUnpaidList.reduce((s, o) => s + riderFeeFor(o, config), 0);
+  const rounds = (collections || []).slice().sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0));
+
+  // ---------- ช่วงเวลา ----------
+  const nowRange = t2Range(mode, Date.now());
+  const atLatest = R.from >= nowRange.from;
+  const shift = (dir) => {
+    const d = new Date(anchor);
+    if (mode === 'day') d.setDate(d.getDate() + dir);
+    else if (mode === 'month') d.setMonth(d.getMonth() + dir, 1);
+    else d.setFullYear(d.getFullYear() + dir, 0, 1);
+    if (d.getTime() > Date.now() && dir > 0 && atLatest) return;
+    setAnchor(Math.min(d.getTime(), Date.now()));
+  };
+  const goDay = (t) => { setMode('day'); setAnchor(t); setTab('overview'); };
+  const goMonth = (t) => { setMode('month'); setAnchor(t); setTab('overview'); };
+
+  // ---------- undo ----------
+  const showToast = (text, undo) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ text, undo });
+    toastTimer.current = setTimeout(() => setToast(null), 30000);
+  };
+  const undoRound = async (round, ask) => {
+    if (!round || round.undone) return;
+    if (ask && !confirm(`↶ ยกเลิกรายการนี้?\n\n${t2RoundLabel(round.method)} ฿${formatMoney(round.totalReceived || 0)} · ${round.orderCount || (round.orderIds || []).length} ใบ\n${formatDate(round.collectedAt)}\n\nใบงานจะกลับไปเป็น "ยังไม่ได้${round.method === 'cash' ? 'เก็บ' : round.method === 'transfer' ? 'เคลียร์' : 'จ่าย'}" เหมือนเดิม`)) return;
+    setBusy(true);
+    try { const n = await undoCollectionRound(config, round, orders); setToast(null); showToast(`↶ ยกเลิกแล้ว — ${t2RoundLabel(round.method)} ${n} ใบ กลับเป็นค้างเหมือนเดิม`, null); }
+    catch (e) { alert('ยกเลิกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  };
+  const doCollect = async (method) => {
+    setBusy(true);
+    try {
+      const shownN = method === 'cash' ? cashPendList.length : trPendList.length;
+      const r = await onCollect(method, { silent: true });
+      if (r && r.id) showToast(`✓ ${t2RoundLabel(method)} ฿${formatMoney(r.total)} (${shownN} ใบ)`, () => undoRound({ ...r.round, id: r.id }, false));
+    } finally { setBusy(false); }
+  };
+  const doPayRider = async (riderId) => {
+    setBusy(true);
+    try {
+      const r = await onPayFees('delivery', riderId, { silent: true });
+      if (r && r.id) showToast(`✓ ${t2RoundLabel('delivery')} ฿${formatMoney(r.total)} (${r.count} ใบ)`, () => undoRound({ ...r.round, id: r.id }, false));
+    } finally { setBusy(false); }
+  };
+  const doDelete = async () => {
+    const ids = Array.from(sel);
+    const snap = orders.filter(o => ids.includes(o.id)).map(o => ({ ...o }));
+    const ok = await onDeleteSelected(ids, pwd);
+    setPwd(''); setAskPwd(false);
+    if (!ok) return;
+    setSelecting(false); setSel(new Set());
+    showToast(`🗑️ ลบ ${snap.length} ใบงานแล้ว`, async () => {
+      for (let i = 0; i < snap.length; i += 400) {
+        const batch = window.db.batch();
+        snap.slice(i, i + 400).forEach(o => { const d = { ...o }; delete d.id; batch.set(window.db.collection('orders').doc(o.id), JSON.parse(JSON.stringify(d))); });
+        await batch.commit();
+      }
+      showToast(`↶ กู้คืน ${snap.length} ใบงานแล้ว`, null);
+    });
+  };
+
+  // ---------- ชิ้นส่วน UI ----------
+  const list = (arr, opts = {}) => {
+    const cap = 150;
+    const shown = arr.slice(0, cap);
+    if (!arr.length) return <div className="bg-white rounded-2xl p-6 text-center text-sm text-slate-500">ไม่มีรายการใน{R.label}</div>;
+    return (
+      <div className="space-y-2">
+        {shown.map(o => <T2OrderRow key={o.id} config={config} o={o} selecting={opts.selectable && selecting} checked={sel.has(o.id)}
+          onClick={() => { if (opts.selectable && selecting) { const n = new Set(sel); if (n.has(o.id)) n.delete(o.id); else n.add(o.id); setSel(n); } else onSelectOrder(o); }} />)}
+        {arr.length > cap && <p className="text-xs text-center text-slate-500 py-2">แสดง {cap} จาก {formatMoney(arr.length)} ใบ — เลือกเป็นรายวัน/รายเดือนเพื่อดูครบ</p>}
+      </div>
+    );
+  };
+  const history = (pred, k) => {
+    const rs = rounds.filter(r => pred(r.method || '')).slice(0, 15);
+    if (!rs.length) return null;
+    return (
+      <div className="bg-white rounded-2xl p-3 border border-slate-200">
+        <p className="text-sm font-extrabold text-slate-800 mb-2">🧾 ประวัติ (ล่าสุด {rs.length} ครั้ง) · ↶ ยกเลิกได้</p>
+        <div className="space-y-1.5">
+          {rs.map(r => (
+            <div key={r.id} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${r.undone ? 'bg-slate-50 opacity-60' : ''}`} style={r.undone ? {} : { background: T2C[k].bg }}>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-bold ${r.undone ? 'line-through text-slate-500' : 'text-slate-800'}`}>{t2RoundLabel(r.method)} ฿{formatMoney(r.totalReceived || 0)} · {r.orderCount || (r.orderIds || []).length} ใบ</p>
+                <p className="text-[11px] text-slate-500">{formatDate(r.collectedAt)}{r.undone ? ` · ยกเลิกแล้ว ${formatDate(r.undoneAt)}` : ''}</p>
+              </div>
+              {!r.undone && <button onClick={() => undoRound(r, true)} disabled={busy} className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-extrabold text-slate-700 active:scale-95 disabled:opacity-40">↶ ยกเลิก</button>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+  const bigBtn = (k, label, onClick, disabled) => (
+    <button onClick={onClick} disabled={disabled || busy} className="w-full py-2.5 rounded-xl text-white text-sm font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: T2C[k].c }}>{label}</button>
+  );
+
+  // ภาพรวมย่อย: เดือน = รายวัน · ปี = รายเดือน
+  const breakdownRows = useMemo(() => {
+    if (mode === 'day') return [];
+    const rows = [];
+    const start = new Date(R.from);
+    if (mode === 'month') {
+      const days = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+      for (let d = 1; d <= days; d++) {
+        const f = new Date(start.getFullYear(), start.getMonth(), d).getTime();
+        if (f > Date.now()) break;
+        const a = t2Agg(config, A.list.concat(A.ilist), f, f + 86400000);
+        rows.push({ t: f, label: new Date(f).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' }), a });
+      }
+    } else {
+      for (let m = 0; m < 12; m++) {
+        const f = new Date(start.getFullYear(), m, 1).getTime();
+        if (f > Date.now()) break;
+        const a = t2Agg(config, A.list.concat(A.ilist), f, new Date(start.getFullYear(), m + 1, 1).getTime());
+        rows.push({ t: f, label: T2_MONTHS[m], a });
+      }
+    }
+    return rows.filter(r => r.a.jobs > 0 || r.a.internalN > 0).reverse();
+  }, [mode, R.from, A, config]);
+  const maxSales = breakdownRows.reduce((m, r) => Math.max(m, r.a.sales), 1);
+
+  const tile = (k, value, sub) => (
+    <button key={k} onClick={() => setTab(k)} className="rounded-2xl p-2.5 text-left border-2 active:scale-95 transition" style={{ background: T2C[k].bg, borderColor: tab === k ? T2C[k].c : T2C[k].bd }}>
+      <p className="text-xs font-extrabold" style={{ color: T2C[k].c }}>{T2C[k].ic} {T2C[k].name}</p>
+      <p className="text-lg font-extrabold text-slate-900 leading-tight mt-0.5">{value}</p>
+      {sub && <p className="text-[10px] font-bold text-slate-500 leading-tight mt-0.5">{sub}</p>}
+    </button>
+  );
+  const cashPct = A.sales > 0 ? Math.round(A.cash * 100 / A.sales) : 0;
+
+  return (
+    <div className="min-h-screen bg-slate-100 pb-24">
+      {/* ---------- หัว ---------- */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-teal-900 px-4 pt-5 pb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <img src={config.logo} className="w-10 h-10 rounded-xl bg-white p-1" alt={config.name} />
+            <div>
+              <p className="text-teal-300 text-[11px] tracking-widest uppercase font-bold">Owner • {config.name}</p>
+              <h1 className="text-white text-xl font-extrabold">หน้าเจ้าของ</h1>
+            </div>
+          </div>
+          <div className="flex gap-1.5">
+            <button onClick={() => setShowShare(true)} className="bg-white bg-opacity-10 rounded-full w-9 h-9 border border-white border-opacity-20 text-sm active:scale-95">📱</button>
+            <button onClick={() => setTab('settings')} className="bg-white bg-opacity-10 rounded-full w-9 h-9 border border-white border-opacity-20 text-sm active:scale-95">⚙️</button>
+            <button onClick={onChangeBrand} className="bg-white bg-opacity-10 rounded-full w-9 h-9 border border-white border-opacity-20 text-sm active:scale-95">🔄</button>
+            <button onClick={onLogout} className="bg-white bg-opacity-10 rounded-full px-3 h-9 border border-white border-opacity-20 text-white text-xs font-bold active:scale-95">ออก</button>
+          </div>
+        </div>
+        {/* ช่วงเวลา */}
+        <div className="bg-white bg-opacity-10 rounded-2xl p-1.5 border border-white border-opacity-10">
+          <div className="grid grid-cols-3 gap-1">
+            {[['day', 'รายวัน'], ['month', 'รายเดือน'], ['year', 'รายปี']].map(([m, lb]) => (
+              <button key={m} onClick={() => { setMode(m); setAnchor(Date.now()); }}
+                className={`py-2 rounded-xl text-sm font-extrabold transition ${mode === m ? 'bg-white text-slate-900 shadow' : 'text-white text-opacity-80'}`}>{lb}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 mt-1.5">
+            <button onClick={() => shift(-1)} className="w-10 h-10 rounded-xl bg-white bg-opacity-15 text-white font-extrabold active:scale-95">◀</button>
+            <p className="flex-1 text-center text-white font-extrabold">{R.label}</p>
+            <button onClick={() => shift(1)} disabled={atLatest} className="w-10 h-10 rounded-xl bg-white bg-opacity-15 text-white font-extrabold active:scale-95 disabled:opacity-30">▶</button>
+          </div>
+        </div>
+        {/* ยอดขายของช่วง */}
+        <div className="mt-3 rounded-2xl bg-white p-3">
+          <div className="flex items-end justify-between">
+            <div>
+              <p className="text-xs font-bold text-slate-500">ยอดขาย · {R.label}</p>
+              <p className="text-3xl font-extrabold text-slate-900">฿{formatMoney(A.sales)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-extrabold text-slate-900">{formatMoney(A.jobs)} <span className="text-sm font-bold text-slate-500">งาน</span></p>
+              <p className="text-[11px] font-bold text-slate-500">เฉลี่ย ฿{formatMoney(A.jobs ? Math.round(A.sales / A.jobs) : 0)}/งาน</p>
+            </div>
+          </div>
+          <div className="mt-2 h-3 rounded-full overflow-hidden flex bg-slate-100">
+            <div style={{ width: cashPct + '%', background: T2C.cash.c }}></div>
+            <div style={{ width: (A.sales > 0 ? 100 - cashPct : 0) + '%', background: T2C.transfer.c }}></div>
+          </div>
+          <div className="flex justify-between mt-1 text-[11px] font-extrabold">
+            <span style={{ color: T2C.cash.c }}>💵 สด ฿{formatMoney(A.cash)} ({cashPct}%)</span>
+            <span style={{ color: T2C.transfer.c }}>💳 โอน ฿{formatMoney(A.transfer)} ({A.sales > 0 ? 100 - cashPct : 0}%)</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 mt-3 space-y-3">
+        {/* ---------- ต้องจัดการ (ค้างทุกช่วงเวลา) ---------- */}
+        {(cashPend + tokenCashSum > 0 || trPend > 0 || riderUnpaid > 0 || refundPendingN > 0) && (
+          <div className="bg-white rounded-2xl p-3 shadow-sm">
+            <p className="text-sm font-extrabold text-slate-900 mb-2">📌 ต้องจัดการ <span className="text-[11px] font-bold text-slate-400">(ค้างทั้งหมด ไม่ขึ้นกับช่วงเวลา)</span></p>
+            <div className="space-y-1.5">
+              {cashPend + tokenCashSum > 0 && (
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: T2C.cash.bg }}>
+                  <button onClick={() => setTab('cash')} className="flex-1 text-left">
+                    <p className="text-sm font-extrabold" style={{ color: T2C.cash.c }}>💵 เงินสดที่แม่บ้านถือ ฿{formatMoney(cashPend + tokenCashSum)}</p>
+                    <p className="text-[11px] text-slate-500">{cashPendList.length} ใบ · ค่าน้ำยา/ส่วนที่ยังไม่หยอดเครื่อง{tokenCashSum > 0 ? ` · แลกเหรียญ ฿${formatMoney(tokenCashSum)}` : ''}</p>
+                  </button>
+                  <button onClick={() => doCollect('cash')} disabled={busy} className="px-3 py-2 rounded-lg text-white text-xs font-extrabold active:scale-95 disabled:opacity-40" style={{ background: T2C.cash.c }}>เก็บแล้ว</button>
+                </div>
+              )}
+              {trPend > 0 && (
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: T2C.transfer.bg }}>
+                  <button onClick={() => setTab('transfer')} className="flex-1 text-left">
+                    <p className="text-sm font-extrabold" style={{ color: T2C.transfer.c }}>💳 โอนที่ยังไม่เคลียร์ยอด ฿{formatMoney(trPend)}</p>
+                    <p className="text-[11px] text-slate-500">{formatMoney(trPendList.length)} ใบ · ตรวจกับบัญชีธนาคารแล้วกดเคลียร์</p>
+                  </button>
+                  <button onClick={() => doCollect('transfer')} disabled={busy} className="px-3 py-2 rounded-lg text-white text-xs font-extrabold active:scale-95 disabled:opacity-40" style={{ background: T2C.transfer.c }}>เคลียร์</button>
+                </div>
+              )}
+              {riderUnpaid > 0 && (
+                <button onClick={() => setTab('delivery')} className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-left" style={{ background: T2C.delivery.bg }}>
+                  <div className="flex-1">
+                    <p className="text-sm font-extrabold" style={{ color: T2C.delivery.c }}>🚚 ค่าไรเดอร์ค้างจ่าย ฿{formatMoney(riderUnpaid)}</p>
+                    <p className="text-[11px] text-slate-500">{riderUnpaidList.length} งานส่ง · แตะเพื่อจ่ายตามคน</p>
+                  </div>
+                  <span className="text-slate-400 font-bold">›</span>
+                </button>
+              )}
+              {refundPendingN > 0 && (
+                <button onClick={() => setTab('pulse')} className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-left" style={{ background: T2C.pulse.bg }}>
+                  <div className="flex-1">
+                    <p className="text-sm font-extrabold" style={{ color: T2C.pulse.c }}>↩️ แม่บ้านขอคืนเครดิต {refundPendingN} รายการ</p>
+                    <p className="text-[11px] text-slate-500">เครื่องมีปัญหา · อนุมัติแล้วใบงานเปิดเครื่องใหม่ได้</p>
+                  </div>
+                  <span className="text-slate-400 font-bold">›</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ---------- ไทล์หมวด (สีแยกงาน) ---------- */}
+        <div className="grid grid-cols-3 gap-2">
+          {tile('cash', '฿' + formatMoney(A.cash), `เข้าเครื่อง ฿${formatMoney(A.coin)} · แม่บ้านรับ ฿${formatMoney(A.held)}`)}
+          {tile('transfer', '฿' + formatMoney(A.transfer), `${formatMoney(A.transferN)} ใบ`)}
+          {tile('discount', '฿' + formatMoney(A.discount), `${formatMoney(A.discN)} ใบ`)}
+          {tile('internal', '฿' + formatMoney(A.internal), `${A.internalN} งาน · ไม่ใช่รายได้`)}
+          {tile('delivery', `${A.delivN} งาน`, `ไรเดอร์ ฿${formatMoney(A.riderFee)}`)}
+          {tile('pulse', '฿' + formatMoney(PB.total), `ยิงแอป ฿${formatMoney(PB.transfer + PB.discount)}`)}
+          {tile('fold', `${A.foldN} งาน`, A.noFoldN ? `ไม่พับ ${A.noFoldN}` : 'ฝากซัก อบ พับ')}
+          {tile('coins', 'ตู้เหรียญ', 'นับ/เก็บเงินจากตู้')}
+          {tile('stats', `${A.customers} คน`, 'ลูกค้าในช่วงนี้')}
+        </div>
+
+        <button onClick={onNewOrder} className="w-full bg-white rounded-2xl p-3 shadow-sm border border-slate-200 active:scale-95 transition flex items-center justify-center gap-2">
+          <span className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xl font-extrabold" style={{ background: config.gradient }}>+</span>
+          <span className="font-bold text-slate-900">รับงานใหม่</span>
+        </button>
+
+        {/* ---------- แท็บ ---------- */}
+        <div className="bg-white rounded-2xl p-1 flex gap-1 shadow-sm overflow-x-auto">
+          {T2_TABS.map(k => (
+            <button key={k} onClick={() => setTab(k)}
+              className="py-2 px-3 rounded-xl text-xs font-extrabold whitespace-nowrap flex-shrink-0 transition"
+              style={tab === k ? { background: T2C[k].c, color: '#fff' } : { color: T2C[k].c }}>
+              {T2C[k].ic} {T2C[k].name}{k === 'pulse' && refundPendingN > 0 ? ` 🔴${refundPendingN}` : ''}
+            </button>
+          ))}
+          <button onClick={() => setTab('settings')} className="py-2 px-3 rounded-xl text-xs font-extrabold whitespace-nowrap flex-shrink-0" style={tab === 'settings' ? { background: '#334155', color: '#fff' } : { color: '#334155' }}>⚙️ ตั้งค่า</button>
+        </div>
+
+        {/* ---------- เนื้อหาแท็บ ---------- */}
+        {tab === 'overview' && (
+          <div className="space-y-3">
+            {mode !== 'day' && (
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <p className="text-sm font-extrabold text-slate-900 mb-2">{mode === 'year' ? '📅 สรุปรายเดือน' : '📅 สรุปรายวัน'} · {R.label} <span className="text-[11px] font-bold text-slate-400">แตะเพื่อดูละเอียด</span></p>
+                <div className="grid grid-cols-12 gap-1 px-2 text-[10px] font-extrabold text-slate-400">
+                  <span className="col-span-3">{mode === 'year' ? 'เดือน' : 'วัน'}</span><span className="col-span-2 text-right">งาน</span>
+                  <span className="col-span-2 text-right" style={{ color: T2C.cash.c }}>สด</span><span className="col-span-2 text-right" style={{ color: T2C.transfer.c }}>โอน</span>
+                  <span className="col-span-3 text-right">รวม</span>
+                </div>
+                <div className="space-y-1 mt-1">
+                  {!breakdownRows.length && <p className="text-sm text-slate-500 text-center py-4">ไม่มีงานใน{R.label}</p>}
+                  {breakdownRows.map(r => (
+                    <button key={r.t} onClick={() => (mode === 'year' ? goMonth(r.t) : goDay(r.t))} className="w-full rounded-xl px-2 py-1.5 bg-slate-50 active:scale-95 transition text-left">
+                      <div className="grid grid-cols-12 gap-1 items-center text-xs">
+                        <span className="col-span-3 font-extrabold text-slate-800">{r.label}</span>
+                        <span className="col-span-2 text-right font-bold text-slate-600">{r.a.jobs}</span>
+                        <span className="col-span-2 text-right font-bold" style={{ color: T2C.cash.c }}>{formatMoney(r.a.cash)}</span>
+                        <span className="col-span-2 text-right font-bold" style={{ color: T2C.transfer.c }}>{formatMoney(r.a.transfer)}</span>
+                        <span className="col-span-3 text-right font-extrabold text-slate-900">฿{formatMoney(r.a.sales)}</span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-slate-200 overflow-hidden flex">
+                        <div style={{ width: (r.a.cash * 100 / maxSales) + '%', background: T2C.cash.c }}></div>
+                        <div style={{ width: (r.a.transfer * 100 / maxSales) + '%', background: T2C.transfer.c }}></div>
+                      </div>
+                      {(r.a.discount > 0 || r.a.internal > 0 || r.a.delivN > 0) && (
+                        <p className="text-[10px] font-bold mt-0.5">
+                          {[r.a.discount > 0 && <span key="d" style={{ color: T2C.discount.c }}>🎟️ ลด {formatMoney(r.a.discount)}</span>,
+                            r.a.internal > 0 && <span key="i" style={{ color: T2C.internal.c }}>🔧 ภายใน {formatMoney(r.a.internal)}</span>,
+                            r.a.delivN > 0 && <span key="v" style={{ color: T2C.delivery.c }}>🚚 ส่ง {r.a.delivN} งาน</span>]
+                            .filter(Boolean).map((x, i) => <React.Fragment key={i}>{i > 0 && <span className="text-slate-300"> · </span>}{x}</React.Fragment>)}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-12 gap-1 px-2 mt-2 pt-2 border-t border-slate-200 text-xs font-extrabold">
+                  <span className="col-span-3">รวม</span><span className="col-span-2 text-right">{formatMoney(A.jobs)}</span>
+                  <span className="col-span-2 text-right" style={{ color: T2C.cash.c }}>{formatMoney(A.cash)}</span>
+                  <span className="col-span-2 text-right" style={{ color: T2C.transfer.c }}>{formatMoney(A.transfer)}</span>
+                  <span className="col-span-3 text-right">฿{formatMoney(A.sales)}</span>
+                </div>
+              </div>
+            )}
+            {mode === 'day' && (
+              <React.Fragment>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-extrabold text-slate-800">📋 ใบงาน {R.label} · {A.list.length + A.ilist.length} ใบ</p>
+                  {(A.list.length + A.ilist.length) > 0 && (!selecting
+                    ? <button onClick={() => setSelecting(true)} className="text-xs font-bold text-rose-600 px-3 py-1.5 bg-white rounded-lg border border-rose-200 active:scale-95">✏️ เลือกเพื่อลบ</button>
+                    : <button onClick={() => { setSelecting(false); setSel(new Set()); setAskPwd(false); }} className="text-xs font-bold text-slate-600 px-3 py-1.5 bg-white rounded-lg border border-slate-300">✕ ยกเลิก</button>)}
+                </div>
+                {list(A.list.concat(A.ilist).sort((a, b) => t2Ts(b.createdAt) - t2Ts(a.createdAt)), { selectable: true })}
+              </React.Fragment>
+            )}
+          </div>
+        )}
+
+        {tab === 'cash' && (
+          <div className="space-y-3">
+            <T2Box k="cash" title={`💵 เงินสด · ${R.label}`}>
+              <div className="grid grid-cols-2 gap-2">
+                <T2Stat label="เงินสดทั้งหมด" value={'฿' + formatMoney(A.cash)} sub={`${A.cashN} ใบ`} color={T2C.cash.c} />
+                <T2Stat label="หยอดเข้าเครื่องแล้ว" value={'฿' + formatMoney(A.coin)} sub="ไม่ต้องเก็บจากแม่บ้าน" />
+                <T2Stat label="แม่บ้านรับเป็นเงินสด" value={'฿' + formatMoney(A.held)} sub={A.heldPending > 0 ? `ยังไม่เก็บ ฿${formatMoney(A.heldPending)}` : 'เก็บครบแล้ว'} />
+                <T2Stat label="ค่าเครื่องที่หยอดเหรียญ" value={'฿' + formatMoney(PB.cash)} sub={`${PB.cashN} ใบ (จากบันทึกเปิดเครื่อง)`} />
+              </div>
+            </T2Box>
+            <T2Box k="cash" title={`📌 รอเก็บจากแม่บ้าน ฿${formatMoney(cashPend + tokenCashSum)}`} right={<span className="text-xs font-bold text-slate-500">{cashPendList.length} ใบ</span>}>
+              {cashPendList.length > 0 || tokenCashSum > 0
+                ? <div className="space-y-2">{bigBtn('cash', `เก็บเงินสดแล้ว ฿${formatMoney(cashPend + tokenCashSum)}`, () => doCollect('cash'))}{list(cashPendList)}</div>
+                : <p className="text-sm text-slate-500">ไม่มีเงินสดค้างที่แม่บ้าน ✓</p>}
+            </T2Box>
+            {history(m => m === 'cash', 'cash')}
+            <p className="text-sm font-extrabold text-slate-800">ใบงานเงินสด · {R.label}</p>
+            {list(A.list.filter(o => orderCashPart(o, config) > 0))}
+          </div>
+        )}
+
+        {tab === 'transfer' && (
+          <div className="space-y-3">
+            <T2Box k="transfer" title={`💳 โอน · ${R.label}`}>
+              <div className="grid grid-cols-2 gap-2">
+                <T2Stat label="โอนทั้งหมด" value={'฿' + formatMoney(A.transfer)} sub={`${A.transferN} ใบ`} color={T2C.transfer.c} />
+                <T2Stat label="ยิงจากแอป (ส่วนโอน)" value={'฿' + formatMoney(PB.transfer)} sub={PB.manual ? `รวมเจ้าของบันทึก ฿${formatMoney(PB.manual)}` : 'ค่าเครื่องที่เปิด'} />
+              </div>
+            </T2Box>
+            <T2Box k="transfer" title={`📌 ยังไม่เคลียร์ยอด ฿${formatMoney(trPend)}`} right={<span className="text-xs font-bold text-slate-500">{formatMoney(trPendList.length)} ใบ</span>}>
+              {trPendList.length > 0
+                ? <div className="space-y-2">{bigBtn('transfer', `ตรวจยอดในธนาคารแล้ว · เคลียร์ ฿${formatMoney(trPend)}`, () => doCollect('transfer'))}<p className="text-[11px] text-slate-500">กดผิด? กด ↶ ยกเลิก ได้ที่แถบด้านล่าง หรือในประวัติ</p></div>
+                : <p className="text-sm text-slate-500">เคลียร์ครบแล้ว ✓</p>}
+            </T2Box>
+            {history(m => m === 'transfer', 'transfer')}
+            <p className="text-sm font-extrabold text-slate-800">ใบงานโอน · {R.label}</p>
+            {list(A.list.filter(o => orderTransferPart(o, config) > 0))}
+          </div>
+        )}
+
+        {tab === 'discount' && (
+          <div className="space-y-3">
+            <T2Box k="discount" title={`🎟️ ส่วนลด · ${R.label}`}>
+              <div className="grid grid-cols-2 gap-2">
+                <T2Stat label="ส่วนลดรวม" value={'฿' + formatMoney(A.discount)} sub={`${A.discN} ใบ`} color={T2C.discount.c} />
+                <T2Stat label="คูปองแอดไลน์" value={'฿' + formatMoney(A.lineDisc)} sub={`ลดใบละ ฿${config.linePromoDiscount || 0}`} />
+                <T2Stat label="โปรประจำวัน" value={'฿' + formatMoney(A.promoDisc)} />
+                <T2Stat label="ยิงแอปให้ส่วนลด" value={'฿' + formatMoney(PB.discount)} sub={PB.promo ? `รวมโปรซักเอง ฿${formatMoney(PB.promo)}` : 'เฉพาะเครื่องซัก'} />
+              </div>
+            </T2Box>
+            {list(A.list.filter(o => calculateBreakdown(o, config).totalDiscount > 0))}
+          </div>
+        )}
+
+        {tab === 'internal' && (
+          <div className="space-y-3">
+            <T2Box k="internal" title={`🔧 งานภายใน · ${R.label}`} right={<span className="text-[11px] font-bold text-slate-500">ไม่นับเป็นรายได้</span>}>
+              <div className="grid grid-cols-2 gap-2">
+                {INTERNAL_TYPES.map(t => (
+                  <T2Stat key={t.id} label={`${t.emoji} ${t.label}`} value={'฿' + formatMoney((A.intType[t.id] || {}).v || 0)} sub={`${(A.intType[t.id] || {}).n || 0} งาน`} color={T2C.internal.c} />
+                ))}
+              </div>
+            </T2Box>
+            {list(A.ilist)}
+          </div>
+        )}
+
+        {tab === 'delivery' && (
+          <div className="space-y-3">
+            <T2Box k="delivery" title={`🚚 ค่าส่ง · ${R.label}`}>
+              <div className="grid grid-cols-3 gap-2">
+                <T2Stat label="งานส่ง" value={A.delivN} />
+                <T2Stat label="เก็บจากลูกค้า" value={'฿' + formatMoney(A.delivCharge)} />
+                <T2Stat label="ค่าไรเดอร์" value={'฿' + formatMoney(A.riderFee)} sub={A.riderUnpaid > 0 ? `ค้าง ฿${formatMoney(A.riderUnpaid)}` : 'จ่ายครบ'} color={T2C.delivery.c} />
+              </div>
+            </T2Box>
+            <T2Box k="delivery" title={`📌 ค้างจ่ายไรเดอร์ ฿${formatMoney(riderUnpaid)}`} right={<span className="text-xs font-bold text-slate-500">ทุกช่วงเวลา</span>}>
+              <div className="space-y-2">
+                {[...(config.riders || []), { id: null, label: 'ไม่ระบุไรเดอร์', emoji: '❓' }].map(r => {
+                  const os = riderUnpaidList.filter(o => (r.id ? o.riderId === r.id : !o.riderId || !(config.riders || []).some(x => x.id === o.riderId)));
+                  if (!os.length) return null;
+                  const sum = os.reduce((s, o) => s + riderFeeFor(o, config), 0);
+                  return (
+                    <div key={r.id || 'none'} className="flex items-center gap-2 bg-white rounded-xl px-3 py-2">
+                      <span className="text-2xl">{r.emoji || '🛵'}</span>
+                      <div className="flex-1">
+                        <p className="text-sm font-extrabold text-slate-900">{r.label}</p>
+                        <p className="text-[11px] text-slate-500">{os.length} งาน · ฿{formatMoney(sum)}</p>
+                      </div>
+                      {r.id ? <button onClick={() => doPayRider(r.id)} disabled={busy} className="px-3 py-2 rounded-lg text-white text-xs font-extrabold active:scale-95 disabled:opacity-40" style={{ background: T2C.delivery.c }}>จ่ายแล้ว</button>
+                        : <span className="text-[11px] text-slate-400">แก้ไรเดอร์ในใบงาน</span>}
+                    </div>
+                  );
+                })}
+                {riderUnpaidList.length === 0 && <p className="text-sm text-slate-500">ไม่มีค่าส่งค้างจ่าย ✓</p>}
+              </div>
+            </T2Box>
+            {history(m => m.startsWith('delivery'), 'delivery')}
+            {list(A.list.filter(o => o.deliveryZone))}
+          </div>
+        )}
+
+        {tab === 'pulse' && (
+          <div className="space-y-3">
+            <PulseRefundInbox config={config} />
+            <T2Box k="pulse" title={`⚡ ค่าเครื่องที่เปิด · ${R.label}`}>
+              <div className="space-y-1.5">
+                {[['cash', '💵 เงินสด (หยอดเหรียญ)', PB.cash], ['transfer', '💳 โอน (ยิงแอป)', PB.transfer], ['discount', '🎟️ ส่วนลด (ยิงแอป)', PB.discount], ['internal', '🧼 ล้างเครื่อง', PB.clean], ['internal', '🔧 ซ่อม/ทดสอบ', PB.repair]].map(([k, lb, v], i) => (
+                  <div key={i} className="flex items-center bg-white rounded-xl px-3 py-2">
+                    <p className="flex-1 text-sm font-extrabold" style={{ color: T2C[k].c }}>{lb}</p>
+                    <p className="font-extrabold text-slate-900">฿{formatMoney(v)}</p>
+                  </div>
+                ))}
+                <div className="flex items-center px-3 pt-1">
+                  <p className="flex-1 text-xs font-bold text-slate-500">รวมค่าเครื่องที่เปิด</p>
+                  <p className="text-lg font-extrabold text-slate-900">฿{formatMoney(PB.total)}</p>
+                </div>
+                {(PB.redo > 0 || PB.refund > 0 || PB.over > 0 || PB.pending > 0) && (
+                  <div className="text-[11px] text-slate-600 px-3 space-y-0.5">
+                    {PB.redo > 0 && <p>🔁 ซักซ้ำให้ลูกค้า ฿{formatMoney(PB.redo)}</p>}
+                    {PB.refund > 0 && <p>↩️ คืนเครดิต ฿{formatMoney(PB.refund)} ({PB.refundN} ครั้ง)</p>}
+                    {PB.over > 0 && <p className="text-rose-700 font-bold">⚠️ ยิงเกิน/ยิงแทนเงินสด ฿{formatMoney(PB.over)}</p>}
+                    {PB.pending > 0 && <p className="text-amber-700 font-bold">⏳ ยังไม่เริ่มเครื่อง ฿{formatMoney(PB.pending)} ({PB.pendingN} ใบ)</p>}
+                  </div>
+                )}
+              </div>
+            </T2Box>
+            <p className="text-sm font-extrabold text-slate-800">🔍 กระทบยอดกับเครื่อง (รายวัน)</p>
+            <PulseReconPanel config={config} orders={orders} dateKey={reconDay} setDateKey={setReconDay} isOwner={true} autoEc={true} />
+          </div>
+        )}
+
+        {tab === 'fold' && (
+          <div className="space-y-3">
+            <T2Box k="fold" title={`🧺 ฝากซัก อบ พับ · ${R.label}`}>
+              <div className="grid grid-cols-3 gap-2">
+                <T2Stat label="งานพับ" value={A.foldN} color={T2C.fold.c} />
+                <T2Stat label="ลูกค้าไม่ให้พับ" value={A.noFoldN} />
+                <T2Stat label="มีส่งด้วย" value={A.list.filter(o => !o.noFold && o.deliveryZone).length} />
+              </div>
+            </T2Box>
+            <div className="bg-white rounded-2xl p-3 shadow-sm">
+              <p className="text-sm font-extrabold text-slate-800 mb-2">👩 แยกตามแม่บ้านที่รับงาน</p>
+              {(() => {
+                const m = {};
+                A.list.filter(o => !o.noFold).forEach(o => { const k = o.staffName || 'ไม่ระบุ'; m[k] = (m[k] || 0) + 1; });
+                const rows = Object.entries(m).sort((a, b) => b[1] - a[1]);
+                const mx = rows.length ? rows[0][1] : 1;
+                return rows.length ? rows.map(([n, c]) => (
+                  <div key={n} className="flex items-center gap-2 py-1">
+                    <span className="w-24 text-sm font-bold text-slate-700 truncate">{n}</span>
+                    <div className="flex-1 h-3 rounded-full bg-slate-100 overflow-hidden"><div className="h-3 rounded-full" style={{ width: (c * 100 / mx) + '%', background: T2C.fold.c }}></div></div>
+                    <span className="w-12 text-right text-sm font-extrabold text-slate-900">{c}</span>
+                  </div>
+                )) : <p className="text-sm text-slate-500">ไม่มีงานใน{R.label}</p>;
+              })()}
+            </div>
+            {list(A.list.filter(o => !o.noFold))}
+          </div>
+        )}
+
+        {tab === 'coins' && <CoinCountView config={config} />}
+        {tab === 'stats' && <StatsView stats={stats} config={config} orders={orders} onResetAll={onResetAll} />}
+        {tab === 'settings' && <SettingsView config={config} staffList={staffList} />}
+      </div>
+
+      {/* ---------- แถบ ↶ ยกเลิก ---------- */}
+      {toast && !selecting && (
+        <div className="fixed bottom-3 left-3 right-3 z-40 rounded-2xl bg-slate-900 text-white px-4 py-3 shadow-2xl flex items-center gap-3">
+          <p className="flex-1 text-sm font-bold">{toast.text}</p>
+          {toast.undo && <button onClick={async () => { const u = toast.undo; setToast(null); setBusy(true); try { await u(); } catch (e) { alert('ยกเลิกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); } finally { setBusy(false); } }}
+            className="px-3 py-2 rounded-xl bg-white text-slate-900 text-sm font-extrabold active:scale-95">↶ ยกเลิก</button>}
+          <button onClick={() => setToast(null)} className="text-white text-opacity-60 text-lg font-bold px-1">✕</button>
+        </div>
+      )}
+      {/* ---------- โหมดเลือกเพื่อลบ ---------- */}
+      {selecting && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-rose-200 shadow-2xl z-30 px-4 py-3">
+          {!askPwd ? (
+            <div className="flex items-center gap-3">
+              <div className="flex-1"><p className="text-xs text-slate-500">เลือกแล้ว</p><p className="text-lg font-extrabold text-slate-900">{sel.size} ใบ</p></div>
+              <button onClick={() => sel.size > 0 && setAskPwd(true)} disabled={sel.size === 0} className="px-5 py-3 rounded-xl font-bold text-sm bg-rose-600 text-white disabled:bg-slate-200 disabled:text-slate-400">🗑️ ลบที่เลือก</button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-rose-700 font-bold">🔒 ใส่รหัสเจ้าของเพื่อลบ {sel.size} ใบ (กด ↶ ยกเลิก กู้คืนได้ทันทีหลังลบ)</p>
+              <input type="password" inputMode="numeric" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="••••" maxLength="4" autoFocus
+                className="w-full px-4 py-3 bg-rose-50 rounded-xl border-2 border-rose-300 text-center text-2xl font-bold tracking-[0.5em]" />
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => { setAskPwd(false); setPwd(''); }} className="py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">ย้อนกลับ</button>
+                <button onClick={doDelete} disabled={!pwd} className="py-3 bg-rose-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">🗑️ ลบ {sel.size} ใบ</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {showShare && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6" onClick={() => setShowShare(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-xs p-5 text-center" onClick={e => e.stopPropagation()}>
+            <p className="text-lg font-extrabold text-slate-800">📱 แชร์แอป</p>
+            <img src={APP_SHARE_QR} alt="QR" className="w-52 h-52 mx-auto rounded-xl border border-slate-200 mt-2" />
+            <p className="text-[11px] text-slate-500 mt-2 break-all">{APP_SHARE_URL}</p>
+            <button onClick={() => setShowShare(false)} className="mt-3 text-xs text-slate-400">ปิด</button>
           </div>
         </div>
       )}
