@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v156-2026-10-27';
+  window.APP_VERSION = 'v157-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2151,6 +2151,17 @@ const MM_DICT = {
   'ค่าเริ่มต้นตามใบงาน': 'မူရင်း = အလုပ်စာရွက်အတိုင်း',
   'เลือกเวลาอบ': 'အခြောက်ခံချိန် ရွေးပါ',
   'กดบันทึกด้านล่าง แล้วกดเริ่มเครื่องได้เลย': 'အောက်တွင် သိမ်းဆည်းပြီး စက်စတင်နိုင်ပါပြီ',
+  // 🔄 สลับผู้ใช้ (v157)
+  'เจ้าของ': 'ပိုင်ရှင်',
+  'แม่บ้าน': 'အိမ်အကူ',
+  'ดูแบบแม่บ้าน': 'အိမ်အကူမြင်ကွင်း',
+  'โหมดเจ้าของ': 'ပိုင်ရှင်မုဒ်',
+  'ทดสอบ': 'စမ်းသပ်',
+  'สลับผู้ใช้': 'အသုံးပြုသူ ပြောင်းရန်',
+  'ตอนนี้': 'ယခု',
+  'สลับเป็นเจ้าของ': 'ပိုင်ရှင်အဖြစ် ပြောင်းရန်',
+  'ต้องใส่รหัสเจ้าของ': 'ပိုင်ရှင် စကားဝှက် လိုအပ်သည်',
+  'ออกจากระบบ / เปลี่ยนแม่บ้าน': 'ထွက်ရန် / အိမ်အကူ ပြောင်းရန်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -2982,11 +2993,14 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
   }, [baseConfig, cloudRiders, shopSettings, lang]);
 
   const [view, setView] = useState('home');
+  const baseViewRef = useRef('home'); // v157: หน้าหลักล่าสุด (หน้าแรก / หน้าเจ้าของ) — ไว้กดกลับจากใบงาน
+  useEffect(() => { if (view === 'home' || view === 'ownerDashboard') baseViewRef.current = view; }, [view]);
   const [orders, setOrders] = useState([]);
   const [collections, setCollections] = useState([]);
   const [tokenExchanges, setTokenExchanges] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [isOwner, setIsOwner] = useState(false);
+  // v157: ล็อกอินแบบเจ้าของค้างไว้ → เปิดแอปใหม่ยังเป็นเจ้าของ
+  const [isOwner, setIsOwner] = useState(() => { try { const st = JSON.parse(localStorage.getItem('staff-' + config.brand) || 'null'); return !!(st && st.isOwnerLogin); } catch { return false; } });
   const [syncStatus, setSyncStatus] = useState('connecting'); // connecting/synced/offline
   // เฟส 1 — ระบบ login แม่บ้าน (เฉพาะสาขาที่ hasStaffLogin)
   const [currentStaff, setCurrentStaff] = useState(() => {
@@ -3094,18 +3108,50 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
     // ถ้าเข้าแบบเจ้าของ ให้เปิดโหมด owner เลย
     if (staff.isOwnerLogin) setIsOwner(true);
   };
+  // 🔄 v157: สลับผู้ใช้ เจ้าของ ⇄ แม่บ้าน (ไว้ทดสอบหน้าที่แม่บ้านเห็น)
+  const [prevStaff, setPrevStaff] = useState(() => { try { return JSON.parse(localStorage.getItem('prevStaff-' + config.brand) || 'null'); } catch { return null; } });
+  const savePrevStaff = (st) => { setPrevStaff(st); try { if (st) localStorage.setItem('prevStaff-' + config.brand, JSON.stringify(st)); else localStorage.removeItem('prevStaff-' + config.brand); } catch {} };
+  const handleRoleSwitch = (target) => {
+    if (target === 'owner') {
+      const pw = prompt('ใส่รหัสเจ้าของเพื่อสลับเป็นเจ้าของ:');
+      if (pw === null) return false;
+      if (pw !== OWNER_PASSWORD) { alert('รหัสไม่ถูกต้อง'); return false; }
+      if (currentStaff && !currentStaff.isOwnerLogin && !currentStaff.previewOwner) savePrevStaff(currentStaff);
+      handleStaffLogin({ id: 'owner', name: 'เจ้าของ', isOwnerLogin: true });
+      setView('home');
+      return true;
+    }
+    if (target === 'preview') {
+      handleStaffLogin(OWNER_PREVIEW_STAFF);
+      setIsOwner(false);
+      setView('home');
+      return true;
+    }
+    if (target === 'prev' && prevStaff) {
+      const st = prevStaff;
+      savePrevStaff(null);
+      handleStaffLogin(st);
+      setIsOwner(false);
+      setView('home');
+      return true;
+    }
+    if (target === 'logout') return handleSwitchStaff();
+    return false;
+  };
   const handleSwitchStaff = () => {
     const gate = PULSE_GATE[config.brand];
-    if (gate && gate.needReason && currentStaff && !currentStaff.isOwnerLogin) {
+    if (gate && gate.needReason && currentStaff && !currentStaff.isOwnerLogin && !currentStaff.previewOwner) {
       alert('⚠️ ' + tr(config, 'ยอดเปิดเครื่องวันนี้ไม่ตรง — ต้องใส่เหตุผลก่อนออกจากระบบ'));
       gate.open();
       return;
     }
-    if (!confirm('ออกจากระบบและสลับผู้ใช้?')) return;
+    if (!confirm('ออกจากระบบและสลับผู้ใช้?')) return false;
     try { localStorage.removeItem('staff-' + config.brand); } catch {}
+    savePrevStaff(null);
     setCurrentStaff(null);
     setIsOwner(false);
     setView('home');
+    return true;
   };
 
   const handleNewOrder = async (order) => {
@@ -3382,11 +3428,11 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
         </div>
       )}
       {deepJobId && <JobStartSheet config={config} orderId={deepJobId} orders={orders} onClose={onDeepDone} isOwner={isOwner} />}
-      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
-      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner ? 'ownerDashboard' : 'home')} />}
+      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {view === 'ownerDashboard' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
@@ -3653,8 +3699,54 @@ function DeliveryCheckerView({ onBack }) {
   );
 }
 
-function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
+// 🔄 v157: บทบาทของคนที่ล็อกอินอยู่ — owner (ล็อกอินแบบเจ้าของ) · preview (เจ้าของดูแบบแม่บ้าน) · maid
+const OWNER_PREVIEW_STAFF = { id: 'owner-preview', name: 'เจ้าของ (ดูแบบแม่บ้าน)', previewOwner: true };
+function staffRoleOf(st) {
+  if (!st) return null;
+  if (st.isOwnerLogin) return 'owner';
+  if (st.previewOwner) return 'preview';
+  return 'maid';
+}
+function RoleSwitchSheet({ config, currentStaff, prevStaff, onRoleSwitch, onClose }) {
+  const role = staffRoleOf(currentStaff);
+  const go = (t) => {
+    if (t === 'logout') { onClose(); if (onRoleSwitch) onRoleSwitch(t); return; } // ปิดแผ่นก่อน — ถ้ายอดไม่ตรงจะเด้งหน้าใส่เหตุผล
+    const ok = onRoleSwitch && onRoleSwitch(t); if (ok) onClose();
+  };
+  const item = (key, emoji, title, desc, onClick, tone) => (
+    <button key={key} onClick={onClick}
+      className="w-full flex items-center gap-3 rounded-2xl border-2 px-3 py-3 text-left active:scale-95 transition"
+      style={tone === 'owner' ? { borderColor: '#F59E0B', background: '#FFFBEB' } : tone === 'preview' ? { borderColor: '#8B5CF6', background: '#F5F3FF' } : tone === 'maid' ? { borderColor: '#14B8A6', background: '#F0FDFA' } : { borderColor: '#E2E8F0', background: '#fff' }}>
+      <span className="text-2xl w-9 text-center flex-shrink-0">{emoji}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-extrabold text-slate-900">{title}</span>
+        {desc && <span className="block text-[11px] font-bold text-slate-500">{desc}</span>}
+      </span>
+    </button>
+  );
+  const nowLabel = role === 'owner' ? '👔 ' + tr(config, 'เจ้าของ')
+    : role === 'preview' ? '👁️ เจ้าของ — ดูแบบแม่บ้าน (ทดสอบ)'
+    : '🧹 ' + tr(config, 'แม่บ้าน') + ': ' + (currentStaff ? currentStaff.name : '');
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(15,23,42,0.5)' }} onClick={onClose}>
+      <div className="w-full max-w-md bg-white rounded-t-3xl px-4 pt-4 pb-6 space-y-2" onClick={e => e.stopPropagation()}>
+        <p className="text-lg font-extrabold text-slate-900">🔄 {tr(config, 'สลับผู้ใช้')}</p>
+        <p className="text-sm font-bold text-slate-600 pb-1">{tr(config, 'ตอนนี้')}: <span className="text-slate-900">{nowLabel}</span></p>
+        {role === 'maid' && item('owner', '👔', tr(config, 'สลับเป็นเจ้าของ'), tr(config, 'ต้องใส่รหัสเจ้าของ'), () => go('owner'), 'owner')}
+        {role === 'owner' && item('preview', '👁️', 'ดูหน้าแม่บ้าน (ทดสอบ)', 'เห็นเหมือนแม่บ้านทุกอย่าง · กดอะไรเป็นของจริง · กลับเป็นเจ้าของต้องใส่รหัส', () => go('preview'), 'preview')}
+        {role === 'owner' && prevStaff && item('prev', '🧹', 'คืนเครื่องให้ ' + prevStaff.name, 'กลับเป็นแม่บ้าน ' + prevStaff.name + ' (ไม่ต้องใส่ PIN)', () => go('prev'), 'maid')}
+        {role === 'preview' && item('owner', '👔', 'กลับเป็นเจ้าของ', 'ต้องใส่รหัสเจ้าของ', () => go('owner'), 'owner')}
+        {item('logout', '🚪', role === 'maid' ? tr(config, 'ออกจากระบบ / เปลี่ยนแม่บ้าน') : 'ออกจากระบบ', null, () => go('logout'))}
+        <button onClick={onClose} className="w-full py-3 text-slate-500 font-bold text-sm">{tr(config, 'ปิด')}</button>
+      </div>
+    </div>
+  );
+}
+
+function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, onRoleSwitch, prevStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
+  const [roleSheet, setRoleSheet] = useState(false); // 🔄 v157
+  const role = staffRoleOf(currentStaff);
   const [tokenAmount, setTokenAmount] = useState('');
   const [tokenPayment, setTokenPayment] = useState('cash'); // cash | transfer
   const [tokenPhoto, setTokenPhoto] = useState('');
@@ -3999,6 +4091,13 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
         </div>
       )}
 
+      {role === 'preview' && (
+        <button onClick={() => setRoleSheet(true)} className="w-full px-4 py-2 flex items-center justify-center gap-2 text-white text-xs font-bold" style={{ background: '#7C3AED' }}>
+          <span>👁️</span>
+          <span>กำลังดูหน้าแม่บ้าน (ทดสอบ) — กดอะไรเป็นของจริง · แตะเพื่อกลับเป็นเจ้าของ</span>
+        </button>
+      )}
+      {roleSheet && <RoleSwitchSheet config={config} currentStaff={currentStaff} prevStaff={prevStaff} onRoleSwitch={onRoleSwitch} onClose={() => setRoleSheet(false)} />}
       {config.brand === 'trainee' && (
         <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 flex items-center justify-center gap-2 text-white text-xs font-bold">
           <span>🎓</span>
@@ -4030,11 +4129,16 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
           </div>
           {/* เฟส 1 — chip ชื่อแม่บ้านที่ login อยู่ */}
           {currentStaff && (
-            <button onClick={onSwitchStaff} className="mb-1 inline-flex items-center gap-1.5 bg-white bg-opacity-20 backdrop-blur-sm rounded-full pl-1 pr-3 py-1 border border-white border-opacity-30 active:scale-95 transition">
+            <button onClick={() => (onRoleSwitch ? setRoleSheet(true) : onSwitchStaff())} className="mb-1 inline-flex items-center gap-1.5 bg-white bg-opacity-20 backdrop-blur-sm rounded-full pl-1 pr-3 py-1 border border-white border-opacity-30 active:scale-95 transition">
               <span className="w-6 h-6 rounded-full bg-white flex items-center justify-center overflow-hidden">
-                {currentStaff.avatar ? <StaffAvatar avatar={currentStaff.avatar} size={24} /> : <span className="text-sm">👔</span>}
+                {role === 'maid' && currentStaff.avatar ? <StaffAvatar avatar={currentStaff.avatar} size={24} /> : <span className="text-sm">{role === 'owner' ? '👔' : role === 'preview' ? '👁️' : '🧹'}</span>}
               </span>
-              <span className="text-white text-xs font-bold">{currentStaff.name}</span>
+              <span className="text-white text-xs font-bold">{role === 'owner' ? tr(config, 'เจ้าของ') : role === 'preview' ? tr(config, 'ดูแบบแม่บ้าน') : currentStaff.name}</span>
+              {/* v157: ป้ายบทบาท */}
+              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full"
+                style={role === 'owner' ? { background: '#FDE68A', color: '#78350F' } : role === 'preview' ? { background: '#DDD6FE', color: '#4C1D95' } : { background: 'rgba(255,255,255,0.9)', color: '#0F766E' }}>
+                {role === 'owner' ? tr(config, 'โหมดเจ้าของ') : role === 'preview' ? tr(config, 'ทดสอบ') : tr(config, 'แม่บ้าน')}
+              </span>
               <span className="text-white text-opacity-70 text-[10px]">{tr(config, "• สลับ")}</span>
             </button>
           )}
