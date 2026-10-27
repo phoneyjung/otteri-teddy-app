@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v146-2026-10-26';
+  window.APP_VERSION = 'v147-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2062,6 +2062,23 @@ const MM_DICT = {
   'เครื่องได้รับพัลส์แล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)': 'စက်သို့ pulse ရောက်ပြီးသော်လည်း အလုပ်စာရွက်တွင် မရေတွက် (ဆိုင်က ကျခံ)',
   'เครื่องไม่ได้รับ': 'စက် မရရှိ',
   'ส่งไม่สำเร็จ': 'ပို့၍မရ',
+  // 💵 เงินสดหยอดเหรียญเอง (v147) — รอพนักงานพม่าตรวจคำแปล
+  'ยืนยันหยอดเหรียญ': 'အကြွေစေ့ထည့်ခြင်း အတည်ပြု',
+  'หยอดเหรียญเอง': 'အကြွေစေ့ ကိုယ်တိုင်ထည့်',
+  'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดตกลง': 'စက်ထဲသို့ အကြွေစေ့ အရင်ပြည့်အောင်ထည့်ပြီးမှ OK နှိပ်ပါ',
+  'หยอดเหรียญ': 'အကြွေစေ့ထည့်',
+  'บันทึกแล้ว': 'မှတ်တမ်းတင်ပြီး',
+  'ลูกค้าจ่ายเงินสด — หยอดเหรียญเอง': 'ဖောက်သည် ငွေသားပေး — အကြွေစေ့ ကိုယ်တိုင်ထည့်',
+  'ส่วนโอน ยิงจากแอป': 'လွှဲငွေအပိုင်း အက်ပ်မှ ပို့',
+  'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดปุ่มด้านล่าง': 'စက်ထဲသို့ အကြွေစေ့ အရင်ပြည့်အောင်ထည့်ပြီးမှ အောက်ခလုတ်ကို နှိပ်ပါ',
+  'หยอดเหรียญแล้ว': 'အကြွေစေ့ ထည့်ပြီး',
+  'เงินสด → หยอดเหรียญ': 'ငွေသား → အကြွေစေ့ထည့်',
+  'โอน → ยิงแอป': 'လွှဲငွေ → အက်ပ်မှ ပို့',
+  'เงินสด หยอดเหรียญ': 'ငွေသား အကြွေစေ့ထည့်',
+  'ยิงเครดิตแทนเงินสด': 'ငွေသားအစား ခရက်ဒစ်ဖြင့် ပို့',
+  'บันทึกหยอดเหรียญ มากกว่าที่เครื่องนับได้': 'မှတ်တမ်းထားသော အကြွေစေ့ စက်ရေတွက်ထက် များ',
+  'หยอดเหรียญ (เงินสดลูกค้า)': 'အကြွေစေ့ထည့် (ဖောက်သည် ငွေသား)',
+  'หยอดเครื่องแล้ว': 'စက်ထဲ ထည့်ပြီး',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3125,11 +3142,13 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
       return;
     }
     // ยอดจาก order ปกติ + ยอด portion จาก split
-    const splitPortion = splitOrders.reduce((s, o) => s + (method === 'cash' ? (o.cashAmount || 0) : (o.transferAmount || 0)), 0);
-    const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config), 0) + splitPortion;
+    const splitPortion = splitOrders.reduce((s, o) => s + (method === 'cash' ? cashHeldOf(o, config) : (o.transferAmount || 0)), 0);
+    const totalShould = uncollected.reduce((s, o) => s + calculateTotal(o, config) - (method === 'cash' ? cashInMachineOf(o, config) : 0), 0) + splitPortion;
+    const inMachineSum = method === 'cash' ? [...uncollected, ...splitOrders].reduce((s, o) => s + cashInMachineOf(o, config), 0) : 0; // 💵 v147
     const methodLabel = method === 'cash' ? 'เก็บเงินสดจากแม่บ้าน' : 'เคลียร์ยอดโอน';
     
     let extraInfo = '';
+    if (inMachineSum > 0) extraInfo += `\n\n💵 หยอดเข้าเครื่องไปแล้ว ฿${formatMoney(inMachineSum)} (ไม่ต้องเก็บจากแม่บ้าน)`;
     if (splitOrders.length > 0) {
       extraInfo += `\n\n💵💳 รวมส่วนแบ่งจ่าย: ${splitOrders.length} ใบ • ฿${formatMoney(splitPortion)}`;
     }
@@ -4472,7 +4491,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
                 <div className="text-right">
                   <p className="font-bold text-slate-900">฿{formatMoney(calculateTotal(o, config))}</p>
                   <p className={`text-xs font-medium ${o.collected ? 'text-emerald-600' : (o.paymentMethod === 'transfer' ? 'text-violet-600' : 'text-amber-600')}`}>
-                    {tr(config, o.collected ? 'เก็บแล้ว' : (o.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'))}
+                    {o.collected && o.collectedVia === 'machine' ? '💵 ' + tr(config, 'หยอดเครื่องแล้ว') : tr(config, o.collected ? 'เก็บแล้ว' : (o.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'))}
                   </p>
                 </div>
               </button>
@@ -4821,6 +4840,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       internalCustom: internalType && customAmt > 0 ? customAmt : null,
       collected: editingOrder?.collected || false,
       collectedAt: editingOrder?.collectedAt || null,
+      cashInMachine: editingOrder?.cashInMachine || null,
+      collectedVia: editingOrder?.collectedVia || null,
       // preserve split collected flags (กันเก็บซ้ำตอนแก้ไข)
       cashCollected: paymentMethod === 'split' ? (editingOrder?.cashCollected || false) : null,
       transferCollected: paymentMethod === 'split' ? (editingOrder?.transferCollected || false) : null,
@@ -6143,6 +6164,12 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
                       <div style={{ fontSize: '24px', fontWeight: 900 }}>สแกนเริ่มเครื่อง</div>
                       <div style={{ fontSize: '19px', fontWeight: 600 }}>แม่บ้านสแกนด้วยมือถือ</div>
                       <div style={{ fontSize: '19px', fontWeight: 600 }}>→ เลือกเครื่อง → เริ่ม</div>
+                      {(() => { const pp = orderPayParts(order, config); return pp.coinNeed > 0 ? (
+                        <>
+                          <div style={{ fontSize: '19px', fontWeight: 800, marginTop: '4px' }}>สด: หยอดเหรียญเอง ฿{pp.coinNeed}</div>
+                          {pp.pulseNeed > 0 && <div style={{ fontSize: '19px', fontWeight: 800 }}>โอน: ยิงจากแอป ฿{pp.pulseNeed}</div>}
+                        </>
+                      ) : null; })()}
                       <div style={{ fontSize: '21px', fontWeight: 800, marginTop: '4px' }}>คิว {queueNo}</div>
                     </div>
                   </div>
@@ -8096,7 +8123,7 @@ function SettingsView({ config, staffList }) {
 // เปิด/ปิดที่ หน้าเจ้าของ → ⚙️ ตั้งค่า · กระทบยอดเริ่มนับจากเวลาที่เปิด (settings.pulseSinceMs)
 // pulseLogs: 1 เอกสาร = ยิง 1 ครั้ง (id = reqId) · pulseDayNotes: เหตุผลยอดไม่ตรงรายวัน (id = brand_YYYY-MM-DD)
 const PULSE_BAHT = 10; // 1 พัลส์ = 10 บาท (เช็กกับประวัติ EC: QR 60฿ → 6 พัลส์)
-const PULSE_LIVE = ['confirmed', 'forced', 'sent', 'unknown', 'sending']; // นับว่าเครื่องน่าจะได้รับ
+const PULSE_LIVE = ['confirmed', 'forced', 'sent', 'unknown', 'sending', 'coin']; // นับว่าเครื่องน่าจะได้รับ (coin = แม่บ้านหยอดเหรียญเอง v147)
 const PULSE_EC_CACHE = {}; // brand|date → ผลอ่านประวัติเครื่องจาก EC (แคชในหน้าเว็บ)
 const PULSE_EC_INFLIGHT = {}; // brand|date → กำลังอ่านอยู่ (กันอ่านซ้ำพร้อมกันจากการ์ดกับหน้ารายละเอียด)
 const PULSE_GATE = {};     // brand → { needReason, open } — ใช้กันออกจากระบบ/ลงเวลาออกตอนยอดไม่ตรง
@@ -8261,6 +8288,76 @@ async function approvePulseRefund(config, log, reason, note) {
   }, { merge: true });
 }
 
+// 💵 เงินสด → แม่บ้านหยอดเหรียญเอง · 💳 โอน → ยิงพัลส์จากแอป (v147) — ไม่ให้แม่บ้านถือเงินสดของร้าน
+// สด+โอน: เงินสดหยอดเครื่องก่อน ส่วนที่เหลือยิงจากแอป · บันทึกหยอดเหรียญ = pulseLogs method 'coin' (ไม่ส่งไป Worker)
+const pulseIsCoin = (l) => !!(l && l.method === 'coin');
+function orderCashPart(order, config) {
+  if (!order) return 0;
+  if (order.paymentMethod === 'cash') return calculateTotal(order, config);
+  if (order.paymentMethod === 'split') return order.cashAmount || 0;
+  return 0;
+}
+function orderPayParts(order, config) {
+  const machine = creditForOrder(order, config);
+  const cash = orderCashPart(order, config);
+  const coinNeed = Math.floor(Math.max(0, Math.min(cash, machine)) / PULSE_BAHT) * PULSE_BAHT;
+  return { machine, cash, coinNeed, pulseNeed: machine - coinNeed };
+}
+// สถานะเงินของใบงาน: หยอดเหรียญไปแล้ว/เหลือ · ยิงพัลส์ได้อีกเท่าไหร่ (เหรียญที่เจ้าของคืนเครดิต → เปิดให้ยิงพัลส์แทน)
+function payStateOf(order, config, logs) {
+  const p = orderPayParts(order, config);
+  const mine = (logs || []).filter(l => l.refId === order.id);
+  const sum = (list) => list.reduce((a, l) => a + (l.baht || 0), 0);
+  const coinUsed = sum(mine.filter(l => pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l))));
+  const coinRefunded = sum(mine.filter(l => pulseIsCoin(l) && pulseRefunded(l)));
+  const pulseLiveBaht = sum(mine.filter(l => !pulseIsCoin(l) && pulseLive(l)));
+  const pulseAllowed = p.pulseNeed + coinRefunded;
+  return {
+    ...p, coinUsed, coinRefunded, pulseLive: pulseLiveBaht, pulseAllowed,
+    coinLeft: Math.max(0, p.coinNeed - coinUsed), pulseLeft: Math.max(0, pulseAllowed - pulseLiveBaht),
+  };
+}
+// เปิดเครื่อง 1 ครั้ง: ส่วนหยอดเหรียญ / ส่วนยิงพัลส์ (เงินสดก่อน · ลูกค้าเงินสดเพิ่มเวลาเกินใบงาน = หยอดเหรียญ)
+function splitCoinPulse(pay, baht) {
+  if (!pay || !(baht > 0)) return { coin: 0, pulse: baht || 0 };
+  let coin = Math.min(baht, pay.coinLeft);
+  const over = Math.max(0, baht - coin - pay.pulseLeft);
+  if (over > 0 && pay.cash > 0) coin += over;
+  return { coin, pulse: baht - coin };
+}
+const cashInMachineOf = (o, config) => Math.min(o.cashInMachine || 0, orderCashPart(o, config));
+const cashHeldOf = (o, config) => Math.max(0, orderCashPart(o, config) - cashInMachineOf(o, config));
+
+// บันทึกว่าแม่บ้านหยอดเหรียญเข้าเครื่องแล้ว (ไม่ยิงพัลส์) + ใบงานเงินสดที่หยอดครบ = ไม่ต้องรอเก็บจากแม่บ้าน
+function logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, baht, dryMin, warn }) {
+  const staff = currentStaffLS(config);
+  const now = Date.now();
+  const id = `${config.brand}-coin-${now}-${Math.random().toString(36).slice(2, 8)}`;
+  const log = {
+    brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine, machineLabel: pulseMachineLabel(config, machine),
+    pulses: Math.round(baht / PULSE_BAHT), baht, method: 'coin', status: 'coin',
+    refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null, refLabel: pulseRefLabel(order, config),
+    staffId: staff && staff.id ? staff.id : null, staffName: staff && staff.name ? staff.name : '',
+    createdAt: now, kind: kind || null, kg: kg || null, temp: temp || null, heat: heat || null, dryMin: dryMin || null, mismatch: warn || null,
+  };
+  pulseLogRef(id).set(log).catch(e => console.error('coin log error:', e));
+  const cashPart = orderCashPart(order, config);
+  const before = (logs || []).filter(l => l.refId === order.id && pulseIsCoin(l)).reduce((a, l) => a + (l.baht || 0), 0);
+  const inMachine = Math.min(cashPart, before + baht);
+  if (cashPart > 0 && order.id) {
+    const upd = { brand: order.brand || config.brand, cashInMachine: inMachine, cashInMachineAt: now };
+    if (inMachine >= cashPart) {
+      if (order.paymentMethod === 'cash' && !order.collected) Object.assign(upd, { collected: true, collectedAt: now, collectedVia: 'machine' });
+      if (order.paymentMethod === 'split' && !order.cashCollected) {
+        Object.assign(upd, { cashCollected: true, collectedAt: now, collectedVia: 'machine' });
+        if (order.transferCollected || !((order.transferAmount || 0) > 0)) upd.collected = true;
+      }
+    }
+    window.db.collection('orders').doc(order.id).set(upd, { merge: true }).catch(e => console.error('cashInMachine error:', e));
+  }
+  return { id, ...log };
+}
+
 // อ่านประวัติเครื่องของวันจาก EC (ผ่าน Worker) — ทีละ 4 เครื่องพร้อมกัน
 async function fetchEcDay(config, dateKey, machineIds, onProgress) {
   const ms = pulseMachines(config).filter(m => !machineIds || machineIds.includes(m.id));
@@ -8311,12 +8408,15 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
     if (need <= 0) return;
     const fired = sumBaht(live.filter(l => l.refId === o.id));
     const label = pulseRefLabel(o, config);
-    records.push({ id: o.id, kind: isInternalOrder(o) ? 'internal' : 'order', label, need, fired });
+    const pay = payStateOf(o, config, (logs || []).filter(l => l.brand === config.brand && l.refId === o.id)); // 💵 v147
+    records.push({ id: o.id, kind: isInternalOrder(o) ? 'internal' : 'order', label, need, fired, coin: sumBaht(live.filter(l => l.refId === o.id && pulseIsCoin(l))) });
     const fresh = dateKey === dateKeyOf(new Date()) && Date.now() - (o.createdAt || 0) < 3 * 3600000;
     allocatePulseLogs(o, config, live.filter(l => l.refId === o.id)).mismatches
       .forEach(mm => add(`m:${o.id}:${mm.logId}`, 'error', 'เครื่องไม่ตรงใบงาน', { label: `${label} · ${mm.text}`, refId: o.id }));
     if (fired < need) add(`o:${o.id}:${need - fired}`, 'error', fired === 0 ? 'ยังไม่ได้เริ่มเครื่อง' : 'เริ่มเครื่องไม่ครบ', { label, amount: need - fired, refId: o.id, pending: fresh });
-    else if (fired > need) add(`o:${o.id}:+${fired - need}`, 'error', 'ยิงเกินงาน', { label, amount: fired - need, refId: o.id });
+    // ยิงพัลส์เกินส่วนที่ยิงได้ (ใบงานเงินสด = ใช้เครดิตแทนเงินสด · ใบงานโอน = ยิงเกินงาน) · หยอดเหรียญเกินใบงานไม่ใช่ error
+    const pulseExcess = pay.pulseLive - pay.pulseAllowed;
+    if (pulseExcess > 0) add(`o:${o.id}:+${pulseExcess}`, 'error', pay.cash > 0 ? 'ยิงเครดิตแทนเงินสด' : 'ยิงเกินงาน', { label, amount: pulseExcess, refId: o.id });
   });
   (ledger || []).filter(e => e.type === 'promo' && e.pulseLogId && inDay(e.createdAt || 0)).forEach(e => {
     const need = e.amount || 0;
@@ -8330,6 +8430,10 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
   const dayLogs = live.filter(l => inDay(l.createdAt || 0));
   const dayRefunded = refundedAll.filter(l => inDay(l.createdAt || 0));
   const refundSeen = {}; // id → true/false (เครื่องได้รับไหม เมื่อเทียบ EC แล้ว)
+  // 💵 หยอดเหรียญ (v147) ไม่ใช่พัลส์ — ไม่เอาไปจับคู่กับ "บังคับส่งพัลส์" ของ EC
+  const dayPulse = dayLogs.filter(l => !pulseIsCoin(l));
+  const dayRefundedPulse = dayRefunded.filter(l => !pulseIsCoin(l));
+  const dayCoins = [...dayLogs, ...dayRefunded].filter(pulseIsCoin);
   dayLogs.filter(pulseRefundPending).forEach(l => add(`r:${l.id}`, 'warn', 'รอเจ้าของคืนเครดิต', { label: `${l.machineLabel} · ${l.refLabel || ''}`, amount: l.baht }));
   const orderIds = new Set((orders || []).map(o => o.id));
   const promoIds = new Set((ledger || []).map(e => e.id));
@@ -8343,10 +8447,11 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
   if (ec && ec.byMachine) {
     pulseMachines(config).forEach(m => {
       const e = ec.byMachine[m.id];
-      const appList = dayLogs.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
-      const refList = dayRefunded.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+      const appList = dayPulse.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+      const refList = dayRefundedPulse.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+      const appCoin = sumBaht(dayCoins.filter(l => l.machine === m.id));
       let appBaht = sumBaht(appList);
-      if (!e) { machineRows.push({ id: m.id, label: m.label, appBaht: appBaht + sumBaht(refList), ecBaht: null, ok: null }); return; }
+      if (!e) { machineRows.push({ id: m.id, label: m.label, appBaht: appBaht + sumBaht(refList), ecBaht: null, ok: null, appCoin, ecCoin: null }); return; }
       const ecList = (e.forced || []).filter(f => !f.pending && pulseBkkMs(f.time) >= sinceMs).map(f => ({ ...f, ms: pulseBkkMs(f.time), used: false }));
       const ecBaht = ecList.reduce((s, f) => s + (f.pulses || 0), 0) * PULSE_BAHT;
       const missing = [];
@@ -8364,7 +8469,10 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
       refList.forEach(l => { const hit = matchEc(l); refundSeen[l.id] = !!hit; if (hit) appBaht += l.baht || 0; });
       const outside = ecList.filter(f => !f.used);
       const noSignal = (e.forcedNoSignal || []).filter(t => pulseBkkMs(t) >= sinceMs);
-      machineRows.push({ id: m.id, label: m.label, appBaht, ecBaht, ok: !outside.length && !missing.length });
+      machineRows.push({ id: m.id, label: m.label, appBaht, ecBaht, ok: !outside.length && !missing.length, appCoin, ecCoin: e.coinBaht || 0 });
+      // 💵 บันทึกว่าหยอดเหรียญ แต่เครื่องนับเหรียญทั้งวันได้น้อยกว่า (รวมลูกค้าหน้าร้านแล้ว) → เตือนเจ้าของ
+      const coinOld = sumBaht(dayCoins.filter(l => l.machine === m.id && ec.at - (l.createdAt || 0) > 120000));
+      if (coinOld > (e.coinBaht || 0)) add(`k:${m.id}:${coinOld}`, 'warn', 'บันทึกหยอดเหรียญ มากกว่าที่เครื่องนับได้', { label: m.label, amount: coinOld - (e.coinBaht || 0) });
       if (outside.length) add(`e:${m.id}:out:${outside.map(f => f.time.slice(11, 19)).join(',')}`, 'error', 'มีการยิงนอกแอป', { label: m.label, amount: outside.reduce((s, f) => s + f.pulses, 0) * PULSE_BAHT, times: outside.map(f => f.time.slice(11, 16)) });
       if (missing.length) add(`e:${m.id}:miss:${missing.map(l => l.id).join(',')}`, 'error', 'แอปสั่งแต่เครื่องไม่ได้รับ', { label: m.label, amount: sumBaht(missing), times: missing.map(l => new Date(l.createdAt).toTimeString().slice(0, 5)) });
       noSignal.forEach(t => add(`n:${m.id}:${t}`, 'warn', 'สั่งแล้วเครื่องไม่ตอบ', { label: m.label, times: [t.slice(11, 16)] }));
@@ -8379,7 +8487,8 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
     dateKey, records, issues, errors,
     need: records.reduce((s, r) => s + r.need, 0),
     firedForRecords: records.reduce((s, r) => s + r.fired, 0),
-    appBaht: sumBaht(dayLogs) + sumBaht(dayRefunded),
+    appBaht: sumBaht(dayPulse) + sumBaht(dayRefundedPulse),
+    coinBaht: sumBaht(dayCoins),
     ecBaht: ec && ec.byMachine && Object.keys(ec.byMachine).length ? machineRows.reduce((s, r) => s + (r.ecBaht || 0), 0) : null,
     machineRows, ecAt: ec ? ec.at : null, ecErrors: ec ? ec.errors : null,
     refunds: dayRefunded.map(l => ({ id: l.id, machineLabel: l.machineLabel, refLabel: l.refLabel || '', baht: l.baht || 0, reason: l.refundReason, note: l.refundNote || '', ecSeen: l.id in refundSeen ? refundSeen[l.id] : null })),
@@ -8647,26 +8756,38 @@ function MachineWall({ config, stacks, marks, selected, onPick, problems }) {
 }
 
 // ---------- ยิงพัลส์ให้ใบงาน (ใช้ร่วมกันทั้งในใบงานและปุ่มหน้าแรก) ----------
-async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht, warn }, retryLog) {
+async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht, warn, coinBaht }, retryLog, logs) {
   const maxShot = (config.pulse && config.pulse.maxPerShot) || 12;
-  const pulses = Math.round(baht / PULSE_BAHT);
-  if (pulses < 1 || pulses > maxShot) { alert(`${tr(config, 'ยอดสูงสุดต่อครั้ง')} ฿${maxShot * PULSE_BAHT}`); return null; }
+  if (!(baht > 0)) return null;
+  const coin = Math.max(0, Math.min(baht, coinBaht || 0)); // 💵 ส่วนเงินสด = แม่บ้านหยอดเหรียญเอง (v147)
+  const pulseBaht = baht - coin;
+  const pulses = Math.round(pulseBaht / PULSE_BAHT);
+  if (pulseBaht > 0 && (pulses < 1 || pulses > maxShot)) { alert(`${tr(config, 'ยอดสูงสุดต่อครั้ง')} ฿${maxShot * PULSE_BAHT}`); return null; }
   const mLabel = pulseMachineLabel(config, machine);
   const dryMin = kind === 'dry' ? dryMinutesFor(config, kg, baht) : 0;
   const detail = kind === 'wash' ? `💧 ${tr(config, washTempLabel(temp))}` : `🌬️ ${tr(config, dryHeatLabel(heat))} · ≈ ${dryMin} ${tr(config, 'นาที')}`;
-  if (!confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return null;
+  const head = coin > 0 && pulseBaht === 0 ? `💵 ${tr(config, 'ยืนยันหยอดเหรียญ')}` : `⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}`;
+  const payTxt = coin > 0
+    ? `💵 ${tr(config, 'หยอดเหรียญเอง')} ฿${coin}${pulseBaht > 0 ? `\n⚡ ${tr(config, 'ยิงจากแอป')} ${pulses} ${tr(config, 'พัลส์')} (฿${pulseBaht})` : ''}\n\n👉 ${tr(config, 'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดตกลง')}`
+    : `🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})`;
+  if (!confirm(`${head}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n${payTxt}${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return null;
+  const coinLog = coin > 0 ? logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, baht: coin, dryMin, warn }) : null;
+  if (pulseBaht <= 0) return { ...coinLog, coinBaht: coin };
   if (retryLog) await voidPulseLog(retryLog.id, 'ยิงใหม่ — เครื่องไม่ได้รับ').catch(() => {});
-  return firePulse(config, {
+  const res = await firePulse(config, {
     machine, pulses, refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null,
     refLabel: pulseRefLabel(order, config), retryOf: retryLog ? retryLog.id : null,
     meta: { kind, kg, temp: temp || null, heat: heat || null, dryMin: dryMin || null, mismatch: warn || null },
   });
+  return { ...res, coinBaht: coin };
 }
 function fireResultMsg(config, res) {
   const mLabel = res.machineLabel || '';
-  if (res.status === 'confirmed') return { ok: true, text: `✅ ${mLabel} ${tr(config, 'เครื่องรับแล้ว')}` };
-  if (res.status === 'failed') return { ok: false, text: `❌ ${tr(config, 'ไม่สำเร็จ')}: ${res.error || ''}` };
-  return { ok: null, text: `⏳ ${mLabel} — ${tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}` };
+  const coinTxt = res.coinBaht > 0 ? `💵 ${tr(config, 'หยอดเหรียญ')} ฿${res.coinBaht}` : '';
+  if (res.status === 'coin') return { ok: true, text: `✅ ${mLabel} · ${coinTxt} — ${tr(config, 'บันทึกแล้ว')}` };
+  if (res.status === 'confirmed') return { ok: true, text: `✅ ${mLabel} ${tr(config, 'เครื่องรับแล้ว')}${coinTxt ? ' · ' + coinTxt : ''}` };
+  if (res.status === 'failed') return { ok: false, text: `${coinTxt ? '✅ ' + coinTxt + ' · ' : ''}❌ ${tr(config, 'ไม่สำเร็จ')}: ${res.error || ''}` };
+  return { ok: null, text: `⏳ ${mLabel} — ${tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}${coinTxt ? ' · ' + coinTxt : ''}` };
 }
 const slotOpenLeft = (s) => s.baht - s.got;
 // ช่องในใบงานนี้ใช้เครื่องนี้ได้ไหม (ชนิดตรง + ขนาดตรง)
@@ -8747,8 +8868,13 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   };
   const chooseJob = (j) => { if (busyText) return; setJobId(j.order.id); if (selM) applyJob(selM, j); };
 
-  const washBaht = selM && selM.kind === 'wash' && temp ? washPriceFor(config, selM.kg, temp) : 0;
+  // ซักที่เปิดไปบางส่วนแล้ว (เช่น หยอดเหรียญแล้วแต่ยิงส่วนโอนไม่สำเร็จ) → เติมเฉพาะส่วนที่ขาด
+  const partialWash = selM && selM.kind === 'wash' && job ? openSlots.find(x => x.kind === 'wash' && x.got > 0 && x.kg === selM.kg && x.logs.some(l => l.machine === selM.id)) : null;
+  const washBaht = selM && selM.kind === 'wash' && temp ? (partialWash ? slotOpenLeft(partialWash) : washPriceFor(config, selM.kg, temp)) : 0;
   const baht = selM ? (selM.kind === 'wash' ? washBaht : amount) : 0;
+  // 💵 ลูกค้าจ่ายเงินสด → หยอดเหรียญเอง · ส่วนโอน → ยิงจากแอป (v147)
+  const pay = job ? payStateOf(job.order, config, job.logs || jobLogs || []) : null;
+  const cp = splitCoinPulse(pay, baht);
   const dryBaseOpen = selM && selM.kind === 'dry' && openSlots.some(x => x.kind === 'dry' && x.kg === selM.kg);
   const minDry = selM && selM.kind === 'dry' ? (dryBaseOpen ? dryPriceFor(config, selM.kg) : PULSE_BAHT) : 0;
 
@@ -8812,6 +8938,13 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               {openSlots.length ? `${tr(config, 'ยังต้องเปิดตามใบงาน')}:` : `✅ ${tr(config, 'เริ่มเครื่องครบแล้ว')}`}
             </p>
             {openSlots.length > 0 && <p className="text-sm font-bold text-slate-800 leading-snug">{openSlots.map(s => s.kind === 'topup' ? `⏱️ ${tr(config, 'อบเพิ่มเวลา')} ${s.kg}kg ฿${slotOpenLeft(s)}` : `${pulseSlotLabel(config, s)} ฿${slotOpenLeft(s)}`).join(' · ')}</p>}
+            {openSlots.length > 0 && pay && pay.coinNeed > 0 && (
+              <p className="text-sm font-extrabold mt-1">
+                {pay.coinLeft > 0 && <span className="text-emerald-700">💵 {tr(config, 'เงินสด หยอดเหรียญ')} ฿{pay.coinLeft}</span>}
+                {pay.coinLeft > 0 && pay.pulseLeft > 0 && <span className="text-slate-400"> · </span>}
+                {pay.pulseLeft > 0 && <span className="text-sky-700">⚡ {tr(config, 'ยิงจากแอป')} ฿{pay.pulseLeft}</span>}
+              </p>
+            )}
           </div>
         ) : (
           <div className={`rounded-2xl px-3 py-2 border ${jobs.length ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
@@ -8869,6 +9002,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
                             <span className="text-[11px] text-slate-500">{fmTime(j.order.createdAt || 0)}</span>
                           </div>
                           <p className="text-xs font-bold text-slate-600 mt-0.5 pl-7">{jobOpenText(config, j.alloc)}</p>
+                          {(() => { const pj = payStateOf(j.order, config, j.logs); return pj.coinLeft > 0 ? <p className="text-[11px] font-bold text-emerald-700 pl-7">💵 {tr(config, 'เงินสด หยอดเหรียญ')} ฿{pj.coinLeft}</p> : null; })()}
                           {!fit && <p className="text-[11px] font-bold text-amber-700 pl-7">⚠️ {tr(config, 'ขนาดเครื่องไม่ตรงใบงาน')}</p>}
                         </button>
                       );
@@ -8914,6 +9048,13 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               </div>
             ))}
 
+            {(fixed || job) && !block && baht > 0 && cp.coin > 0 && (
+              <div className="rounded-xl px-3 py-2 border-2 border-emerald-300 bg-emerald-50">
+                <p className="text-sm font-extrabold text-emerald-800">💵 {tr(config, 'ลูกค้าจ่ายเงินสด — หยอดเหรียญเอง')} ฿{cp.coin}</p>
+                {cp.pulse > 0 && <p className="text-sm font-bold text-sky-800">⚡ {tr(config, 'ส่วนโอน ยิงจากแอป')} ฿{cp.pulse}</p>}
+                <p className="text-[11px] font-bold text-emerald-700 mt-0.5">{tr(config, 'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดปุ่มด้านล่าง')}</p>
+              </div>
+            )}
             {warn && <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ {warn}</p>}
           </div>
         )}
@@ -8925,10 +9066,12 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
       {selM && (fixed || job) && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3">
           <button disabled={!ready || !!busyText}
-            onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn }, () => setSel(null))}
+            onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin }, () => setSel(null))}
             className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: config.gradient }}>
             {busyText ? `⏳ ${busyText}` : block ? `🚫 ${tr(config, 'ยิงไม่ได้')}` : !ready
               ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกความร้อนก่อน'))
+              : cp.coin > 0 && cp.pulse === 0 ? `💵 ${tr(config, 'หยอดเหรียญแล้ว')} ${selM.label} · ฿${baht}`
+              : cp.coin > 0 ? `💵 ฿${cp.coin} + ⚡ ฿${cp.pulse} · ${tr(config, 'เริ่มเครื่อง')} ${selM.label}`
               : `⚡ ${tr(config, 'เริ่มเครื่อง')} ${selM.label} · ฿${baht} (${baht / PULSE_BAHT} ${tr(config, 'พัลส์')})`}
           </button>
         </div>
@@ -8960,6 +9103,8 @@ function PulseStarterCard({ config, order, isOwner }) {
   const alloc = useMemo(() => allocatePulseLogs(order, config, logs), [order, config, logs]);
   const retryId = picker && picker.retryLog ? picker.retryLog.id : null;
   const pickerAlloc = useMemo(() => retryId ? allocatePulseLogs(order, config, logs.filter(l => l.id !== retryId)) : alloc, [retryId, alloc, order, config, logs]);
+  const pickerLogs = retryId ? logs.filter(l => l.id !== retryId) : logs;
+  const pay = payStateOf(order, config, logs); // 💵 v147
   if (alloc.slots.length === 0) return null;
 
   const liveLogs = logs.filter(pulseLive);
@@ -8974,10 +9119,10 @@ function PulseStarterCard({ config, order, isOwner }) {
     try {
       setBusy(pulseMachineLabel(config, params.machine));
       setMsg(null);
-      const res = await fireForOrder(config, order, params, retryLog);
+      const res = await fireForOrder(config, order, params, retryLog, logs);
       if (!res) return;
       setMsg(fireResultMsg(config, res));
-      if (res.status === 'confirmed') playSuccessSound();
+      if (res.status === 'confirmed' || res.status === 'coin') playSuccessSound();
       if (res.status !== 'failed') { if (onDone) onDone(); if (retryLog) setPicker({ preset: null, retryLog: null }); }
     } finally { lockRef.current = false; setBusy(null); }
   };
@@ -9000,6 +9145,7 @@ function PulseStarterCard({ config, order, isOwner }) {
       unknown: ['bg-amber-100 text-amber-800', '⚠️ ' + tr(config, 'ยังไม่ยืนยัน')],
       sending: ['bg-amber-100 text-amber-800', '⚠️ ' + tr(config, 'ยังไม่ยืนยัน')],
       failed: ['bg-rose-100 text-rose-700', '❌ ' + tr(config, 'ไม่สำเร็จ')],
+      coin: ['bg-emerald-100 text-emerald-800', '💵 ' + tr(config, 'หยอดเหรียญ')],
     };
     const [cls, text] = map[l.status] || ['bg-slate-100 text-slate-600', l.status];
     return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cls}`}>{text}</span>;
@@ -9039,6 +9185,12 @@ function PulseStarterCard({ config, order, isOwner }) {
       <div className="h-1.5 rounded-full bg-slate-200 mt-2 overflow-hidden">
         <div className={`h-full ${allDone ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, need ? (fired / need) * 100 : 0)}%` }}></div>
       </div>
+      {pay.coinNeed > 0 && (
+        <p className="text-xs font-bold mt-1.5">
+          <span className="text-emerald-700">💵 {tr(config, 'เงินสด → หยอดเหรียญ')} ฿{pay.coinUsed}/{pay.coinNeed}</span>
+          {pay.pulseNeed > 0 && <span className="text-sky-700"> · ⚡ {tr(config, 'โอน → ยิงแอป')} ฿{pay.pulseLive}/{pay.pulseNeed}</span>}
+        </p>
+      )}
 
       <div className="mt-3 space-y-2">
         {alloc.slots.map(s => {
@@ -9079,7 +9231,7 @@ function PulseStarterCard({ config, order, isOwner }) {
 
       {msg && !picker && <p className={`mt-2 text-sm font-bold ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
       {picker && (
-        <MachinePickerSheet config={config} jobs={[{ order, alloc: pickerAlloc }]} fixed={true} dayLogs={dayLogs} preset={picker.preset}
+        <MachinePickerSheet config={config} jobs={[{ order, alloc: pickerAlloc, logs: pickerLogs }]} fixed={true} dayLogs={dayLogs} preset={picker.preset}
           onFire={fire} onClose={() => { setPicker(null); }} busyText={busy} msg={msg} jobLogs={logs} isOwner={isOwner} />
       )}
     </div>
@@ -9108,7 +9260,7 @@ function HomePulseStartCard({ config, orders }) {
     const since = Math.max(pulseSinceOf(config), Date.now() - 36 * 3600000);
     return (orders || [])
       .filter(o => o.id && (o.createdAt || 0) >= since && creditForOrder(o, config) > 0)
-      .map(o => ({ order: o, alloc: allocatePulseLogs(o, config, logs.filter(l => l.refId === o.id)) }))
+      .map(o => { const lg = logs.filter(l => l.refId === o.id); return { order: o, alloc: allocatePulseLogs(o, config, lg), logs: lg }; })
       .filter(j => j.alloc.slots.some(s => s.got < s.baht))
       .sort((a, b) => (a.order.createdAt || 0) - (b.order.createdAt || 0));
   }, [orders, logs, config]);
@@ -9119,10 +9271,10 @@ function HomePulseStartCard({ config, orders }) {
     try {
       setBusy(pulseMachineLabel(config, params.machine));
       setMsg(null);
-      const res = await fireForOrder(config, job.order, params, null);
+      const res = await fireForOrder(config, job.order, params, null, job.logs);
       if (!res) return;
       setMsg(fireResultMsg(config, res));
-      if (res.status === 'confirmed') playSuccessSound();
+      if (res.status === 'confirmed' || res.status === 'coin') playSuccessSound();
       if (res.status !== 'failed' && onDone) onDone();
     } finally { lockRef.current = false; setBusy(null); }
   };
@@ -9203,10 +9355,10 @@ function JobStartSheet({ config, orderId, orders, onClose, isOwner }) {
     try {
       setBusy(pulseMachineLabel(config, params.machine));
       setMsg(null);
-      const res = await fireForOrder(config, order, params, null);
+      const res = await fireForOrder(config, order, params, null, logs);
       if (!res) return;
       setMsg(fireResultMsg(config, res));
-      if (res.status === 'confirmed') playSuccessSound();
+      if (res.status === 'confirmed' || res.status === 'coin') playSuccessSound();
       if (res.status !== 'failed' && onDone) onDone();
     } finally { lockRef.current = false; setBusy(null); }
   };
@@ -9242,7 +9394,7 @@ function JobStartSheet({ config, orderId, orders, onClose, isOwner }) {
       <span className="text-[11px] font-bold px-2 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)' }}>📷 QR</span>
     </div>
   );
-  return <MachinePickerSheet config={config} jobs={[{ order, alloc }]} fixed={true} dayLogs={dayLogs} preset={null}
+  return <MachinePickerSheet config={config} jobs={[{ order, alloc, logs }]} fixed={true} dayLogs={dayLogs} preset={null}
     onFire={fire} onClose={onClose} busyText={busy} msg={msg} banner={banner} jobLogs={logs} isOwner={isOwner} />;
 }
 
@@ -9418,7 +9570,7 @@ function PulseRefundSheet({ config, log, owner, onClose }) {
         </div>
         <p className="text-xs text-slate-500 mb-3">{tr(config, 'ขอคืนเครดิตให้ใบงานนี้ เพื่อสแกนเริ่มเครื่องใหม่')}</p>
         <div className="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2 mb-3">
-          <p className="text-sm font-extrabold text-slate-800">🧺 {log.machineLabel} · ฿{log.baht} <span className="text-xs font-bold text-slate-500">({log.pulses} {tr(config, 'พัลส์')})</span></p>
+          <p className="text-sm font-extrabold text-slate-800">🧺 {log.machineLabel} · ฿{log.baht} <span className="text-xs font-bold text-slate-500">({pulseIsCoin(log) ? '💵 ' + tr(config, 'หยอดเหรียญ') : log.pulses + ' ' + tr(config, 'พัลส์')})</span></p>
           <p className="text-xs text-slate-600">📋 {log.refLabel || '-'} · 🕐 {new Date(log.createdAt || 0).toTimeString().slice(0, 5)}{pulseLogDetail(config, log) ? ' · ' + pulseLogDetail(config, log) : ''}</p>
         </div>
         {done ? (
@@ -9465,6 +9617,7 @@ function JobFiredList({ config, logs, isOwner }) {
           <span className={`text-xs font-bold text-slate-800 ${pulseRefunded(l) ? 'line-through' : ''}`}>🧺 {l.machineLabel}</span>
           {pulseLogDetail(config, l) && <span className="text-[11px] font-bold text-slate-600">{pulseLogDetail(config, l)}</span>}
           <span className="text-[11px] text-slate-500">{new Date(l.createdAt || 0).toTimeString().slice(0, 5)} · ฿{l.baht}</span>
+          {pulseIsCoin(l) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">💵 {tr(config, 'หยอดเหรียญ')}</span>}
           <RefundAction config={config} log={l} isOwner={isOwner} />
         </div>
       ))}
@@ -9586,6 +9739,9 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc 
             ))}
           </div>
 
+          {recon.coinBaht > 0 && (
+            <p className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">💵 {tr(config, 'หยอดเหรียญ (เงินสดลูกค้า)')} ฿{formatMoney(recon.coinBaht)}</p>
+          )}
           {recon.refunds.length > 0 && (
             <div className="rounded-2xl p-3 bg-sky-50 border border-sky-200">
               <p className="text-sm font-extrabold text-sky-900">↩️ {tr(config, 'คืนเครดิตโดยเจ้าของ')} ฿{formatMoney(recon.refundBaht)} · {recon.refunds.length} {tr(config, 'รายการ')}</p>
@@ -9657,17 +9813,17 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc 
                 {recon.records.map(r => (
                   <div key={r.id} className="flex items-center justify-between text-xs py-1 border-t border-slate-100">
                     <span className="truncate flex-1">{r.fired === r.need ? '✅' : '⚠️'} {r.label}</span>
-                    <span className="font-bold">฿{r.fired} / ฿{r.need}</span>
+                    <span className="font-bold">฿{r.fired} / ฿{r.need}{r.coin ? ` (💵${r.coin})` : ''}</span>
                   </div>
                 ))}
               </div>
               {recon.machineRows.length > 0 && (
                 <div className="bg-white rounded-2xl p-3 border border-slate-200">
                   <p className="text-xs font-bold text-slate-500 mb-1">{tr(config, 'รายเครื่อง: แอป / เครื่องจริง')}</p>
-                  {recon.machineRows.filter(r => r.appBaht || r.ecBaht).map(r => (
+                  {recon.machineRows.filter(r => r.appBaht || r.ecBaht || r.appCoin).map(r => (
                     <div key={r.id} className="flex items-center justify-between text-xs py-1 border-t border-slate-100">
                       <span>{r.ok ? '✅' : r.ok === false ? '⚠️' : '…'} {r.label}</span>
-                      <span className="font-bold">{fm(r.appBaht)} / {fm(r.ecBaht)}</span>
+                      <span className="font-bold">{fm(r.appBaht)} / {fm(r.ecBaht)}{r.appCoin ? ` · 💵 ${fm(r.appCoin)} / ${fm(r.ecCoin)}` : ''}</span>
                     </div>
                   ))}
                   {recon.machineRows.every(r => !r.appBaht && !r.ecBaht) && <p className="text-xs text-slate-400">-</p>}
@@ -10283,8 +10439,8 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
     .reduce((s, o) => s + calculateBreakdown(o, config).totalDiscount, 0);
   const allDiscount = orders.reduce((s, o) => s + calculateBreakdown(o, config).totalDiscount, 0);
   
-  const cashPending = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config), 0)
-    + uncollectedSplitCash.reduce((s, o) => s + (o.cashAmount || 0), 0);
+  const cashPending = uncollectedCash.reduce((s, o) => s + calculateTotal(o, config) - cashInMachineOf(o, config), 0)
+    + uncollectedSplitCash.reduce((s, o) => s + cashHeldOf(o, config), 0); // 💵 v147: ส่วนที่หยอดเครื่องแล้วไม่ต้องเก็บ
   const transferPending = uncollectedTransfer.reduce((s, o) => s + calculateTotal(o, config), 0)
     + uncollectedSplitTransfer.reduce((s, o) => s + (o.transferAmount || 0), 0);
 
@@ -10353,6 +10509,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
   const cashPartOf = (o) => o.paymentMethod === 'cash' ? calculateTotal(o, config) : o.paymentMethod === 'split' ? (o.cashAmount || 0) : 0;
   const transferPartOf = (o) => o.paymentMethod === 'transfer' ? calculateTotal(o, config) : o.paymentMethod === 'split' ? (o.transferAmount || 0) : 0;
   const listCashSum = listToShow.reduce((s, o) => s + cashPartOf(o), 0);
+  const listCoinSum = listToShow.reduce((s, o) => s + cashInMachineOf(o, config), 0); // 💵 เงินสดที่หยอดเข้าเครื่อง
   const listTransferSum = listToShow.reduce((s, o) => s + transferPartOf(o), 0);
   const shiftListDate = (dir) => {
     const d = new Date(listDate);
@@ -10558,7 +10715,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
                     </React.Fragment>
                   ) : (
                     <React.Fragment>
-                      <span className="text-emerald-600">💵 สด {formatMoney(listCashSum)}฿</span>
+                      <span className="text-emerald-600">💵 สด {formatMoney(listCashSum)}฿{listCoinSum > 0 ? ` (หยอดเครื่อง ${formatMoney(listCoinSum)}฿)` : ''}</span>
                       <span className="text-violet-600">💳 โอน {formatMoney(listTransferSum)}฿</span>
                       <span className="text-slate-600">{listToShow.length} งาน · รวม {formatMoney(listCashSum + listTransferSum)}฿</span>
                     </React.Fragment>
@@ -10699,6 +10856,7 @@ function OwnerDashboardView({ config, orders, collections, tokenExchanges, staff
                     {o.useLinePromo && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💚</span>}
                     {(o.dryItems || []).some(d => d.topUp > 0) && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⏱️ +฿{(o.dryItems || []).reduce((s,d) => s + (d.topUp||0), 0)}</span>}
                     {o.collected && (<span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">✓</span>)}
+                    {cashInMachineOf(o, config) > 0 && <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">💵 หยอดเครื่อง ฿{formatMoney(cashInMachineOf(o, config))}</span>}
                   </div>
                   <p className="text-xs text-slate-500">{o.customerPhone}</p>
                   <p className="text-xs text-slate-400">{formatDate(o.createdAt)}{o.staffName && <span className="ml-1 text-teal-600 font-medium">• 🧕 {o.staffName}</span>}</p>
