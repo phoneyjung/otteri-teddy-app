@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v158-2026-10-27';
+  window.APP_VERSION = 'v159-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2185,6 +2185,14 @@ const MM_DICT = {
   'เพิ่มในใบงาน': 'အလုပ်စာရွက်တွင် ထည့်',
   'กดโหมดที่หน้าเครื่องให้ตรงใบงาน': 'စက်ရှေ့တွင် မုဒ်ကို အလုပ်စာရွက်အတိုင်း နှိပ်ပါ',
   'ความร้อนไม่ต้องเลือกในแอป — ทุกระดับราคาเท่ากัน': 'အပူချိန်ကို အက်ပ်တွင် ရွေးစရာမလို — အဆင့်တိုင်း ဈေးတူ',
+  // 📷 สแกนใบงาน (v159)
+  'กด 📸 ถ่ายรูป QR แทน': '📸 QR ဓာတ်ပုံရိုက်ရန် နှိပ်ပါ',
+  'ยังอ่าน QR ในรูปไม่ได้ — ถ่ายใหม่ให้ QR ใหญ่และชัด': 'ဓာတ်ပုံထဲက QR ကို မဖတ်နိုင်သေး — QR ကြီးကြီး ကြည်ကြည် ပြန်ရိုက်ပါ',
+  'อ่านรูปไม่ได้': 'ဓာတ်ပုံ ဖတ်၍မရပါ',
+  'ถือห่างประมาณ 1 ฝ่ามือ ให้ภาพชัดก่อน แล้วค่อยขยับให้ QR อยู่ในกรอบ': 'လက်ဝါးတစ်ဖဝါးခန့် ခွာကိုင်ပြီး ပုံကြည်အောင်လုပ်ကာ QR ကို ဘောင်ထဲထည့်ပါ',
+  'กำลังอ่านรูป…': 'ဓာတ်ပုံ ဖတ်နေသည်…',
+  'เบราว์เซอร์นี้ไม่รองรับกล้องในเว็บ': 'ဤဘရောက်ဇာသည် ဝဘ်ကင်မရာ မပံ့ပိုးပါ',
+  'สแกนไม่ติด? ถ่ายรูป QR แทน': 'စကင်မရဘူးလား? QR ဓာတ်ပုံရိုက်ပါ',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -9950,58 +9958,121 @@ function JobStartSheet({ config, orderId, orders, onClose, isOwner }) {
 }
 
 // กล้องสแกน QR ในแอป (สำรอง — iPhone ที่สแกนด้วยกล้องแล้วเปิด Safari จะไม่ได้ล็อกอิน)
+// v159: กล้องความละเอียดสูง + โฟกัสต่อเนื่อง · อ่านสลับ BarcodeDetector / jsQR (กลางกรอบแบบละเอียด) · ถ่ายรูปแทนได้
+const qrLoadJsQR = () => (window.jsQR ? Promise.resolve() : new Promise((res, rej) => {
+  const sc = document.createElement('script');
+  sc.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+  sc.onload = res; sc.onerror = () => rej(new Error('load jsQR'));
+  document.head.appendChild(sc);
+}));
+let QR_DETECTOR;
+async function qrGetDetector() {
+  if (QR_DETECTOR !== undefined) return QR_DETECTOR;
+  let d = null;
+  if ('BarcodeDetector' in window) {
+    try { const f = await window.BarcodeDetector.getSupportedFormats(); if (f.includes('qr_code')) d = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) {}
+  }
+  QR_DETECTOR = d;
+  return d;
+}
+// อ่าน QR จากส่วนหนึ่งของภาพ (sx,sy,sw,sh) ย่อ/ขยายให้ด้านยาวสุด = maxSide
+function qrDecodeRect(src, sx, sy, sw, sh, maxSide, canvas) {
+  if (!window.jsQR || !(sw > 0) || !(sh > 0)) return null;
+  const k = maxSide / Math.max(sw, sh);
+  const w = Math.max(1, Math.round(sw * k)), h = Math.max(1, Math.round(sh * k));
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
+  const r = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
+  return r ? r.data : null;
+}
+// สี่เหลี่ยมจัตุรัสกลางภาพ (crop = สัดส่วนของด้านสั้น)
+function qrDecodeCenter(src, W, H, crop, maxSide, canvas) {
+  const side = Math.round(Math.min(W, H) * crop);
+  return qrDecodeRect(src, Math.round((W - side) / 2), Math.round((H - side) / 2), side, side, Math.min(maxSide, Math.max(side, 400)), canvas);
+}
 function QrScanSheet({ config, onResult, onClose }) {
   const videoRef = useRef(null);
+  const fileRef = useRef(null);
+  const doneRef = useRef(false);
   const [err, setErr] = useState('');
   const [ready, setReady] = useState(false);
+  const [info, setInfo] = useState('');
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const accept = (text) => {
+    const id = parseJobQr(text, config);
+    if (id) { doneRef.current = true; if (navigator.vibrate) navigator.vibrate(80); onResult(id); return true; }
+    setErr(tr(config, 'QR นี้ไม่ใช่ใบงานของร้าน'));
+    return false;
+  };
   useEffect(() => {
     let stream = null, stop = false, timer = null;
     const canvas = document.createElement('canvas');
-    const loadJsQR = () => (window.jsQR ? Promise.resolve() : new Promise((res, rej) => {
-      const sc = document.createElement('script');
-      sc.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
-      sc.onload = res; sc.onerror = () => rej(new Error('load jsQR'));
-      document.head.appendChild(sc);
-    }));
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error(tr(config, 'เบราว์เซอร์นี้ไม่รองรับกล้องในเว็บ'));
+        const base = { facingMode: { ideal: 'environment' } };
+        try { stream = await navigator.mediaDevices.getUserMedia({ video: { ...base, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }); }
+        catch (e1) { stream = await navigator.mediaDevices.getUserMedia({ video: base, audio: false }); }
         if (stop) { stream.getTracks().forEach(t => t.stop()); return; }
+        const track = stream.getVideoTracks()[0];
+        try {
+          const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+          if (caps.focusMode && caps.focusMode.includes('continuous')) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+        } catch (e) {}
         const v = videoRef.current;
         v.srcObject = stream; v.setAttribute('playsinline', ''); v.muted = true;
         await v.play();
         setReady(true);
-        let detector = null;
-        if ('BarcodeDetector' in window) {
-          try { const f = await window.BarcodeDetector.getSupportedFormats(); if (f.includes('qr_code')) detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) {}
-        }
-        if (!detector) await loadJsQR();
+        const det = await qrGetDetector();
+        if (det) qrLoadJsQR().catch(() => {}); else await qrLoadJsQR();
+        setInfo(`${v.videoWidth}×${v.videoHeight} · ${det ? 'ระบบ + jsQR' : 'jsQR'}`);
+        let n = 0;
         const tick = async () => {
-          if (stop) return;
+          if (stop || doneRef.current) return;
           try {
             let text = null;
-            if (detector) { const r = await detector.detect(v); if (r && r[0]) text = r[0].rawValue; }
-            else if (v.videoWidth && window.jsQR) {
-              const w = 480, h = Math.round(v.videoHeight * 480 / v.videoWidth);
-              canvas.width = w; canvas.height = h;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(v, 0, 0, w, h);
-              const r = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
-              if (r) text = r.data;
+            if (v.videoWidth) {
+              const turn = n % 3;
+              if (det && turn === 0) { const r = await det.detect(v); if (r && r[0]) text = r[0].rawValue; }
+              else if (window.jsQR) text = turn === 1 || !det ? qrDecodeCenter(v, v.videoWidth, v.videoHeight, 0.75, 900, canvas) : qrDecodeCenter(v, v.videoWidth, v.videoHeight, 1, 1000, canvas);
+              n++;
             }
-            if (text) {
-              const id = parseJobQr(text, config);
-              if (id) { stop = true; if (navigator.vibrate) navigator.vibrate(80); onResult(id); return; }
-              setErr(tr(config, 'QR นี้ไม่ใช่ใบงานของร้าน'));
-            }
+            if (text && accept(text)) return;
           } catch (e) {}
-          timer = setTimeout(tick, 250);
+          timer = setTimeout(tick, 180);
         };
         tick();
-      } catch (e) { setErr(tr(config, 'เปิดกล้องไม่ได้') + ' — ' + (e && e.message ? e.message : e)); }
+      } catch (e) { setErr(tr(config, 'เปิดกล้องไม่ได้') + ' — ' + (e && e.message ? e.message : e) + ' · ' + tr(config, 'กด 📸 ถ่ายรูป QR แทน')); }
     })();
     return () => { stop = true; if (timer) clearTimeout(timer); if (stream) stream.getTracks().forEach(t => t.stop()); };
   }, []);
+  // 📸 ถ่ายรูปด้วยกล้องปกติของมือถือ (โฟกัสคมกว่า) แล้วอ่าน QR จากรูป
+  const onPhoto = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    setPhotoBusy(true); setErr('');
+    const url = URL.createObjectURL(f);
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('img')); i.src = url; });
+      const W = img.naturalWidth, H = img.naturalHeight;
+      let text = null;
+      const det = await qrGetDetector();
+      if (det) { try { const r = await det.detect(img); if (r && r[0]) text = r[0].rawValue; } catch (e2) {} }
+      if (!text) {
+        await qrLoadJsQR();
+        const c = document.createElement('canvas');
+        const tries = [() => qrDecodeRect(img, 0, 0, W, H, 1400, c), () => qrDecodeCenter(img, W, H, 0.8, 1200, c), () => qrDecodeCenter(img, W, H, 0.55, 1000, c), () => qrDecodeRect(img, 0, 0, W, H, 2200, c)];
+        for (const t of tries) { text = t(); if (text) break; }
+      }
+      if (text) accept(text);
+      else setErr(tr(config, 'ยังอ่าน QR ในรูปไม่ได้ — ถ่ายใหม่ให้ QR ใหญ่และชัด'));
+    } catch (e3) {
+      setErr(tr(config, 'อ่านรูปไม่ได้'));
+    } finally { URL.revokeObjectURL(url); setPhotoBusy(false); }
+  };
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       <div className="px-4 py-3 flex items-center gap-2 text-white">
@@ -10014,9 +10085,16 @@ function QrScanSheet({ config, onResult, onClose }) {
           <div className="w-64 h-64 rounded-3xl" style={{ border: '4px solid #FBBF24', boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }}></div>
         </div>
       </div>
-      <div className="p-4 text-center">
+      <div className="p-4 text-center space-y-2">
         <p className="text-white font-bold">{ready ? tr(config, 'ส่อง QR ที่ใบงาน') : tr(config, 'กำลังเปิดกล้อง…')}</p>
-        {err && <p className="text-amber-300 text-sm font-bold mt-1">{err}</p>}
+        <p className="text-white text-opacity-70 text-xs">{tr(config, 'ถือห่างประมาณ 1 ฝ่ามือ ให้ภาพชัดก่อน แล้วค่อยขยับให้ QR อยู่ในกรอบ')}</p>
+        {err && <p className="text-amber-300 text-sm font-bold">{err}</p>}
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhoto} />
+        <button onClick={() => fileRef.current && fileRef.current.click()} disabled={photoBusy}
+          className="w-full py-3 rounded-2xl bg-white text-slate-900 font-extrabold active:scale-95 transition disabled:opacity-50">
+          {photoBusy ? '⏳ ' + tr(config, 'กำลังอ่านรูป…') : '📸 ' + tr(config, 'สแกนไม่ติด? ถ่ายรูป QR แทน')}
+        </button>
+        {info && <p className="text-white text-opacity-40 text-[10px]">{info}</p>}
       </div>
     </div>
   );
