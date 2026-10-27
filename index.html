@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v167-2026-10-27';
+  window.APP_VERSION = 'v168-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -5982,6 +5982,16 @@ async function getBtPrinterChar() {
   // ใช้เครื่องเดิมถ้ายังต่ออยู่ (ไม่ต้องเลือกใหม่ทุกครั้ง)
   if (BT_PRINTER_CACHE.ch && BT_PRINTER_CACHE.device?.gatt?.connected) return BT_PRINTER_CACHE.ch;
   let device = BT_PRINTER_CACHE.device;
+  let remembered = false;
+  // v168: จำเครื่องพิมพ์ที่เคยเลือก (Chrome ที่รองรับ getDevices) — เปิดแอปใหม่ไม่ต้องเลือกซ้ำ
+  if ((!device || !device.gatt) && navigator.bluetooth.getDevices) {
+    try {
+      const saved = localStorage.getItem('bt-printer-id');
+      const ds = saved ? await navigator.bluetooth.getDevices() : [];
+      const hit = ds.find(d => d.id === saved);
+      if (hit && hit.gatt) { device = hit; remembered = true; }
+    } catch (e) {}
+  }
   if (!device || !device.gatt) {
     device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
@@ -5993,7 +6003,17 @@ async function getBtPrinterChar() {
       ],
     });
   }
-  const server = await device.gatt.connect();
+  let server;
+  try {
+    server = await Promise.race([device.gatt.connect(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))]);
+  } catch (e) {
+    if (remembered) { // เครื่องที่จำไว้ต่อไม่ได้ (ปิด/ต่อกับมือถือเครื่องอื่น) → ล้าง ให้กดพิมพ์ใหม่แล้วเลือกเครื่อง
+      try { localStorage.removeItem('bt-printer-id'); } catch (x) {}
+      BT_PRINTER_CACHE.device = null; BT_PRINTER_CACHE.ch = null;
+      throw new Error('ต่อเครื่องพิมพ์เดิมไม่ได้ — เปิดเครื่องพิมพ์ / ปิดแอปในมือถือเครื่องอื่นที่ต่ออยู่ แล้วกดพิมพ์อีกครั้งเพื่อเลือกเครื่อง');
+    }
+    throw e;
+  }
   const services = await server.getPrimaryServices();
   let found = null;
   for (const svc of services) {
@@ -6008,53 +6028,80 @@ async function getBtPrinterChar() {
   if (!found) throw new Error('ไม่พบช่องทางส่งข้อมูล (เครื่องอาจไม่รองรับ BLE)');
   BT_PRINTER_CACHE.device = device;
   BT_PRINTER_CACHE.ch = found;
+  try { localStorage.setItem('bt-printer-id', device.id); } catch (e) {}
   device.addEventListener('gattserverdisconnected', () => { BT_PRINTER_CACHE.ch = null; });
   return found;
 }
 
-// แปลง canvas → คำสั่ง ESC/POS (ขาวดำสนิท) → ส่งพิมพ์ + ตัดกระดาษ
 async function printCanvasViaBluetooth(canvas, onProgress) {
   if (!navigator.bluetooth) throw new Error('เบราว์เซอร์นี้ไม่รองรับ Bluetooth — ใช้ Chrome');
   if (onProgress) onProgress('เชื่อมต่อเครื่องพิมพ์...');
   const ch = await getBtPrinterChar();
+  const all = buildEscPosRaster(canvas);
+  // ⚡ v168: ส่งเร็วขึ้นแต่ไม่ล้น — ถ้าเครื่องรองรับ ทุก 8 ชิ้นส่งแบบรอเครื่องตอบรับ 1 ชิ้น (จุดรอ) ที่เหลือส่งไม่ต้องรอ
+  const canNoResp = !!ch.properties.writeWithoutResponse;
+  const canSync = canNoResp && !!ch.properties.write && typeof ch.writeValueWithResponse === 'function';
+  const CHUNK = 180;
+  const total = all.length;
+  for (let i = 0, k = 0; i < total; i += CHUNK, k++) {
+    const slice = all.slice(i, i + CHUNK);
+    if (!canNoResp) await ch.writeValue(slice);
+    else if (canSync && k % 8 === 7) await ch.writeValueWithResponse(slice);
+    else await ch.writeValueWithoutResponse(slice);
+    if (onProgress) onProgress('กำลังพิมพ์ ' + Math.round(Math.min(total, i + CHUNK) / total * 100) + '%');
+    await new Promise(r => setTimeout(r, canSync ? 8 : 16));
+    if (!canSync && k % 16 === 15) await new Promise(r => setTimeout(r, 60)); // ไม่มีจุดรอ → พักเป็นช่วงแทน
+  }
+  if (onProgress) onProgress('');
+}
+
+// แปลง canvas → คำสั่ง ESC/POS (ขาวดำสนิท) — v168: แถวขาวล้วนส่งเป็น 'เลื่อนกระดาษ' (ESC J) แทนภาพ ข้อมูลน้อยลง ~1/3
+function buildEscPosRaster(canvas) {
   const ctx = canvas.getContext('2d');
   const width = canvas.width, height = canvas.height;
   const img = ctx.getImageData(0, 0, width, height).data;
   const bytesPerRow = Math.ceil(width / 8);
+  const rows = new Array(height);
+  const blank = new Array(height);
+  for (let y = 0; y < height; y++) {
+    const row = new Uint8Array(bytesPerRow);
+    let any = false;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const lum = 0.299 * img[i] + 0.587 * img[i + 1] + 0.114 * img[i + 2];
+      if (img[i + 3] > 128 && lum < 160) { row[x >> 3] |= (0x80 >> (x & 7)); any = true; }
+    }
+    rows[y] = row; blank[y] = !any;
+  }
+  const runLen = (y) => { let n = 0; while (y + n < height && blank[y + n]) n++; return n; };
   const parts = [new Uint8Array([0x1b, 0x40])]; // init
-  const BAND = 240; // แบ่งภาพเป็นช่วง กันบัฟเฟอร์เครื่องเต็ม
-  for (let y0 = 0; y0 < height; y0 += BAND) {
-    const h = Math.min(BAND, height - y0);
+  const BAND = 240, MIN_GAP = 8; // ช่องว่างสั้นกว่า 8 แถว ส่งเป็นภาพต่อไปเลย (กันคำสั่งแตกเป็นชิ้นเล็ก)
+  let y = 0;
+  while (y < height) {
+    const gap = runLen(y);
+    if (gap >= MIN_GAP || (gap > 0 && y + gap >= height)) {
+      let n = gap;
+      while (n > 0) { const k = Math.min(255, n); parts.push(new Uint8Array([0x1b, 0x4a, k])); n -= k; } // ESC J n = เลื่อนกระดาษ n จุด
+      y += gap;
+      continue;
+    }
+    let h = 0;
+    while (y + h < height && h < BAND) {
+      if (blank[y + h]) { const g = runLen(y + h); if (g >= MIN_GAP || y + h + g >= height) break; }
+      h++;
+    }
     const data = new Uint8Array(8 + bytesPerRow * h);
     data.set([0x1d, 0x76, 0x30, 0x00, bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff, h & 0xff, (h >> 8) & 0xff], 0);
-    for (let y = 0; y < h; y++) {
-      const rowOff = 8 + y * bytesPerRow;
-      const sy = y0 + y;
-      for (let x = 0; x < width; x++) {
-        const i = (sy * width + x) * 4;
-        const lum = 0.299 * img[i] + 0.587 * img[i + 1] + 0.114 * img[i + 2];
-        if (img[i + 3] > 128 && lum < 160) data[rowOff + (x >> 3)] |= (0x80 >> (x & 7)); // ขาวดำสนิท
-      }
-    }
+    for (let r = 0; r < h; r++) data.set(rows[y + r], 8 + r * bytesPerRow);
     parts.push(data);
+    y += h;
   }
   parts.push(new Uint8Array([0x1b, 0x64, 0x04])); // ดันกระดาษ 4 บรรทัด
   parts.push(new Uint8Array([0x1d, 0x56, 0x42, 0x00])); // ✂️ ตัดกระดาษ
-  const total = parts.reduce((s, p) => s + p.length, 0);
-  let sent = 0;
-  const CHUNK = 180;
-  for (const part of parts) {
-    for (let i = 0; i < part.length; i += CHUNK) {
-      const slice = part.slice(i, i + CHUNK);
-      if (ch.properties.writeWithoutResponse) await ch.writeValueWithoutResponse(slice);
-      else await ch.writeValue(slice);
-      sent += slice.length;
-      if (onProgress) onProgress('กำลังพิมพ์ ' + Math.round(sent / total * 100) + '%');
-      await new Promise(r => setTimeout(r, 18)); // v163: ช้าลงนิด (มือถือ/เครื่องพิมพ์รุ่นเล็ก ข้อมูลหล่นกลางใบ)
-    }
-    await new Promise(r => setTimeout(r, 80)); // v163: พักระหว่างช่วงภาพ ให้เครื่องพิมพ์พิมพ์ทัน
-  }
-  if (onProgress) onProgress('');
+  const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
 }
 
 // พิมพ์จากรูป (dataURL) — ใช้ตอนดึงงานจากคิวมาพิมพ์
