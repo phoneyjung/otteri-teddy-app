@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v147-2026-10-27';
+  window.APP_VERSION = 'v148-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2079,6 +2079,19 @@ const MM_DICT = {
   'บันทึกหยอดเหรียญ มากกว่าที่เครื่องนับได้': 'မှတ်တမ်းထားသော အကြွေစေ့ စက်ရေတွက်ထက် များ',
   'หยอดเหรียญ (เงินสดลูกค้า)': 'အကြွေစေ့ထည့် (ဖောက်သည် ငွေသား)',
   'หยอดเครื่องแล้ว': 'စက်ထဲ ထည့်ပြီး',
+  // 💵 เช็กเหรียญ/ยกเลิกบันทึก (v148) — รอพนักงานพม่าตรวจคำแปล
+  'ใบงานเงินสด — แอปไม่สั่งเครื่องให้': 'ငွေသားအလုပ်စာရွက် — အက်ပ်က စက်ကို မစပေး',
+  'หยอดเหรียญที่เครื่องแล้ว และเครื่องเริ่มทำงานแล้วใช่ไหม?': 'စက်တွင် အကြွေစေ့ထည့်ပြီး စက်စတင်လည်ပတ်နေပြီလား?',
+  'ไปหยอดเหรียญที่เครื่องเอง': 'စက်တွင် အကြွေစေ့ ကိုယ်တိုင်သွားထည့်ပါ',
+  'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วค่อยกดบันทึก': 'စက်စတင်လည်ပတ်သည်အထိ အကြွေစေ့ထည့်ပြီးမှ မှတ်တမ်းတင်ကို နှိပ်ပါ',
+  'หยอดที่เครื่องแล้ว · บันทึก': 'စက်တွင် ထည့်ပြီး · မှတ်တမ်းတင်',
+  'บันทึกแล้ว — กำลังเช็กว่าเครื่องนับเหรียญ': 'မှတ်တမ်းတင်ပြီး — စက်က အကြွေစေ့ ရေတွက်မှု စစ်နေသည်',
+  'เครื่องนับเหรียญแล้ว': 'စက်က အကြွေစေ့ ရေတွက်ပြီး',
+  'กำลังเช็กเหรียญ…': 'အကြွေစေ့ စစ်ဆေးနေသည်…',
+  'ยังไม่เห็นเหรียญเข้าเครื่อง': 'စက်ထဲ အကြွေစေ့ဝင်တာ မတွေ့သေး',
+  'เช็กเหรียญ': 'အကြွေစေ့ စစ်',
+  'ยกเลิก — ยังไม่ได้หยอด': 'ပယ်ဖျက် — မထည့်ရသေး',
+  'ยกเลิกบันทึกหยอดเหรียญ? (เงินสดจะกลับไปรอเก็บจากแม่บ้าน)': 'အကြွေစေ့ထည့် မှတ်တမ်း ပယ်ဖျက်မလား? (ငွေသားကို အိမ်အကူထံမှ ပြန်ကောက်ရန် စောင့်မည်)',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -8328,6 +8341,46 @@ function splitCoinPulse(pay, baht) {
 const cashInMachineOf = (o, config) => Math.min(o.cashInMachine || 0, orderCashPart(o, config));
 const cashHeldOf = (o, config) => Math.max(0, orderCashPart(o, config) - cashInMachineOf(o, config));
 
+// 💵 เช็กกับ EC ว่าเครื่องนับเหรียญที่บันทึกไว้แล้วหรือยัง (v148)
+// เทียบ "รายงานเหรียญ" ทั้งวันของเครื่อง ≥ เหรียญที่บันทึกในแอปของเครื่องนั้น (ถึงรายการนี้) — ลูกค้าหน้าร้านหยอดด้วยก็ไม่เตือนผิด
+async function checkCoinLog(config, log, final) {
+  const ec = await fetchEcDay(config, log.dateKey, [log.machine]);
+  const e = ec.byMachine[log.machine];
+  if (!e) return { ok: false, error: ec.errors[0] || 'อ่านประวัติเครื่องไม่ได้' };
+  const snap = await window.db.collection('pulseLogs').where('dateKey', '==', log.dateKey).get();
+  const appCoin = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .filter(l => l.brand === config.brand && l.machine === log.machine && pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l)) && ((l.createdAt || 0) <= (log.createdAt || 0) || l.id === log.id))
+    .reduce((a, l) => a + (l.baht || 0), 0);
+  const seen = (e.coinBaht || 0) >= appCoin;
+  if (seen || final) await pulseLogRef(log.id).set({ coinSeen: seen, coinCheckAt: Date.now(), ecCoinBaht: e.coinBaht || 0, appCoinBaht: appCoin }, { merge: true });
+  return { ok: true, seen };
+}
+// หลังกดบันทึก: เช็กซ้ำทุก 20 วิ ประมาณ 2 นาทีครึ่ง (ครั้งสุดท้ายยังไม่เห็น = ⚠️)
+function watchCoinLog(config, log) {
+  let n = 0;
+  const tick = async () => {
+    n++;
+    const final = n >= 8;
+    try { const r = await checkCoinLog(config, log, final); if (r.ok && r.seen) return; } catch (e) { console.error('coin check error:', e); }
+    if (!final) setTimeout(tick, 20000);
+  };
+  setTimeout(tick, 15000);
+}
+// ยกเลิกบันทึกหยอดเหรียญ (ยังไม่ได้หยอดจริง) → เงินสดกลับไปรอเก็บจากแม่บ้าน
+async function undoCoinLog(config, log, order, logs) {
+  await pulseLogRef(log.id).set({ status: 'void', voidReason: 'ยกเลิกบันทึกหยอดเหรียญ — ยังไม่ได้หยอด', voidAt: Date.now() }, { merge: true });
+  if (!order || !order.id) return;
+  try { const f = await window.db.collection('orders').doc(order.id).get(); if (f.exists) order = { ...order, ...f.data(), id: order.id }; } catch (e) {} // ใช้ข้อมูลใบงานล่าสุด
+  const cashPart = orderCashPart(order, config);
+  const remaining = (logs || []).filter(l => l.refId === order.id && l.id !== log.id && pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l))).reduce((a, l) => a + (l.baht || 0), 0);
+  const upd = { brand: order.brand || config.brand, cashInMachine: Math.min(cashPart, remaining) };
+  if (order.collectedVia === 'machine' && remaining < cashPart) {
+    if (order.paymentMethod === 'cash') Object.assign(upd, { collected: false, collectedAt: null, collectedVia: null });
+    if (order.paymentMethod === 'split') Object.assign(upd, { cashCollected: false, collected: false, collectedVia: null });
+  }
+  await window.db.collection('orders').doc(order.id).set(upd, { merge: true });
+}
+
 // บันทึกว่าแม่บ้านหยอดเหรียญเข้าเครื่องแล้ว (ไม่ยิงพัลส์) + ใบงานเงินสดที่หยอดครบ = ไม่ต้องรอเก็บจากแม่บ้าน
 function logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, baht, dryMin, warn }) {
   const staff = currentStaffLS(config);
@@ -8342,7 +8395,7 @@ function logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, bah
   };
   pulseLogRef(id).set(log).catch(e => console.error('coin log error:', e));
   const cashPart = orderCashPart(order, config);
-  const before = (logs || []).filter(l => l.refId === order.id && pulseIsCoin(l)).reduce((a, l) => a + (l.baht || 0), 0);
+  const before = (logs || []).filter(l => l.refId === order.id && pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l))).reduce((a, l) => a + (l.baht || 0), 0);
   const inMachine = Math.min(cashPart, before + baht);
   if (cashPart > 0 && order.id) {
     const upd = { brand: order.brand || config.brand, cashInMachine: inMachine, cashInMachineAt: now };
@@ -8766,12 +8819,15 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
   const mLabel = pulseMachineLabel(config, machine);
   const dryMin = kind === 'dry' ? dryMinutesFor(config, kg, baht) : 0;
   const detail = kind === 'wash' ? `💧 ${tr(config, washTempLabel(temp))}` : `🌬️ ${tr(config, dryHeatLabel(heat))} · ≈ ${dryMin} ${tr(config, 'นาที')}`;
-  const head = coin > 0 && pulseBaht === 0 ? `💵 ${tr(config, 'ยืนยันหยอดเหรียญ')}` : `⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}`;
+  const head = coin > 0 && pulseBaht === 0
+    ? `⚠️ ${tr(config, 'ใบงานเงินสด — แอปไม่สั่งเครื่องให้')}\n\n💵 ${tr(config, 'หยอดเหรียญที่เครื่องแล้ว และเครื่องเริ่มทำงานแล้วใช่ไหม?')}`
+    : `⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}`;
   const payTxt = coin > 0
     ? `💵 ${tr(config, 'หยอดเหรียญเอง')} ฿${coin}${pulseBaht > 0 ? `\n⚡ ${tr(config, 'ยิงจากแอป')} ${pulses} ${tr(config, 'พัลส์')} (฿${pulseBaht})` : ''}\n\n👉 ${tr(config, 'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดตกลง')}`
     : `🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})`;
   if (!confirm(`${head}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n${payTxt}${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return null;
   const coinLog = coin > 0 ? logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, baht: coin, dryMin, warn }) : null;
+  if (coinLog) watchCoinLog(config, coinLog); // 💵 v148: เช็กกับ EC ว่าเครื่องนับเหรียญแล้ว
   if (pulseBaht <= 0) return { ...coinLog, coinBaht: coin };
   if (retryLog) await voidPulseLog(retryLog.id, 'ยิงใหม่ — เครื่องไม่ได้รับ').catch(() => {});
   const res = await firePulse(config, {
@@ -8784,7 +8840,7 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
 function fireResultMsg(config, res) {
   const mLabel = res.machineLabel || '';
   const coinTxt = res.coinBaht > 0 ? `💵 ${tr(config, 'หยอดเหรียญ')} ฿${res.coinBaht}` : '';
-  if (res.status === 'coin') return { ok: true, text: `✅ ${mLabel} · ${coinTxt} — ${tr(config, 'บันทึกแล้ว')}` };
+  if (res.status === 'coin') return { ok: true, text: `✅ ${mLabel} · ${coinTxt} — ${tr(config, 'บันทึกแล้ว — กำลังเช็กว่าเครื่องนับเหรียญ')}` };
   if (res.status === 'confirmed') return { ok: true, text: `✅ ${mLabel} ${tr(config, 'เครื่องรับแล้ว')}${coinTxt ? ' · ' + coinTxt : ''}` };
   if (res.status === 'failed') return { ok: false, text: `${coinTxt ? '✅ ' + coinTxt + ' · ' : ''}❌ ${tr(config, 'ไม่สำเร็จ')}: ${res.error || ''}` };
   return { ok: null, text: `⏳ ${mLabel} — ${tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}${coinTxt ? ' · ' + coinTxt : ''}` };
@@ -9012,6 +9068,14 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               </div>
             )}
 
+            {(fixed || job) && !block && pay && (pay.coinLeft > 0 || cp.coin > 0) && (
+              <div className="rounded-xl px-3 py-3 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+                <p className="text-base font-extrabold text-amber-900">💵 {tr(config, 'ใบงานเงินสด — แอปไม่สั่งเครื่องให้')}</p>
+                <p className="text-sm font-extrabold text-amber-900 mt-0.5">👉 {tr(config, 'ไปหยอดเหรียญที่เครื่องเอง')} {selM.label}{cp.coin > 0 ? ` ฿${cp.coin}` : ''}</p>
+                {cp.pulse > 0 && <p className="text-sm font-bold text-sky-800">⚡ {tr(config, 'ส่วนโอน ยิงจากแอป')} ฿{cp.pulse}</p>}
+                <p className="text-[11px] font-bold text-amber-800 mt-1">{tr(config, 'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วค่อยกดบันทึก')}</p>
+              </div>
+            )}
             {block && <p className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">🚫 {block}</p>}
             {block && firedHere && <p className="text-xs font-bold text-slate-600 px-1">💡 {tr(config, 'เครื่องมีปัญหา? กด ⚠️ ที่รายการด้านล่าง ให้เจ้าของคืนเครดิต')}</p>}
             {(fixed || job) && !block && (selM.kind === 'wash' ? (
@@ -9048,29 +9112,22 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               </div>
             ))}
 
-            {(fixed || job) && !block && baht > 0 && cp.coin > 0 && (
-              <div className="rounded-xl px-3 py-2 border-2 border-emerald-300 bg-emerald-50">
-                <p className="text-sm font-extrabold text-emerald-800">💵 {tr(config, 'ลูกค้าจ่ายเงินสด — หยอดเหรียญเอง')} ฿{cp.coin}</p>
-                {cp.pulse > 0 && <p className="text-sm font-bold text-sky-800">⚡ {tr(config, 'ส่วนโอน ยิงจากแอป')} ฿{cp.pulse}</p>}
-                <p className="text-[11px] font-bold text-emerald-700 mt-0.5">{tr(config, 'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดปุ่มด้านล่าง')}</p>
-              </div>
-            )}
             {warn && <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ {warn}</p>}
           </div>
         )}
 
         {msg && <p className={`text-sm font-bold text-center ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
-        {fixed && <JobFiredList config={config} logs={jobLogs} isOwner={isOwner} />}
+        {fixed && <JobFiredList config={config} logs={jobLogs} isOwner={isOwner} order={job ? job.order : null} />}
       </div>
 
       {selM && (fixed || job) && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3">
           <button disabled={!ready || !!busyText}
             onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin }, () => setSel(null))}
-            className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: config.gradient }}>
+            className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: cp.coin > 0 && cp.pulse === 0 && !block ? '#D97706' : config.gradient }}>
             {busyText ? `⏳ ${busyText}` : block ? `🚫 ${tr(config, 'ยิงไม่ได้')}` : !ready
               ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกความร้อนก่อน'))
-              : cp.coin > 0 && cp.pulse === 0 ? `💵 ${tr(config, 'หยอดเหรียญแล้ว')} ${selM.label} · ฿${baht}`
+              : cp.coin > 0 && cp.pulse === 0 ? `💵 ${tr(config, 'หยอดที่เครื่องแล้ว · บันทึก')} ${selM.label} ฿${baht}`
               : cp.coin > 0 ? `💵 ฿${cp.coin} + ⚡ ฿${cp.pulse} · ${tr(config, 'เริ่มเครื่อง')} ${selM.label}`
               : `⚡ ${tr(config, 'เริ่มเครื่อง')} ${selM.label} · ฿${baht} (${baht / PULSE_BAHT} ${tr(config, 'พัลส์')})`}
           </button>
@@ -9159,7 +9216,8 @@ function PulseStarterCard({ config, order, isOwner }) {
         {pulseLogDetail(config, l) && <span className="text-[11px] font-bold text-slate-600">{pulseLogDetail(config, l)}</span>}
         <span className="text-[11px] text-slate-500">{new Date(l.createdAt).toTimeString().slice(0, 5)} · ฿{part ? shown : l.baht}{part ? ` (${tr(config, 'จาก')} ฿${l.baht})` : ''}{amtNote ? ` · ${amtNote}` : ''}</span>
         {statusChip(l)}
-        <RefundAction config={config} log={l} isOwner={isOwner} hideRequest={unconfirmed} />
+        {pulseIsCoin(l) && <CoinCheckAction config={config} log={l} order={order} logs={logs} />}
+        <RefundAction config={config} log={l} isOwner={isOwner} hideRequest={unconfirmed || (pulseIsCoin(l) && l.coinSeen !== true)} />
         {unconfirmed && !pulseRefundPending(l) && (
           <>
             <button onClick={() => recheck(l)} disabled={!!busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-300 text-slate-600 active:scale-95">🔄 {tr(config, 'เช็กอีกครั้ง')}</button>
@@ -9605,8 +9663,41 @@ function PulseRefundSheet({ config, log, owner, onClose }) {
   );
 }
 
+// 💵 สถานะบันทึกหยอดเหรียญ: ✅ เครื่องนับแล้ว / ⏳ กำลังเช็ก / ⚠️ ยังไม่เห็นเหรียญ + เช็กอีกครั้ง + ยกเลิก (v148)
+function CoinCheckAction({ config, log, order, logs }) {
+  const [busy, setBusy] = useState(false);
+  if (!log || !pulseIsCoin(log) || !pulseLive(log)) return null;
+  const chip = (cls, text) => <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cls}`}>{text}</span>;
+  const btn = (cls, onClick, text) => (
+    <button onClick={onClick} disabled={busy} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border active:scale-95 disabled:opacity-50 ${cls}`}>{busy ? '…' : text}</button>
+  );
+  if (log.coinSeen === true) return chip('bg-emerald-100 text-emerald-800', '✅ ' + tr(config, 'เครื่องนับเหรียญแล้ว'));
+  const age = Date.now() - (log.createdAt || 0);
+  const recheck = async () => {
+    setBusy(true);
+    try { const r = await checkCoinLog(config, log, true); if (!r.ok) alert('❌ ' + r.error); }
+    catch (e) { alert('❌ ' + (e && e.message ? e.message : e)); }
+    setBusy(false);
+  };
+  const undo = async () => {
+    if (!confirm(tr(config, 'ยกเลิกบันทึกหยอดเหรียญ? (เงินสดจะกลับไปรอเก็บจากแม่บ้าน)'))) return;
+    setBusy(true);
+    try { await undoCoinLog(config, log, order, logs); }
+    catch (e) { alert('❌ ' + (e && e.message ? e.message : e)); }
+    setBusy(false);
+  };
+  return (
+    <>
+      {log.coinSeen === false ? chip('bg-rose-100 text-rose-700', '⚠️ ' + tr(config, 'ยังไม่เห็นเหรียญเข้าเครื่อง'))
+        : age < 180000 ? chip('bg-amber-100 text-amber-800', '⏳ ' + tr(config, 'กำลังเช็กเหรียญ…')) : null}
+      {(log.coinSeen === false || age >= 180000) && btn('bg-white border-slate-300 text-slate-600', recheck, '🔄 ' + tr(config, 'เช็กเหรียญ'))}
+      {btn('bg-rose-50 border-rose-300 text-rose-700', undo, tr(config, 'ยกเลิก — ยังไม่ได้หยอด'))}
+    </>
+  );
+}
+
 // รายการที่เปิดเครื่องไปแล้วของใบงาน (หน้าเลือกเครื่องจาก QR / ใบงาน)
-function JobFiredList({ config, logs, isOwner }) {
+function JobFiredList({ config, logs, isOwner, order }) {
   const list = (logs || []).filter(l => pulseLive(l) || pulseRefunded(l)).slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   if (!list.length) return null;
   return (
@@ -9618,7 +9709,8 @@ function JobFiredList({ config, logs, isOwner }) {
           {pulseLogDetail(config, l) && <span className="text-[11px] font-bold text-slate-600">{pulseLogDetail(config, l)}</span>}
           <span className="text-[11px] text-slate-500">{new Date(l.createdAt || 0).toTimeString().slice(0, 5)} · ฿{l.baht}</span>
           {pulseIsCoin(l) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">💵 {tr(config, 'หยอดเหรียญ')}</span>}
-          <RefundAction config={config} log={l} isOwner={isOwner} />
+          {pulseIsCoin(l) && <CoinCheckAction config={config} log={l} order={order} logs={logs} />}
+          <RefundAction config={config} log={l} isOwner={isOwner} hideRequest={pulseIsCoin(l) && l.coinSeen !== true} />
         </div>
       ))}
     </div>
