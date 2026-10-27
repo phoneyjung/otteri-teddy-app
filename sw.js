@@ -1,7 +1,7 @@
 // Service Worker - ทำให้ทำงานออฟไลน์ได้ + cache assets
 // v4: เปลี่ยนเป็น network-first สำหรับ HTML (ให้ได้โค้ดใหม่เสมอ)
 //     และ cache-first สำหรับ assets อื่น (icon, manifest)
-const CACHE_NAME = 'plp-laundry-v161';
+const CACHE_NAME = 'plp-laundry-v162';
 const urlsToCache = [
   './manifest.json',
   './icon-192.png',
