@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v154-2026-10-27';
+  window.APP_VERSION = 'v155-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2128,6 +2128,11 @@ const MM_DICT = {
   'สีเทา = ไม่มีใบงานที่ใช้เครื่องขนาดนี้': 'မီးခိုးရောင် = ဤအရွယ်စက်ကို သုံးမည့် အလုပ်စာရွက် မရှိ',
   // 🔁 ซักซ้ำเฉพาะเจ้าของ (v154)
   'งานภายในนี้ เจ้าของเป็นคนเริ่มเครื่อง': 'ဤဆိုင်တွင်းအလုပ်ကို ပိုင်ရှင်က စက်စတင်ရမည်',
+  // 🧼 ล้างเครื่อง (v155)
+  'ล้างเครื่อง': 'စက်ဆေးကြော',
+  'เฉพาะเครื่องซัก · เครื่องละ 1 ครั้งต่อ 7 วัน · ไม่นับเป็นรายได้': 'လျှော်စက်သာ · စက်တစ်လုံး ၇ ရက်လျှင် ၁ ကြိမ် · ဝင်ငွေအဖြစ် မရေတွက်',
+  'ล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ 7 วัน': 'လျှော်စက်သာ ဆေးကြောနိုင် · စက်တစ်လုံး ၇ ရက်လျှင် ၁ ကြိမ်',
+  'เครื่องซักที่จะล้าง': 'ဆေးကြောမည့် လျှော်စက်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -4080,10 +4085,11 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       {menuOn(config, 'internal') && <div className="px-5 mt-3">
         <button onClick={onInternalOrder}
           className="w-full rounded-2xl p-3 border-2 border-amber-400 bg-amber-50 active:scale-95 transition flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-xl flex-shrink-0">🔧</div>
+          {/* v155: แม่บ้านเห็นแค่ล้างเครื่อง · เจ้าของเห็นงานภายในครบ */}
+          <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-xl flex-shrink-0">{currentStaff && currentStaff.isOwnerLogin ? '🔧' : '🧼'}</div>
           <div className="text-left flex-1 min-w-0">
-            <p className="font-bold text-slate-900 text-sm">{tr(config, 'งานภายในร้าน (ล้าง/ทดสอบเครื่อง)')}</p>
-            <p className="text-xs text-amber-800">{tr(config, 'ไม่นับเป็นรายได้ · บังคับใส่เหตุผล')}</p>
+            <p className="font-bold text-slate-900 text-sm">{currentStaff && currentStaff.isOwnerLogin ? tr(config, 'งานภายในร้าน (ล้าง/ทดสอบเครื่อง)') : tr(config, 'ล้างเครื่อง')}</p>
+            <p className="text-xs text-amber-800">{currentStaff && currentStaff.isOwnerLogin ? tr(config, 'ไม่นับเป็นรายได้ · บังคับใส่เหตุผล') : tr(config, 'เฉพาะเครื่องซัก · เครื่องละ 1 ครั้งต่อ 7 วัน · ไม่นับเป็นรายได้')}</p>
           </div>
           <Icon name="chevron-right" className="w-5 h-5 text-amber-700" />
         </button>
@@ -5025,12 +5031,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
         {isInternal && (
           <div className="rounded-2xl p-4 border-2 border-amber-400" style={{background: 'repeating-linear-gradient(45deg, #FEF3C7, #FEF3C7 12px, #FDE68A 12px, #FDE68A 24px)'}}>
             <div className="flex items-center justify-between mb-3">
-              <p className="font-extrabold text-slate-900">🔧 งานภายในร้าน</p>
+              <p className="font-extrabold text-slate-900">{isOwner ? '🔧 งานภายในร้าน' : '🧼 ' + tr(config, 'ล้างเครื่อง')}</p>
               <button onClick={() => { setInternalType(''); setInternalReason(''); setInternalCustom(''); }}
                 className="text-[11px] font-bold text-slate-600 bg-white rounded-lg px-2 py-1">เปลี่ยนเป็นงานลูกค้า</button>
             </div>
-            <p className="text-xs font-bold text-slate-700 mb-1.5">ประเภทงาน</p>
-            <div className="flex flex-wrap gap-1.5 mb-3">
+            {isOwner && <p className="text-xs font-bold text-slate-700 mb-1.5">ประเภทงาน</p>}
+            {isOwner && <div className="flex flex-wrap gap-1.5 mb-3">
               {INTERNAL_TYPES.map(t => {
                 const locked = !isOwner && INTERNAL_OWNER_ONLY.includes(t.id);
                 return (
@@ -5040,13 +5046,14 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                   </button>
                 );
               })}
-            </div>
-            {!isOwner && <p className="text-[11px] font-bold text-slate-700 -mt-2 mb-3">🧼 แม่บ้านล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ {CLEAN_EVERY_DAYS} วัน · 🔒 ซ่อม/ทดสอบ ซักซ้ำ และอื่นๆ ให้เจ้าของทำ</p>}
-            <p className="text-xs font-bold text-slate-700 mb-1.5">เครื่องที่ทำ <span className="text-rose-600">*บังคับ</span> (เลือกได้หลายเครื่อง)</p>
+            </div>}
+            {!isOwner && <p className="text-[11px] font-bold text-slate-700 mb-3">{tr(config, 'ล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ 7 วัน')}</p>}
+            <p className="text-xs font-bold text-slate-700 mb-1.5">{isOwner ? 'เครื่องที่ทำ' : tr(config, 'เครื่องซักที่จะล้าง')} <span className="text-rose-600">*บังคับ</span> (เลือกได้หลายเครื่อง)</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
                 const on = internalMachines.includes(m.label);
                 const dryNo = internalType === 'clean' && !isOwner && /^d/i.test(m.id); // v151: แม่บ้านล้างเฉพาะเครื่องซัก
+                if (dryNo && !on) return null; // v155: แม่บ้านไม่เห็นเครื่องอบเลย
                 const lock = internalType === 'clean' ? (cleanLocks[m.label] || (dryNo ? { at: 0, until: 0, dry: true } : null)) : null;
                 const until = lock && !lock.dry ? new Date(lock.until).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '';
                 return (
