@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v166-2026-10-27';
+  window.APP_VERSION = 'v167-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -280,6 +280,25 @@
     localStorage.setItem('ios-install-dismissed', '1');
   }
 
+  // 🔄 v167: มีเวอร์ชันใหม่ → รอให้ปลอดภัยก่อนค่อยรีโหลด (เดิมรีโหลดทันที — ระหว่างถ่ายรูป/กรอกใบงาน เด้งกลับหน้าแรก ข้อมูลหาย)
+  // ปลอดภัย = แอปอยู่บนจอ + อยู่หน้าแรก (ไม่มีฟอร์ม/แผ่นเปิด) หรือหน้าเจ้าของ + ไม่ได้แตะจอ 60 วินาที
+  var swUpdateReady = false;
+  window.__lastAct = Date.now();
+  ['pointerdown', 'touchstart', 'keydown', 'input'].forEach(function (ev) {
+    window.addEventListener(ev, function () { window.__lastAct = Date.now(); }, { passive: true, capture: true });
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') window.__lastAct = Date.now(); // กลับจากกล้อง/แอปอื่น = กำลังใช้งาน
+  });
+  function trySwReload() {
+    if (!swUpdateReady || document.visibilityState !== 'visible') return;
+    var v = window.__appView;
+    var safe = (v === 'home' && !window.__homeBusy) || v === 'ownerDashboard';
+    if (!safe || Date.now() - (window.__lastAct || 0) < 60000) return;
+    window.location.reload();
+  }
+  setInterval(trySwReload, 5000);
+
   // Register Service Worker (ทำงานออฟไลน์ + ติดตั้งเป็นแอปได้)
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -292,8 +311,9 @@
           if (!newWorker) return;
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // มี version ใหม่พร้อมใช้ — reload ทันทีให้ user เห็นโค้ดใหม่
-              window.location.reload();
+              // มี version ใหม่พร้อมใช้ — v167: รีโหลดเมื่อปลอดภัย (ไม่ใช่ทันที)
+              swUpdateReady = true;
+              trySwReload();
             }
           });
         });
@@ -1403,6 +1423,17 @@ function coinFloatStatus(config, tokenExchanges) {
   return { float: s.coinFloat, used, remain: s.coinFloat - used, since };
 }
 
+// 📝 v167: ใบรับงานใหม่ที่กรอกค้าง (เก็บในเครื่อง 3 ชม.)
+function saveOrderDraft(brand, d) { try { localStorage.setItem('order-draft-' + brand, JSON.stringify({ ...d, at: Date.now() })); } catch (e) {} }
+function clearOrderDraft(brand) { try { localStorage.removeItem('order-draft-' + brand); } catch (e) {} }
+function readOrderDraft(brand) {
+  try {
+    const d = JSON.parse(localStorage.getItem('order-draft-' + brand) || 'null');
+    if (!d || !d.at || Date.now() - d.at > 3 * 3600000) return null;
+    return d;
+  } catch (e) { return null; }
+}
+
 async function updateTokenExchange(id, updates) {
   let data = cleanUndefined({ ...updates, updatedAt: Date.now() });
   data = JSON.parse(JSON.stringify(data));
@@ -2248,6 +2279,12 @@ const MM_DICT = {
   'แตะเพื่อเปิด QR': 'QR ဖွင့်ရန် နှိပ်ပါ',
   'ลบรายการขายน้ำยานี้?': 'ဆပ်ပြာရောင်းစာရင်း ဖျက်မလား?',
   'ใส่จำนวนน้ำยาก่อน': 'ဆပ်ပြာအရေအတွက် အရင်ထည့်ပါ',
+  // 📝 v167
+  'ใบรับงานที่ยังไม่ได้บันทึก': 'မသိမ်းရသေးသော အလုပ်စာရွက်',
+  'ต้องถ่ายรูปใหม่': 'ဓာတ်ပုံ ပြန်ရိုက်ရန်',
+  'ทิ้งใบรับงานที่กรอกค้างนี้?': 'ဖြည့်ထားသော အလုပ်စာရွက်ကို ဖျက်မလား?',
+  'ทิ้ง': 'ဖျက်',
+  'ทำต่อ': 'ဆက်လုပ်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3079,6 +3116,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
   }, [baseConfig, cloudRiders, shopSettings, lang]);
 
   const [view, setView] = useState('home');
+  useEffect(() => { window.__appView = view; }, [view]); // 🔄 v167 ให้ตัวอัปเดตรู้ว่าอยู่หน้าไหน
+  const [orderDraft, setOrderDraft] = useState(null); // 📝 v167 ใบรับงานที่กรอกค้าง (กดทำต่อ)
   const baseViewRef = useRef('home'); // v157: หน้าหลักล่าสุด (หน้าแรก / หน้าเจ้าของ) — ไว้กดกลับจากใบงาน
   useEffect(() => { if (view === 'home' || view === 'ownerDashboard') baseViewRef.current = view; }, [view]);
   const [orders, setOrders] = useState([]);
@@ -3266,6 +3305,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
       setHomeDayOffset(Math.max(0, Math.round((t0.getTime() - qStart.getTime()) / 86400000)));
       setBackdateDay(null);
       const newId = await saveOrderToCloud(config.brand, orderWithoutId); // คืน id ทันที ไม่รอเน็ต
+      if (!isInternalOrder(orderWithoutId)) clearOrderDraft(config.brand); // 📝 v167
+      setOrderDraft(null);
       const savedOrder = { ...orderWithoutId, id: newId };
       playSuccessSound();
       setSelectedOrder(savedOrder);
@@ -3542,14 +3583,14 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
         </div>
       )}
       {deepJobId && <JobStartSheet config={config} orderId={deepJobId} orders={orders} onClose={onDeepDone} isOwner={isOwner} />}
-      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} collections={collections} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && <HomeView onResumeDraft={(d) => { setOrderDraft(d); setInternalMode(false); setBackdateDay(null); setView('newOrder'); }} onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} collections={collections} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setOrderDraft(null); setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setOrderDraft(null); setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
-      {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
+      {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} draft={internalMode ? null : orderDraft} onCancel={() => { if (!internalMode) clearOrderDraft(config.brand); setOrderDraft(null); setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} collections={collections} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
-      {view === 'ownerDashboard' && config.brand === 'teddy2' && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
-      {view === 'ownerDashboard' && config.brand !== 'teddy2' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && config.brand === 'teddy2' && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setOrderDraft(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && config.brand !== 'teddy2' && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setOrderDraft(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} orders={orders} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
@@ -3858,7 +3899,7 @@ function RoleSwitchSheet({ config, currentStaff, prevStaff, onRoleSwitch, onClos
   );
 }
 
-function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchanges, collections, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, onRoleSwitch, prevStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
+function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders, tokenExchanges, collections, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, onRoleSwitch, prevStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [roleSheet, setRoleSheet] = useState(false); // 🔄 v157
   const role = staffRoleOf(currentStaff);
@@ -4143,6 +4184,9 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   const ownerNow = !!(currentStaff && currentStaff.isOwnerLogin);
   const exOn = config.tokenEnabled !== false && menuOn(config, 'exchange');
   const [detSheet, setDetSheet] = useState(false); // 🧴 v166
+  useEffect(() => { window.__homeBusy = !!(showPromoForm || showTokenForm || detSheet || cashSheet); }, [showPromoForm, showTokenForm, detSheet, cashSheet]); // 🔄 v167
+  const [draftTick, setDraftTick] = useState(0);
+  const orderDraftHere = useMemo(() => { const d = readOrderDraft(config.brand); return d && !(d.clientId && orders.some(o => o.clientId === d.clientId)) ? d : null; }, [config.brand, orders, draftTick]);
   const detTodayN = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return (tokenExchanges || []).filter(t => t.kind === 'detergent' && (t.createdAt || 0) >= d.getTime()).length; })();
   const rowStatus = (o) => {
     if (isInternalOrder(o)) return { t: 'งานภายใน', c: '#475569', bg: '#F1F5F9' };
@@ -4335,6 +4379,21 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
           </div>
         </button>
       </div>
+
+      {/* 📝 v167: ใบรับงานที่กรอกค้าง (แอปปิด/รีโหลดระหว่างถ่ายรูป) */}
+      {orderDraftHere && onResumeDraft && (
+        <div className="px-5 mt-3">
+          <div className="rounded-2xl p-3 bg-amber-50 border-2 border-amber-300 flex items-center gap-2">
+            <span className="text-2xl">📝</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold text-amber-900 truncate">{tr(config, 'ใบรับงานที่ยังไม่ได้บันทึก')} · {orderDraftHere.customerName || orderDraftHere.customerPhone || '-'}</p>
+              <p className="text-xs font-bold text-amber-800">{new Date(orderDraftHere.at).toTimeString().slice(0, 5)}{orderDraftHere.hadPhoto ? ' · ' + tr(config, 'ต้องถ่ายรูปใหม่') : ''}</p>
+            </div>
+            <button onClick={() => { if (confirm(tr(config, 'ทิ้งใบรับงานที่กรอกค้างนี้?'))) { clearOrderDraft(config.brand); setDraftTick(x => x + 1); } }} className="px-2.5 py-2 rounded-xl bg-white border border-amber-300 text-xs font-bold text-amber-800 active:scale-95">{tr(config, 'ทิ้ง')}</button>
+            <button onClick={() => onResumeDraft(orderDraftHere)} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm font-extrabold active:scale-95">{tr(config, 'ทำต่อ')}</button>
+          </div>
+        </div>
+      )}
 
       {/* 🧺 เริ่มเครื่อง — แตะเครื่องก่อน แล้วเลือกใบงานที่รอ (v144) */}
       {pulseOn(config) && <HomePulseStartCard config={config} orders={orders} />}
@@ -4889,7 +4948,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
   );
 }
 
-function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode, backdateDay, orders }) {
+function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode, backdateDay, orders, draft }) {
   const [webOrders, setWebOrders] = useState([]);
   const [showWeb, setShowWeb] = useState(false);
   const [webPicked, setWebPicked] = useState(null); // { id, code }
@@ -4904,10 +4963,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const [internalMachines, setInternalMachines] = useState(() => editingOrder?.internalMachines || []);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const clientIdRef = useRef(null);
+  const clientIdRef = useRef(!editingOrder && draft && draft.clientId ? draft.clientId : null);
+  const draftDirty = useRef(false); // 📝 v167
   const isEdit = !!editingOrder;
-  const [name, setName] = useState(editingOrder?.customerName || '');
-  const [phone, setPhone] = useState(editingOrder?.customerPhone || '');
+  const seed = editingOrder || draft || null; // 📝 v167: แก้ไข = ใบเดิม · ทำต่อ = ใบที่กรอกค้าง
+  const [name, setName] = useState(seed?.customerName || '');
+  const [phone, setPhone] = useState(seed?.customerPhone || '');
   // รูป: null = รูปเดิมยังโหลดไม่เสร็จ (ออเดอร์ที่แยกรูปไว้) → บันทึกแล้วไม่แตะรูปนั้น
   const initPhoto = (f) => {
     if (!editingOrder) return '';
@@ -4930,23 +4991,23 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     return () => { alive = false; };
   }, [editingOrder && editingOrder.id]);
   const promoPhotoOk = !!linePromoPhoto || (linePromoPhoto === null && !!(editingOrder && editingOrder.hasLinePromoPhoto));
-  const [clothCount, setClothCount] = useState(editingOrder?.clothCount || '');
-  const [washItems, setWashItems] = useState(editingOrder?.washItems || []);
-  const [dryItems, setDryItems] = useState(editingOrder?.dryItems || []);
-  const [detergentQty, setDetergentQty] = useState(editingOrder?.detergentQty || 0);
-  const [softenerQty, setSoftenerQty] = useState(editingOrder?.softenerQty || 0);
-  const [foldBaskets, setFoldBaskets] = useState(editingOrder?.foldBaskets ?? (config.freeService ? 0 : 1));
-  const [noFold, setNoFold] = useState(editingOrder?.noFold || false); // ลูกค้าไม่ต้องการพับ (เฉพาะร้านฟรี)
-  const [paymentMethod, setPaymentMethod] = useState(editingOrder?.paymentMethod || 'cash');
-  const [splitCash, setSplitCash] = useState(editingOrder?.cashAmount != null ? String(editingOrder.cashAmount) : '');
-  const [splitTransfer, setSplitTransfer] = useState(editingOrder?.transferAmount != null ? String(editingOrder.transferAmount) : '');
-  const [note, setNote] = useState(editingOrder?.note || '');
-  const [deliveryZone, setDeliveryZone] = useState(editingOrder?.deliveryZone || null);
-  const [riderId, setRiderId] = useState(editingOrder?.riderId || null);
-  const [fromKev, setFromKev] = useState(editingOrder?.fromKev || false);
-  const [fromLine, setFromLine] = useState(editingOrder?.fromLine || false);
-  const [useLinePromo, setUseLinePromo] = useState(editingOrder?.useLinePromo || false);
-  const [pickupTime, setPickupTime] = useState(editingOrder?.pickupTime || ''); // เวลานัดรับ (ข้อความอิสระ เช่น "18:00" หรือ "พรุ่งนี้เช้า")
+  const [clothCount, setClothCount] = useState(seed?.clothCount || '');
+  const [washItems, setWashItems] = useState(seed?.washItems || []);
+  const [dryItems, setDryItems] = useState(seed?.dryItems || []);
+  const [detergentQty, setDetergentQty] = useState(seed?.detergentQty || 0);
+  const [softenerQty, setSoftenerQty] = useState(seed?.softenerQty || 0);
+  const [foldBaskets, setFoldBaskets] = useState(seed?.foldBaskets ?? (config.freeService ? 0 : 1));
+  const [noFold, setNoFold] = useState(seed?.noFold || false); // ลูกค้าไม่ต้องการพับ (เฉพาะร้านฟรี)
+  const [paymentMethod, setPaymentMethod] = useState(seed?.paymentMethod || 'cash');
+  const [splitCash, setSplitCash] = useState(seed?.cashAmount != null ? String(seed.cashAmount) : '');
+  const [splitTransfer, setSplitTransfer] = useState(seed?.transferAmount != null ? String(seed.transferAmount) : '');
+  const [note, setNote] = useState(seed?.note || '');
+  const [deliveryZone, setDeliveryZone] = useState(seed?.deliveryZone || null);
+  const [riderId, setRiderId] = useState(seed?.riderId || null);
+  const [fromKev, setFromKev] = useState(seed?.fromKev || false);
+  const [fromLine, setFromLine] = useState(seed?.fromLine || false);
+  const [useLinePromo, setUseLinePromo] = useState(seed?.useLinePromo || false);
+  const [pickupTime, setPickupTime] = useState(seed?.pickupTime || ''); // เวลานัดรับ (ข้อความอิสระ เช่น "18:00" หรือ "พรุ่งนี้เช้า")
 
   // วันเวลารับงาน — เจ้าของกำหนดเองได้ (ใช้กรณีบันทึกย้อนหลัง)
   // Default: ใช้เวลาปัจจุบัน (สำหรับงานใหม่) หรือเวลาเดิม (สำหรับการแก้ไข)
@@ -4954,6 +5015,17 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const backdateMode = !isEdit && typeof backdateDay === 'number';
   const canPickTime = isOwner || backdateMode;
   const [useCustomTime, setUseCustomTime] = useState(isEdit || backdateMode); // edit mode → เปิดให้แก้ได้เลย
+  // 📝 v167: จำใบรับงานใหม่ที่กำลังกรอกไว้ในเครื่อง — แอปถูกปิด/รีโหลดระหว่างถ่ายรูป กลับมาทำต่อได้
+  useEffect(() => {
+    if (isEdit || internalMode || backdateMode) return;
+    const has = !!(name.trim() || phone.trim() || washItems.length || dryItems.length || detergentQty || softenerQty || note.trim() || basketPhoto);
+    if (!has) { if (draftDirty.current) clearOrderDraft(config.brand); return; } // ฟอร์มเปล่าที่เพิ่งเปิด ไม่ลบใบค้างเดิม
+    draftDirty.current = true;
+    if (!clientIdRef.current) clientIdRef.current = 'c' + Date.now() + Math.random().toString(36).slice(2, 7);
+    saveOrderDraft(config.brand, { clientId: clientIdRef.current, customerName: name, customerPhone: phone, clothCount, washItems, dryItems, detergentQty, softenerQty,
+      foldBaskets, noFold, paymentMethod, cashAmount: splitCash === '' ? null : Number(splitCash), transferAmount: splitTransfer === '' ? null : Number(splitTransfer),
+      note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, hadPhoto: !!basketPhoto });
+  }, [name, phone, clothCount, washItems, dryItems, detergentQty, softenerQty, foldBaskets, noFold, paymentMethod, splitCash, splitTransfer, note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, basketPhoto]);
   const [customDateTime, setCustomDateTime] = useState(() => {
     if (backdateMode) {
       const now = new Date(), b = new Date(backdateDay);
@@ -11979,6 +12051,21 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   const toastTimer = useRef(null);
   const tabsRef = useRef(null);
   const R = useMemo(() => t2Range(mode, anchor), [mode, anchor]);
+  // 📅 v167: แตะชื่อวันที่ด้านบน → เลือกวัน (รายวัน) / เดือน (รายเดือน) / ปี (รายปี)
+  const pickYears = useMemo(() => {
+    const first = (orders || []).reduce((m, o) => Math.min(m, t2Ts(o.createdAt) || m), Date.now());
+    const y0 = new Date(first).getFullYear(), y1 = new Date().getFullYear();
+    return Array.from({ length: Math.max(1, y1 - y0 + 1) }, (_, i) => y1 - i);
+  }, [orders]);
+  const pickPeriod = (v) => {
+    if (!v) return;
+    let t;
+    if (mode === 'year') t = new Date(Number(v), 0, 1).getTime();
+    else if (mode === 'month') { const [y, m] = String(v).split('-').map(Number); t = new Date(y, m - 1, 1).getTime(); }
+    else { const [y, m, d] = String(v).split('-').map(Number); t = new Date(y, m - 1, d, 12).getTime(); }
+    if (!isNaN(t)) setAnchor(Math.min(t, Date.now()));
+  };
+  const openPicker = (e) => { try { if (e.currentTarget.showPicker) e.currentTarget.showPicker(); } catch (x) {} };
   useEffect(() => {
     if (!window.db) return;
     const u = window.db.collection('pulseLogs').where('dateKey', '>=', R.fromKey).where('dateKey', '<=', R.toKey).onSnapshot(
@@ -12201,7 +12288,20 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
         </div>
         <div className="flex items-center gap-2 mt-2">
           <button onClick={() => shift(-1)} aria-label="ก่อนหน้า" className="w-11 h-11 rounded-xl bg-slate-800 text-white text-lg font-extrabold active:scale-95">‹</button>
-          <p className="flex-1 text-center text-white text-base font-extrabold">{R.label}</p>
+          <label className="flex-1 min-w-0 relative h-11 rounded-xl flex items-center justify-center gap-1.5 bg-slate-800 active:scale-95 transition cursor-pointer">
+            <span className="text-white text-base font-extrabold truncate">{R.label}</span>
+            <span className="text-slate-300 text-xs" aria-hidden="true">▼</span>
+            {mode === 'year' ? (
+              <select aria-label="เลือกปี" value={new Date(anchor).getFullYear()} onChange={e => pickPeriod(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                {pickYears.map(y => <option key={y} value={y}>ปี {y + 543}</option>)}
+              </select>
+            ) : (
+              <input type={mode === 'month' ? 'month' : 'date'} aria-label={mode === 'month' ? 'เลือกเดือน' : 'เลือกวัน'}
+                value={mode === 'month' ? dateKeyOf(new Date(anchor)).slice(0, 7) : dateKeyOf(new Date(anchor))}
+                max={mode === 'month' ? dateKeyOf(new Date()).slice(0, 7) : dateKeyOf(new Date())}
+                onClick={openPicker} onChange={e => pickPeriod(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+            )}
+          </label>
           <button onClick={() => shift(1)} disabled={atLatest} aria-label="ถัดไป" className="w-11 h-11 rounded-xl bg-slate-800 text-white text-lg font-extrabold active:scale-95 disabled:opacity-25">›</button>
         </div>
       </div>
