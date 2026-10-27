@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v155-2026-10-27';
+  window.APP_VERSION = 'v156-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2133,6 +2133,24 @@ const MM_DICT = {
   'เฉพาะเครื่องซัก · เครื่องละ 1 ครั้งต่อ 7 วัน · ไม่นับเป็นรายได้': 'လျှော်စက်သာ · စက်တစ်လုံး ၇ ရက်လျှင် ၁ ကြိမ် · ဝင်ငွေအဖြစ် မရေတွက်',
   'ล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ 7 วัน': 'လျှော်စက်သာ ဆေးကြောနိုင် · စက်တစ်လုံး ၇ ရက်လျှင် ၁ ကြိမ်',
   'เครื่องซักที่จะล้าง': 'ဆေးကြောမည့် လျှော်စက်',
+  // 🧼 ล้างเครื่องน้ำร้อน / ขั้นตอนที่หน้าเครื่อง (v156)
+  'ล้างเครื่องใช้น้ำร้อนเสมอ': 'စက်ဆေးကြောလျှင် ရေပူ အမြဲသုံး',
+  'เลือกเครื่องซักที่จะล้างด้านบน': 'အပေါ်တွင် ဆေးကြောမည့် လျှော်စက်ကို ရွေးပါ',
+  'ล้างเครื่อง (ไม่ต้องใส่ผ้า)': 'စက်ဆေးကြော (အဝတ် မထည့်ရ)',
+  'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง': 'OK မနှိပ်ခင် စက်ရှေ့တွင် 🔥 ရေပူ ကို ရွေးနှိပ်ရန် မမေ့ပါနှင့်',
+  'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรมที่หน้าเครื่อง → กดเริ่ม (ชำระเงิน)': 'အဆင့်: အဝတ်ထည့် → တံခါးပိတ် → စက်ရှေ့တွင် ပရိုဂရမ်ရွေး → စတင်နှိပ် (ငွေချေ)',
+  'ก่อนกดตกลง': 'OK မနှိပ်ခင်',
+  'ใส่ผ้า แล้วปิดประตู': 'အဝတ်ထည့်ပြီး တံခါးပိတ်',
+  'เลือกโปรแกรมที่หน้าเครื่อง': 'စက်ရှေ့တွင် ပရိုဂရမ်ရွေး',
+  'หยอดเหรียญ แล้วกดตกลง': 'အကြွေစေ့ထည့်ပြီး OK နှိပ်',
+  'กดตกลง = ชำระเงิน เครื่องเริ่มทำงาน': 'OK နှိပ် = ငွေချေ၊ စက်စတင်လည်ပတ်',
+  'อย่าลืมกดเลือกอุณหภูมิหน้าเครื่องให้ตรงใบงาน': 'စက်ရှေ့တွင် အပူချိန်ကို အလုပ်စာရွက်အတိုင်း ရွေးနှိပ်ရန် မမေ့ပါနှင့်',
+  'ความร้อนตามใบงาน': 'အလုပ်စာရွက်အတိုင်း အပူချိန်',
+  'กดเลือกความร้อนที่หน้าเครื่องให้ตรงใบงาน': 'စက်ရှေ့တွင် အပူချိန်ကို အလုပ်စာရွက်အတိုင်း ရွေးနှိပ်ပါ',
+  'ไม่ต้องเลือกในแอป — ทุกระดับราคาเท่ากัน': 'အက်ပ်တွင် ရွေးစရာမလို — အဆင့်တိုင်း ဈေးတူ',
+  'ค่าเริ่มต้นตามใบงาน': 'မူရင်း = အလုပ်စာရွက်အတိုင်း',
+  'เลือกเวลาอบ': 'အခြောက်ခံချိန် ရွေးပါ',
+  'กดบันทึกด้านล่าง แล้วกดเริ่มเครื่องได้เลย': 'အောက်တွင် သိမ်းဆည်းပြီး စက်စတင်နိုင်ပါပြီ',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -4706,6 +4724,17 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const customAmt = parseInt(internalCustom, 10) || 0;
   // ล้างเครื่อง / ซักซ้ำ = งานประจำ ไม่ต้องกรอกเหตุผล-ราคา · ทดสอบ / อื่นๆ = บังคับทั้งคู่
   const needInternalDetail = internalType === 'test' || internalType === 'other';
+  // 🧼 v156: แม่บ้านล้างเครื่อง → แอปใส่รายการให้เอง = เครื่องซักที่เลือก × น้ำร้อน 1 ครั้ง (ไม่ต้องเลือกซัก/อบเอง)
+  const maidClean = !!internalType && internalType === 'clean' && !isOwner;
+  useEffect(() => {
+    if (!maidClean) return;
+    const allM = (COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || [];
+    const bySize = {};
+    allM.filter(m => /^w/i.test(m.id) && internalMachines.includes(m.label)).forEach(m => { const kg = parseInt(m.size, 10) || 0; bySize[kg] = (bySize[kg] || 0) + 1; });
+    const items = Object.keys(bySize).map(kg => ({ size: Number(kg), temp: 'hot', qty: bySize[kg] })).filter(i => config.washMachines.some(w => w.size === i.size));
+    setWashItems(items);
+    setDryItems([]);
+  }, [maidClean, internalMachines.join('|')]);
 
   const tempOrder = { 
     washItems, dryItems, detergentQty, softenerQty, foldBaskets,
@@ -5065,6 +5094,14 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
               })}
             </div>
 
+            {maidClean && (
+              <div className="rounded-xl bg-white border-2 border-rose-200 px-3 py-2 mb-2">
+                <p className="text-sm font-extrabold text-rose-700">🔥 {tr(config, 'ล้างเครื่องใช้น้ำร้อนเสมอ')}</p>
+                {washItems.length > 0
+                  ? <p className="text-xs font-bold text-slate-700">{washItems.map(i => `${i.size}kg × ${i.qty}`).join(' · ')} · ฿{washItems.reduce((a, i) => a + ((config.washMachines.find(w => w.size === i.size) || { prices: {} }).prices.hot || 0) * i.qty, 0)}</p>
+                  : <p className="text-xs text-slate-500">{tr(config, 'เลือกเครื่องซักที่จะล้างด้านบน')}</p>}
+              </div>
+            )}
             {needInternalDetail ? (
               <React.Fragment>
                 <p className="text-xs font-bold text-slate-700 mb-1">เหตุผล <span className="text-rose-600">*บังคับ</span></p>
@@ -5077,7 +5114,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                 <p className="text-[11px] text-slate-600 mt-1">เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้</p>
               </React.Fragment>
             ) : (
-              <p className="text-[11px] text-slate-700">เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา</p>
+              <p className="text-[11px] text-slate-700">{maidClean ? tr(config, 'กดบันทึกด้านล่าง แล้วกดเริ่มเครื่องได้เลย') : 'เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา'}</p>
             )}
           </div>
         )}
@@ -5219,15 +5256,15 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           </Field>
         </Section>}
 
-        <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
+        {!maidClean && <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
           <div className="space-y-3">
             {config.washMachines.map(m => (
               <WashMachineRow key={m.size} machine={m} hasMultipleTemps={hasMultipleTemps} getQty={getQty} washItems={washItems} onUpdate={(temp, delta) => updateItem(washItems, setWashItems, m.size, delta, temp)} />
             ))}
           </div>
-        </Section>
+        </Section>}
 
-        <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
+        {!maidClean && <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
           <div className="space-y-2">
             {config.dryMachines.map(m => {
               const qty = getQty(dryItems, m.size, 'cold');
@@ -5255,7 +5292,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
               );
             })}
           </div>
-        </Section>
+        </Section>}
 
         {!isInternal && <Section iconName="sparkles" title={tr(config, "รายการเสริม / ขายแยก")}>
           <p className="text-[11px] text-slate-500 -mt-2 mb-2">{tr(config, "💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ")}</p>
@@ -8796,7 +8833,7 @@ const dryPriceFor = (config, kg) => { const m = config.dryMachines.find(d => d.s
 
 function pulseLogDetail(config, l) {
   if (l.kind === 'wash' && l.temp) return `${tr(config, washTempLabel(l.temp))}`;
-  if (l.kind === 'dry' && l.heat) return `${tr(config, dryHeatLabel(l.heat))}${l.dryMin ? ` · ≈${l.dryMin} ${tr(config, 'นาที')}` : ''}`;
+  if (l.kind === 'dry' && (l.heat || l.dryMin)) return [l.heat ? tr(config, dryHeatLabel(l.heat)) : '', l.dryMin ? `≈${l.dryMin} ${tr(config, 'นาที')}` : ''].filter(Boolean).join(' · ');
   return '';
 }
 
@@ -8953,14 +8990,19 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
   if (pulseBaht > 0 && (pulses < 1 || pulses > maxShot)) { alert(`${tr(config, 'ยอดสูงสุดต่อครั้ง')} ฿${maxShot * PULSE_BAHT}`); return null; }
   const mLabel = pulseMachineLabel(config, machine);
   const dryMin = kind === 'dry' ? dryMinutesFor(config, kg, baht) : 0;
-  const detail = kind === 'wash' ? `💧 ${tr(config, washTempLabel(temp))}` : `🌬️ ${tr(config, dryHeatLabel(heat))} · ≈ ${dryMin} ${tr(config, 'นาที')}`;
+  const detail = kind === 'wash' ? `💧 ${tr(config, washTempLabel(temp))}` : `🌬️ ${heat ? tr(config, dryHeatLabel(heat)) + ' · ' : ''}≈ ${dryMin} ${tr(config, 'นาที')}`; // v156: อบไม่เลือกความร้อนในแอป
   const head = coin > 0 && pulseBaht === 0
     ? `⚠️ ${tr(config, 'ใบงานเงินสด — แอปไม่สั่งเครื่องให้')}\n\n💵 ${tr(config, 'หยอดเหรียญที่เครื่องแล้ว และเครื่องเริ่มทำงานแล้วใช่ไหม?')}`
     : `⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}`;
   const payTxt = coin > 0
     ? `💵 ${tr(config, 'หยอดเหรียญเอง')} ฿${coin}${pulseBaht > 0 ? `\n⚡ ${tr(config, 'ยิงจากแอป')} ${pulses} ${tr(config, 'พัลส์')} (฿${pulseBaht})` : ''}\n\n👉 ${tr(config, 'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดตกลง')}`
     : `🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})${discBaht > 0 ? `\n🎟️ ${tr(config, 'ส่วนลดคูปอง')} ฿${discBaht}` : ''}`;
-  if (!confirm(`${head}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n${payTxt}${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return null;
+  // v156: ขั้นตอนจริงที่หน้าเครื่อง — ใส่ผ้า → ปิดประตู → เลือกโปรแกรม → ชำระเงิน (กดตกลง/หยอดเหรียญ)
+  const progLabel = kind === 'wash' ? tr(config, washTempLabel(temp)) : (heat ? tr(config, dryHeatLabel(heat)) : tr(config, 'ความร้อนตามใบงาน'));
+  const steps = order && order.internalType === 'clean'
+    ? `🧼 ${tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')}\n⚠️ ${tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}`
+    : `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n3) ${coin > 0 ? tr(config, 'หยอดเหรียญ แล้วกดตกลง') : tr(config, 'กดตกลง = ชำระเงิน เครื่องเริ่มทำงาน')}\n\n⚠️ ${tr(config, 'อย่าลืมกดเลือกอุณหภูมิหน้าเครื่องให้ตรงใบงาน')}`;
+  if (!confirm(`${head}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n${payTxt}${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${steps}`)) return null;
   const coinLog = coin > 0 ? logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, baht: coin, dryMin, warn }) : null;
   if (coinLog) watchCoinLog(config, coinLog); // 💵 v148: เช็กกับ EC ว่าเครื่องนับเหรียญแล้ว
   if (pulseBaht <= 0) return { ...coinLog, coinBaht: coin };
@@ -9109,7 +9151,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   if (selM && marks[selM.id] === 'busy') warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้เพิ่งเปิดให้งานอื่น');
   if (selM && problems.has(selM.id)) warn = (warn ? warn + ' · ' : '') + tr(config, 'เครื่องนี้มีแจ้งปัญหาวันนี้ — เช็กเครื่องก่อน');
   const firedHere = fixed && (jobLogs || []).some(l => pulseLive(l));
-  const ready = selM && job && !block && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : !!heat);
+  const ready = selM && job && !block && baht > 0 && baht <= maxBaht && (selM.kind === 'wash' ? !!temp : true); // v156: อบไม่ต้องเลือกความร้อน
 
   const tile = (active, color, onClick, top, bottom, badge) => (
     <button onClick={onClick} disabled={!!busyText}
@@ -9228,20 +9270,19 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
             {block && firedHere && <p className="text-xs font-bold text-slate-600 px-1">💡 {tr(config, 'เครื่องมีปัญหา? กด ⚠️ ที่รายการด้านล่าง ให้เจ้าของคืนเครดิต')}</p>}
             {(fixed || job) && !block && (selM.kind === 'wash' ? (
               <div>
-                <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกน้ำ')}</p>
+                <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกน้ำ')} <span className="font-normal">· {tr(config, 'ค่าเริ่มต้นตามใบงาน')}</span></p>
                 <div className="flex gap-2">
-                  {WASH_TEMPS.map(t => tile(temp === t.id, t.color, () => setTemp(t.id), t.emoji,
+                  {WASH_TEMPS.filter(t => !(job && job.order.internalType === 'clean') || t.id === 'hot').map(t => tile(temp === t.id, t.color, () => setTemp(t.id), t.emoji,
                     <span>{tr(config, t.label)}<br /><span className="text-xs font-bold opacity-80">฿{washPriceFor(config, selM.kg, t.id)}</span></span>,
                     openSlots.some(s => s.kind === 'wash' && s.kg === selM.kg && s.temp === t.id) ? tr(config, 'ตามใบงาน') : null))}
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                <div>
-                  <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เลือกความร้อน')}</p>
-                  <div className="flex gap-2">
-                    {DRY_HEATS.map(h => tile(heat === h.id, h.color, () => setHeat(h.id), h.emoji, tr(config, h.label), null))}
-                  </div>
+                {/* v156: ไม่ต้องเลือกความร้อนในแอป (ทุกระดับราคาเท่ากัน) → เตือนให้กดที่หน้าเครื่อง */}
+                <div className="rounded-xl px-3 py-2.5 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+                  <p className="text-sm font-extrabold text-amber-900">🌡️ {tr(config, 'กดเลือกความร้อนที่หน้าเครื่องให้ตรงใบงาน')}</p>
+                  <p className="text-[11px] font-bold text-amber-800">{tr(config, 'ไม่ต้องเลือกในแอป — ทุกระดับราคาเท่ากัน')}</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-500 mb-2">{tr(config, 'เวลาอบ')}</p>
@@ -9260,6 +9301,11 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               </div>
             ))}
 
+            {(fixed || job) && !block && (job && job.order.internalType === 'clean' ? (
+              <p className="text-sm font-extrabold text-rose-700 bg-rose-50 border-2 border-rose-200 rounded-xl px-3 py-2">🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>
+            ) : (
+              <p className="text-[11px] font-bold text-slate-500">📝 {tr(config, 'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรมที่หน้าเครื่อง → กดเริ่ม (ชำระเงิน)')}</p>
+            ))}
             {warn && <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ {warn}</p>}
           </div>
         )}
@@ -9288,7 +9334,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
             onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin, discBaht: cp.disc }, () => setSel(null))}
             className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: cp.coin > 0 && cp.pulse === 0 && !block ? '#D97706' : config.gradient }}>
             {busyText ? `⏳ ${busyText}` : block ? `🚫 ${tr(config, 'ยิงไม่ได้')}` : !ready
-              ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกความร้อนก่อน'))
+              ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกเวลาอบ'))
               : cp.coin > 0 && cp.pulse === 0 ? `💵 ${tr(config, 'หยอดที่เครื่องแล้ว · บันทึก')} ${selM.label} ฿${baht}`
               : cp.coin > 0 ? `💵 ฿${cp.coin} + ⚡ ฿${cp.pulse} · ${tr(config, 'เริ่มเครื่อง')} ${selM.label}`
               : `⚡ ${tr(config, 'เริ่มเครื่อง')} ${selM.label} · ฿${baht} (${baht / PULSE_BAHT} ${tr(config, 'พัลส์')})`}
