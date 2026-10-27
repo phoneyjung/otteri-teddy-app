@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v168-2026-10-27';
+  window.APP_VERSION = 'v169-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -3221,7 +3221,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
     if (next) {
       if (!navigator.bluetooth) { alert('เครื่องนี้พิมพ์ตรงไม่ได้ (iPhone/iPad)\n\nโหมดนี้ใช้กับ Android + Chrome เท่านั้น'); return; }
       try {
-        await getBtPrinterChar(); // จับคู่เครื่องพิมพ์ล่วงหน้า
+        if (printerLink() === 'serial') { await getSerialPrinterWriter(); SERIAL_PRINTER.idle = setTimeout(closeSerialPrinter, 45000); } // ⚡ v169
+        else await getBtPrinterChar(); // จับคู่เครื่องพิมพ์ล่วงหน้า
       } catch (e) {
         if (e && e.name === 'NotFoundError') return;
         alert('เชื่อมต่อเครื่องพิมพ์ไม่สำเร็จ: ' + (e.message || e));
@@ -6033,8 +6034,62 @@ async function getBtPrinterChar() {
   return found;
 }
 
+// ⚡ v169: Bluetooth แบบคลาสสิก (SPP) ผ่าน Web Serial — ทางเดียวกับแอปพิมพ์ (มือถือคุมจังหวะส่งเอง ไม่ต้องหน่วง ไม่หล่น)
+const SPP_UUID = '00001101-0000-1000-8000-00805f9b34fb';
+const SERIAL_PRINTER = { port: null, writer: null, idle: null };
+const serialPrintSupported = () => typeof navigator !== 'undefined' && !!navigator.serial;
+function printerLink() { try { if (localStorage.getItem('printer-link') === 'serial' && serialPrintSupported()) return 'serial'; } catch (e) {} return 'ble'; }
+function setPrinterLink(v) { try { localStorage.setItem('printer-link', v); } catch (e) {} }
+const isSppPort = (p) => { try { const id = String((p.getInfo() || {}).bluetoothServiceClassId || '').toLowerCase(); return id === SPP_UUID || id === '0x1101' || id === '4353'; } catch (e) { return false; } };
+async function getSerialPrinterWriter() {
+  if (SERIAL_PRINTER.writer) return SERIAL_PRINTER.writer;
+  let port = SERIAL_PRINTER.port;
+  if (!port) { try { const ps = await navigator.serial.getPorts(); port = ps.find(isSppPort) || null; } catch (e) {} } // เคยเลือกแล้ว = ไม่ถามซ้ำ
+  if (!port) port = await navigator.serial.requestPort({ filters: [{ bluetoothServiceClassId: SPP_UUID }] });
+  try { await port.open({ baudRate: 115200, bufferSize: 8192 }); }
+  catch (e) {
+    if (!/already open/i.test((e && e.message) || '')) {
+      SERIAL_PRINTER.port = null;
+      throw new Error('ต่อเครื่องพิมพ์ไม่ได้ — เปิดเครื่องพิมพ์ / ปิดแอปในมือถือเครื่องอื่นที่ต่ออยู่ แล้วลองใหม่ (' + ((e && e.message) || e) + ')');
+    }
+  }
+  SERIAL_PRINTER.port = port;
+  SERIAL_PRINTER.writer = port.writable.getWriter();
+  return SERIAL_PRINTER.writer;
+}
+async function closeSerialPrinter() {
+  const sp = SERIAL_PRINTER;
+  if (sp.idle) { clearTimeout(sp.idle); sp.idle = null; }
+  try { if (sp.writer) sp.writer.releaseLock(); } catch (e) {}
+  sp.writer = null;
+  try { if (sp.port) await sp.port.close(); } catch (e) {}
+}
+async function printBytesViaSerial(all, onProgress) {
+  if (onProgress) onProgress('เชื่อมต่อเครื่องพิมพ์...');
+  if (SERIAL_PRINTER.idle) { clearTimeout(SERIAL_PRINTER.idle); SERIAL_PRINTER.idle = null; }
+  const w = await getSerialPrinterWriter();
+  const CH = 2048;
+  try {
+    for (let i = 0; i < all.length; i += CH) {
+      await w.ready; // รอให้ช่องส่งว่าง (มือถือคุมจังหวะ)
+      await w.write(all.slice(i, i + CH));
+      if (onProgress) onProgress('กำลังพิมพ์ ' + Math.round(Math.min(all.length, i + CH) / all.length * 100) + '%');
+    }
+  } catch (e) { await closeSerialPrinter(); throw new Error('ส่งข้อมูลไม่สำเร็จ: ' + ((e && e.message) || e)); }
+  if (onProgress) onProgress('');
+  SERIAL_PRINTER.idle = setTimeout(closeSerialPrinter, 45000); // ว่าง 45 วิ → ปล่อยเครื่องพิมพ์ให้มือถือเครื่องอื่น
+}
+// ว่าง 45 วิ → ตัด Bluetooth เดิม (BLE) ปล่อยเครื่องพิมพ์ — ครั้งต่อไปต่อใหม่เองไม่ต้องเลือก (ในรอบเปิดแอปนี้)
+let BT_IDLE_TIMER = null;
+function scheduleBtRelease() {
+  if (BT_IDLE_TIMER) clearTimeout(BT_IDLE_TIMER);
+  BT_IDLE_TIMER = setTimeout(() => { BT_IDLE_TIMER = null; try { const d = BT_PRINTER_CACHE.device; if (d && d.gatt && d.gatt.connected) d.gatt.disconnect(); } catch (e) {} BT_PRINTER_CACHE.ch = null; }, 45000);
+}
+
 async function printCanvasViaBluetooth(canvas, onProgress) {
+  if (printerLink() === 'serial') return printBytesViaSerial(buildEscPosRaster(canvas), onProgress); // ⚡ v169
   if (!navigator.bluetooth) throw new Error('เบราว์เซอร์นี้ไม่รองรับ Bluetooth — ใช้ Chrome');
+  if (BT_IDLE_TIMER) { clearTimeout(BT_IDLE_TIMER); BT_IDLE_TIMER = null; }
   if (onProgress) onProgress('เชื่อมต่อเครื่องพิมพ์...');
   const ch = await getBtPrinterChar();
   const all = buildEscPosRaster(canvas);
@@ -6053,6 +6108,7 @@ async function printCanvasViaBluetooth(canvas, onProgress) {
     if (!canSync && k % 16 === 15) await new Promise(r => setTimeout(r, 60)); // ไม่มีจุดรอ → พักเป็นช่วงแทน
   }
   if (onProgress) onProgress('');
+  scheduleBtRelease(); // v169
 }
 
 // แปลง canvas → คำสั่ง ESC/POS (ขาวดำสนิท) — v168: แถวขาวล้วนส่งเป็น 'เลื่อนกระดาษ' (ESC J) แทนภาพ ข้อมูลน้อยลง ~1/3
@@ -6130,6 +6186,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
   const [showJobTicket, setShowJobTicket] = useState(false);
   const [ticketPreview, setTicketPreview] = useState(''); // ภาพจริงที่จะพิมพ์ (ใช้แสดงพรีวิว)
   const [btStatus, setBtStatus] = useState(''); // สถานะพิมพ์ตรง Bluetooth
+  const [linkTick, setLinkTick] = useState(0); // ⚡ v169 เปลี่ยนวิธีต่อเครื่องพิมพ์
   const breakdown = calculateBreakdown(order, config);
   const total = breakdown.total;
 
@@ -6311,7 +6368,8 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
     } catch (e) {
       setBtStatus('');
       if (e && e.name === 'NotFoundError') {
-        // ผู้ใช้กดยกเลิกหน้าต่างเลือกเครื่อง — ไม่ต้องแจ้ง
+        // ผู้ใช้กดยกเลิกหน้าต่างเลือกเครื่อง — แบบเร็วอาจเพราะยังไม่ได้จับคู่ในมือถือ
+        if (printerLink() === 'serial') alert('⚡ แบบเร็ว: ไม่ได้เลือกเครื่องพิมพ์\n\nถ้าในรายการไม่มีชื่อเครื่องพิมพ์ → ไปที่ ตั้งค่า → Bluetooth ของมือถือ → จับคู่เครื่องพิมพ์ก่อน (รหัสมักเป็น 0000 หรือ 1234) แล้วกดพิมพ์ใหม่\n\nหรือเลือก "Bluetooth เดิม" ใต้ปุ่มพิมพ์');
       } else {
         alert('พิมพ์ไม่สำเร็จ: ' + (e.message || e));
       }
@@ -6743,6 +6801,17 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
                 </button>
               )}
               {btStatus && <p className="text-center text-xs font-bold text-teal-600 mb-2">{btStatus}</p>}
+              {canPrintDirect && serialPrintSupported() && (() => { const link = printerLink(); return (
+                <div className="mb-2" data-link={linkTick}>
+                  <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100">
+                    {[['ble', 'Bluetooth เดิม'], ['serial', '⚡ แบบเร็ว']].map(([k, l]) => (
+                      <button key={k} onClick={() => { if (k === printerLink()) return; setPrinterLink(k); closeSerialPrinter(); setLinkTick(x => x + 1); }}
+                        className={`py-2 rounded-lg text-xs font-extrabold transition ${link === k ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>{l}</button>
+                    ))}
+                  </div>
+                  {link === 'serial' && <p className="text-[11px] text-slate-500 mt-1.5 leading-snug">⚡ แบบเร็ว: จับคู่เครื่องพิมพ์ใน <b>ตั้งค่า → Bluetooth</b> ของมือถือก่อน 1 ครั้ง · กดพิมพ์ครั้งแรกเลือกชื่อเครื่องพิมพ์ ครั้งต่อไปพิมพ์เลย</p>}
+                </div>
+              ); })()}
               {!canPrintDirect && <p className="text-center text-[11px] text-slate-500 mb-2">หน้าแชร์เด้งแล้วเลือก <b>Thermer</b> เพื่อพิมพ์ · หรือเลือก LINE เพื่อส่งต่อ</p>}
               <div className="grid grid-cols-3 gap-2">
                 <button onClick={() => setShowJobTicket(false)} disabled={saving} className="py-2.5 rounded-xl font-bold bg-slate-100 text-slate-600 text-sm active:scale-95 transition disabled:opacity-50">ปิด</button>
