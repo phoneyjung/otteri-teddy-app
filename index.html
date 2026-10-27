@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v150-2026-10-27';
+  window.APP_VERSION = 'v151-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2114,6 +2114,14 @@ const MM_DICT = {
   'เจ้าของ: บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)': 'ပိုင်ရှင်: စတင်ပြီးဟု မှတ်တမ်းတင် (တကယ် မပို့)',
   // 🔧 งานภายใน (v150)
   'เครื่องนี้ไม่ได้อยู่ในใบงานภายใน': 'ဤစက်သည် ဆိုင်တွင်းအလုပ်စာရွက်တွင် မပါ',
+  // 📊 5 ก้อน / ส่วนลดเฉพาะเครื่องซัก (v151)
+  'ส่วนลด (เฉพาะเครื่องซัก)': 'လျှော့စျေး (လျှော်စက်သာ)',
+  'โอน ยิงแอป': 'လွှဲငွေ အက်ပ်မှ ပို့',
+  'ส่วนลด ยิงจากแอป': 'လျှော့စျေး အက်ပ်မှ ပို့',
+  'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)': 'ကူပွန်လျှော့စျေး — အက်ပ်မှ ပို့နိုင် (လျှော်စက်သာ)',
+  'ส่วนลดคูปอง': 'ကူပွန်လျှော့စျေး',
+  'ส่วนลด → ยิงแอป (ซัก)': 'လျှော့စျေး → အက်ပ်မှ ပို့ (လျှော်)',
+  'งานซ่อม/ทดสอบ — เจ้าของเป็นคนเริ่มเครื่อง': 'ပြုပြင်/စမ်းသပ်အလုပ် — ပိုင်ရှင်က စက်စတင်ရမည်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -4721,8 +4729,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       const dryQty = (dryItems || []).reduce((a, i) => a + (i.qty || 0), 0);
       const topUp = (dryItems || []).reduce((a, i) => a + (i.topUp || 0), 0);
       if (washQty > selW) internalMaidIssues.push(`ล้างเครื่อง: ซักได้ไม่เกินจำนวนเครื่องซักที่เลือก (${selW})`);
-      if (dryQty > selD) internalMaidIssues.push(`ล้างเครื่อง: อบได้ไม่เกินจำนวนเครื่องอบที่เลือก (${selD})`);
-      if (topUp > 0) internalMaidIssues.push('ล้างเครื่อง: ไม่ต้องเพิ่มเวลาอบ');
+      if (selD > 0 || dryQty > 0 || topUp > 0) internalMaidIssues.push('ล้างเครื่อง (แม่บ้าน): เฉพาะเครื่องซัก — เอาเครื่องอบ/รายการอบออก');
     }
   }
   const canSubmit = isInternal
@@ -5028,15 +5035,16 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                 );
               })}
             </div>
-            {!isOwner && <p className="text-[11px] font-bold text-slate-700 -mt-2 mb-3">🧼 แม่บ้านล้างเครื่องได้เครื่องละ 1 ครั้งต่อ {CLEAN_EVERY_DAYS} วัน · 🔒 ซ่อม/ทดสอบ และอื่นๆ ให้เจ้าของทำ</p>}
+            {!isOwner && <p className="text-[11px] font-bold text-slate-700 -mt-2 mb-3">🧼 แม่บ้านล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ {CLEAN_EVERY_DAYS} วัน · 🔒 ซ่อม/ทดสอบ และอื่นๆ ให้เจ้าของทำ</p>}
             <p className="text-xs font-bold text-slate-700 mb-1.5">เครื่องที่ทำ <span className="text-rose-600">*บังคับ</span> (เลือกได้หลายเครื่อง)</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
                 const on = internalMachines.includes(m.label);
-                const lock = internalType === 'clean' ? cleanLocks[m.label] : null;
-                const until = lock ? new Date(lock.until).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '';
+                const dryNo = internalType === 'clean' && !isOwner && /^d/i.test(m.id); // v151: แม่บ้านล้างเฉพาะเครื่องซัก
+                const lock = internalType === 'clean' ? (cleanLocks[m.label] || (dryNo ? { at: 0, until: 0, dry: true } : null)) : null;
+                const until = lock && !lock.dry ? new Date(lock.until).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '';
                 return (
-                  <button key={m.id} onClick={() => { if (lock && !on) { alert(`🧼 ${m.label} ล้างไปแล้วเมื่อ ${new Date(lock.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}\nล้างได้อีกครั้ง ${until}`); return; } setInternalMachines(on ? internalMachines.filter(x => x !== m.label) : [...internalMachines, m.label]); }}
+                  <button key={m.id} onClick={() => { if (lock && lock.dry && !on) { alert('🧼 แม่บ้านล้างได้เฉพาะเครื่องซัก'); return; } if (lock && !on) { alert(`🧼 ${m.label} ล้างไปแล้วเมื่อ ${new Date(lock.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}\nล้างได้อีกครั้ง ${until}`); return; } setInternalMachines(on ? internalMachines.filter(x => x !== m.label) : [...internalMachines, m.label]); }}
                     className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 ${on ? (lock ? 'bg-rose-600 text-white border-rose-600' : 'bg-slate-900 text-white border-slate-900') : lock ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
                     {m.label}{lock ? ` 🔒${until}` : ''}
                   </button>
@@ -6225,10 +6233,11 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
                       <div style={{ fontSize: '24px', fontWeight: 900 }}>สแกนเริ่มเครื่อง</div>
                       <div style={{ fontSize: '19px', fontWeight: 600 }}>แม่บ้านสแกนด้วยมือถือ</div>
                       <div style={{ fontSize: '19px', fontWeight: 600 }}>→ เลือกเครื่อง → เริ่ม</div>
-                      {(() => { const pp = orderPayParts(order, config); return pp.coinNeed > 0 ? (
+                      {(() => { const pp = orderPayParts(order, config); return (pp.coinNeed > 0 || pp.discountOn > 0) ? (
                         <>
-                          <div style={{ fontSize: '19px', fontWeight: 800, marginTop: '4px' }}>สด: หยอดเหรียญเอง ฿{pp.coinNeed}</div>
-                          {pp.pulseNeed > 0 && <div style={{ fontSize: '19px', fontWeight: 800 }}>โอน: ยิงจากแอป ฿{pp.pulseNeed}</div>}
+                          {pp.discountOn > 0 && <div style={{ fontSize: '19px', fontWeight: 800, marginTop: '4px' }}>ส่วนลด: ยิงแอปที่เครื่องซัก ฿{pp.discountOn}</div>}
+                          {pp.coinNeed > 0 && <div style={{ fontSize: '19px', fontWeight: 800 }}>สด: หยอดเหรียญเอง ฿{pp.coinNeed}</div>}
+                          {pp.transferOn > 0 && <div style={{ fontSize: '19px', fontWeight: 800 }}>โอน: ยิงจากแอป ฿{pp.transferOn}</div>}
                         </>
                       ) : null; })()}
                       <div style={{ fontSize: '21px', fontWeight: 800, marginTop: '4px' }}>คิว {queueNo}</div>
@@ -8375,34 +8384,79 @@ function orderCashPart(order, config) {
   if (order.paymentMethod === 'split') return order.cashAmount || 0;
   return 0;
 }
-function orderPayParts(order, config) {
-  const machine = creditForOrder(order, config);
-  const cash = orderCashPart(order, config);
-  const coinNeed = Math.floor(Math.max(0, Math.min(cash, machine)) / PULSE_BAHT) * PULSE_BAHT;
-  return { machine, cash, coinNeed, pulseNeed: machine - coinNeed };
+function orderTransferPart(order, config) {
+  if (!order) return 0;
+  if (order.paymentMethod === 'transfer') return calculateTotal(order, config);
+  if (order.paymentMethod === 'split') return order.transferAmount || 0;
+  return 0;
 }
-// สถานะเงินของใบงาน: หยอดเหรียญไปแล้ว/เหลือ · ยิงพัลส์ได้อีกเท่าไหร่ (เหรียญที่เจ้าของคืนเครดิต → เปิดให้ยิงพัลส์แทน)
+// ค่าเครื่องของใบงาน (v151): ส่วนลด (ลดจากค่าซัก) → ยิงแอปได้เฉพาะเครื่องซัก · ที่เหลือ: เงินสด = หยอดเหรียญ ก่อน → โอน = ยิงแอป
+// ค่าน้ำยา/ค่าส่ง/ค่าพับ ไม่ใช่ค่าเครื่อง → แยกออก (nonMachineCash / nonMachineTransfer)
+function orderPayParts(order, config) {
+  const b = calculateBreakdown(order, config);
+  const washB = b.washSubtotal || 0;
+  const machine = washB + (b.drySubtotal || 0) + (b.dryTopUpTotal || 0);
+  const internal = isInternalOrder(order);
+  const discountOn = internal ? 0 : Math.min(washB, b.totalDiscount || 0);
+  const machinePaid = machine - discountOn;
+  const cash = orderCashPart(order, config);
+  const coinNeed = Math.floor(Math.max(0, Math.min(cash, machinePaid)) / PULSE_BAHT) * PULSE_BAHT;
+  const transferOn = machinePaid - coinNeed;
+  return {
+    machine, cash, coinNeed, pulseNeed: machine - coinNeed, transferOn, discountOn,
+    nonMachineCash: internal ? 0 : Math.max(0, cash - coinNeed),
+    nonMachineTransfer: internal ? 0 : Math.max(0, orderTransferPart(order, config) - transferOn),
+  };
+}
+// สถานะเงินของใบงาน (v151): พัลส์ที่เครื่องซักนับเป็นส่วนลดก่อน (ไม่เกินส่วนลด) · ที่เหลือ + พัลส์เครื่องอบ = ส่วนโอน
+// เหรียญที่เจ้าของคืนเครดิต → เปิดให้ยิงพัลส์แทนได้เท่านั้น
 function payStateOf(order, config, logs) {
   const p = orderPayParts(order, config);
   const mine = (logs || []).filter(l => l.refId === order.id);
   const sum = (list) => list.reduce((a, l) => a + (l.baht || 0), 0);
+  const isWashLog = (l) => (l.kind === 'wash' || l.kind === 'dry' ? l.kind === 'wash' : /^w/i.test(l.machine || ''));
   const coinUsed = sum(mine.filter(l => pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l))));
   const coinRefunded = sum(mine.filter(l => pulseIsCoin(l) && pulseRefunded(l)));
-  const pulseLiveBaht = sum(mine.filter(l => !pulseIsCoin(l) && !pulseIsManual(l) && pulseLive(l)));
+  const pulseLogs = mine.filter(l => !pulseIsCoin(l) && !pulseIsManual(l) && pulseLive(l));
+  const washPulses = sum(pulseLogs.filter(isWashLog));
+  const otherPulses = sum(pulseLogs.filter(l => !isWashLog(l)));
   const manual = sum(mine.filter(l => pulseIsManual(l) && pulseLive(l))); // ✍️ เจ้าของบันทึก ไม่นับเป็นยิงเครดิต
-  const pulseAllowed = p.pulseNeed + coinRefunded;
+  const discountUsed = Math.min(washPulses, p.discountOn);
+  const transferUsed = washPulses - discountUsed + otherPulses;
+  const transferAllowed = p.transferOn + coinRefunded;
+  const discLeft = Math.max(0, p.discountOn - discountUsed);
+  const transferLeft = Math.max(0, transferAllowed - transferUsed);
   return {
-    ...p, coinUsed, coinRefunded, pulseLive: pulseLiveBaht, pulseAllowed, manual,
-    coinLeft: Math.max(0, p.coinNeed - coinUsed), pulseLeft: Math.max(0, pulseAllowed - pulseLiveBaht),
+    ...p, coinUsed, coinRefunded, manual,
+    pulseLive: washPulses + otherPulses, discountUsed, transferUsed, transferAllowed,
+    pulseAllowed: p.discountOn + transferAllowed,
+    coinLeft: Math.max(0, p.coinNeed - coinUsed), discLeft, transferLeft, pulseLeft: discLeft + transferLeft,
+    pulseExcess: Math.max(0, transferUsed - transferAllowed),
   };
 }
-// เปิดเครื่อง 1 ครั้ง: ส่วนหยอดเหรียญ / ส่วนยิงพัลส์ (เงินสดก่อน · ลูกค้าเงินสดเพิ่มเวลาเกินใบงาน = หยอดเหรียญ)
-function splitCoinPulse(pay, baht) {
-  if (!pay || !(baht > 0)) return { coin: 0, pulse: baht || 0 };
-  let coin = Math.min(baht, pay.coinLeft);
-  const over = Math.max(0, baht - coin - pay.pulseLeft);
+// เปิดเครื่อง 1 ครั้ง (v151): เครื่องซักใช้ส่วนลดก่อน → เงินสด (หยอดเหรียญ) → โอน (ยิงแอป)
+// ลูกค้าเงินสดเพิ่มเวลาเกินใบงาน = หยอดเหรียญ
+function splitCoinPulse(pay, baht, kind) {
+  if (!pay || !(baht > 0)) return { coin: 0, pulse: baht || 0, disc: 0 };
+  const disc = kind === 'wash' ? Math.min(baht, pay.discLeft || 0) : 0;
+  const rest = baht - disc;
+  let coin = Math.min(rest, pay.coinLeft || 0);
+  const over = Math.max(0, rest - coin - (pay.transferLeft || 0));
   if (over > 0 && pay.cash > 0) coin += over;
-  return { coin, pulse: baht - coin };
+  return { coin, pulse: baht - coin, disc };
+}
+// บรรทัดสรุปเงินที่ยังต้องเปิดเครื่อง: 💵 หยอดเหรียญ · 🎟️ ส่วนลด (เฉพาะเครื่องซัก) · ⚡ โอน ยิงแอป
+function PayLeftLine({ config, pay, small }) {
+  if (!pay || !(pay.coinLeft > 0 || pay.discLeft > 0 || (pay.transferLeft > 0 && (pay.coinNeed > 0 || pay.discountOn > 0)))) return null;
+  const parts = [];
+  if (pay.coinLeft > 0) parts.push(<span key="c" className="text-emerald-700">💵 {tr(config, 'เงินสด หยอดเหรียญ')} ฿{pay.coinLeft}</span>);
+  if (pay.discLeft > 0) parts.push(<span key="d" className="text-amber-700">🎟️ {tr(config, 'ส่วนลด (เฉพาะเครื่องซัก)')} ฿{pay.discLeft}</span>);
+  if (pay.transferLeft > 0) parts.push(<span key="t" className="text-sky-700">⚡ {tr(config, 'โอน ยิงแอป')} ฿{pay.transferLeft}</span>);
+  return (
+    <p className={small ? 'text-[11px] font-bold pl-7' : 'text-sm font-extrabold mt-1'}>
+      {parts.map((p, i) => <React.Fragment key={i}>{i > 0 && <span className="text-slate-400"> · </span>}{p}</React.Fragment>)}
+    </p>
+  );
 }
 const cashInMachineOf = (o, config) => Math.min(o.cashInMachine || 0, orderCashPart(o, config));
 const cashHeldOf = (o, config) => Math.max(0, orderCashPart(o, config) - cashInMachineOf(o, config));
@@ -8534,7 +8588,7 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
       .forEach(mm => add(`m:${o.id}:${mm.logId}`, 'error', 'เครื่องไม่ตรงใบงาน', { label: `${label} · ${mm.text}`, refId: o.id }));
     if (fired < need) add(`o:${o.id}:${need - fired}`, 'error', fired === 0 ? 'ยังไม่ได้เริ่มเครื่อง' : 'เริ่มเครื่องไม่ครบ', { label, amount: need - fired, refId: o.id, pending: fresh });
     // ยิงพัลส์เกินส่วนที่ยิงได้ (ใบงานเงินสด = ใช้เครดิตแทนเงินสด · ใบงานโอน = ยิงเกินงาน) · หยอดเหรียญเกินใบงานไม่ใช่ error
-    const pulseExcess = pay.pulseLive - pay.pulseAllowed;
+    const pulseExcess = pay.pulseExcess; // v151: ส่วนลดใช้ได้เฉพาะเครื่องซัก
     if (pulseExcess > 0) add(`o:${o.id}:+${pulseExcess}`, 'error', pay.cash > 0 ? 'ยิงเครดิตแทนเงินสด' : 'ยิงเกินงาน', { label, amount: pulseExcess, refId: o.id });
   });
   (ledger || []).filter(e => e.type === 'promo' && e.pulseLogId && inDay(e.createdAt || 0)).forEach(e => {
@@ -8877,7 +8931,7 @@ function MachineWall({ config, stacks, marks, selected, onPick, problems }) {
 }
 
 // ---------- ยิงพัลส์ให้ใบงาน (ใช้ร่วมกันทั้งในใบงานและปุ่มหน้าแรก) ----------
-async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht, warn, coinBaht }, retryLog, logs) {
+async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht, warn, coinBaht, discBaht }, retryLog, logs) {
   const maxShot = (config.pulse && config.pulse.maxPerShot) || 12;
   if (!(baht > 0)) return null;
   const coin = Math.max(0, Math.min(baht, coinBaht || 0)); // 💵 ส่วนเงินสด = แม่บ้านหยอดเหรียญเอง (v147)
@@ -8892,7 +8946,7 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
     : `⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}`;
   const payTxt = coin > 0
     ? `💵 ${tr(config, 'หยอดเหรียญเอง')} ฿${coin}${pulseBaht > 0 ? `\n⚡ ${tr(config, 'ยิงจากแอป')} ${pulses} ${tr(config, 'พัลส์')} (฿${pulseBaht})` : ''}\n\n👉 ${tr(config, 'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดตกลง')}`
-    : `🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})`;
+    : `🔢 ${pulses} ${tr(config, 'พัลส์')} (฿${baht})${discBaht > 0 ? `\n🎟️ ${tr(config, 'ส่วนลดคูปอง')} ฿${discBaht}` : ''}`;
   if (!confirm(`${head}\n\n📋 ${pulseRefLabel(order, config)}\n🧺 ${mLabel} (${kg}kg)\n${detail}\n${payTxt}${warn ? `\n\n⚠️ ${warn}` : ''}\n\n${tr(config, 'เช็กว่าใส่ผ้าและปิดฝาเครื่องแล้ว')}`)) return null;
   const coinLog = coin > 0 ? logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, baht: coin, dryMin, warn }) : null;
   if (coinLog) watchCoinLog(config, coinLog); // 💵 v148: เช็กกับ EC ว่าเครื่องนับเหรียญแล้ว
@@ -8901,7 +8955,7 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
   const res = await firePulse(config, {
     machine, pulses, refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null,
     refLabel: pulseRefLabel(order, config), retryOf: retryLog ? retryLog.id : null,
-    meta: { kind, kg, temp: temp || null, heat: heat || null, dryMin: dryMin || null, mismatch: warn || null },
+    meta: { kind, kg, temp: temp || null, heat: heat || null, dryMin: dryMin || null, mismatch: warn || null, discBaht: discBaht || null },
   });
   return { ...res, coinBaht: coin };
 }
@@ -9000,7 +9054,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   const baht = selM ? (selM.kind === 'wash' ? washBaht : amount) : 0;
   // 💵 ลูกค้าจ่ายเงินสด → หยอดเหรียญเอง · ส่วนโอน → ยิงจากแอป (v147)
   const pay = job ? payStateOf(job.order, config, job.logs || jobLogs || []) : null;
-  const cp = splitCoinPulse(pay, baht);
+  const cp = splitCoinPulse(pay, baht, selM ? selM.kind : null);
   const dryBaseOpen = selM && selM.kind === 'dry' && openSlots.some(x => x.kind === 'dry' && x.kg === selM.kg);
   const minDry = selM && selM.kind === 'dry' ? (dryBaseOpen ? dryPriceFor(config, selM.kg) : PULSE_BAHT) : 0;
 
@@ -9029,6 +9083,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
     }
   }
   // 🔧 งานภายใน (v150): แม่บ้านเปิดได้เฉพาะเครื่องที่ระบุในใบงาน · เจ้าของเปิดได้ (มีเตือน)
+  if (selM && job && INTERNAL_OWNER_ONLY.includes(job.order.internalType) && !owner && !block) block = tr(config, 'งานซ่อม/ทดสอบ — เจ้าของเป็นคนเริ่มเครื่อง'); // v151
   if (selM && job && isInternalOrder(job.order) && !block) {
     const ids = (job.order.internalMachines || []).map(lb => (ms.find(m => m.label === lb) || {}).id).filter(Boolean);
     if (ids.length && !ids.includes(selM.id)) {
@@ -9072,13 +9127,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               {openSlots.length ? `${tr(config, 'ยังต้องเปิดตามใบงาน')}:` : `✅ ${tr(config, 'เริ่มเครื่องครบแล้ว')}`}
             </p>
             {openSlots.length > 0 && <p className="text-sm font-bold text-slate-800 leading-snug">{openSlots.map(s => s.kind === 'topup' ? `⏱️ ${tr(config, 'อบเพิ่มเวลา')} ${s.kg}kg ฿${slotOpenLeft(s)}` : `${pulseSlotLabel(config, s)} ฿${slotOpenLeft(s)}`).join(' · ')}</p>}
-            {openSlots.length > 0 && pay && pay.coinNeed > 0 && (
-              <p className="text-sm font-extrabold mt-1">
-                {pay.coinLeft > 0 && <span className="text-emerald-700">💵 {tr(config, 'เงินสด หยอดเหรียญ')} ฿{pay.coinLeft}</span>}
-                {pay.coinLeft > 0 && pay.pulseLeft > 0 && <span className="text-slate-400"> · </span>}
-                {pay.pulseLeft > 0 && <span className="text-sky-700">⚡ {tr(config, 'ยิงจากแอป')} ฿{pay.pulseLeft}</span>}
-              </p>
-            )}
+            {openSlots.length > 0 && <PayLeftLine config={config} pay={pay} />}
           </div>
         ) : (
           <div className={`rounded-2xl px-3 py-2 border ${jobs.length ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
@@ -9136,7 +9185,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
                             <span className="text-[11px] text-slate-500">{fmTime(j.order.createdAt || 0)}</span>
                           </div>
                           <p className="text-xs font-bold text-slate-600 mt-0.5 pl-7">{jobOpenText(config, j.alloc)}</p>
-                          {(() => { const pj = payStateOf(j.order, config, j.logs); return pj.coinLeft > 0 ? <p className="text-[11px] font-bold text-emerald-700 pl-7">💵 {tr(config, 'เงินสด หยอดเหรียญ')} ฿{pj.coinLeft}</p> : null; })()}
+                          <PayLeftLine config={config} pay={payStateOf(j.order, config, j.logs)} small />
                           {!fit && <p className="text-[11px] font-bold text-amber-700 pl-7">⚠️ {tr(config, 'ขนาดเครื่องไม่ตรงใบงาน')}</p>}
                         </button>
                       );
@@ -9146,13 +9195,17 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               </div>
             )}
 
-            {(fixed || job) && !block && pay && (pay.coinLeft > 0 || cp.coin > 0) && (
+            {(fixed || job) && !block && pay && cp.coin > 0 && (
               <div className="rounded-xl px-3 py-3 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
                 <p className="text-base font-extrabold text-amber-900">💵 {tr(config, 'ใบงานเงินสด — แอปไม่สั่งเครื่องให้')}</p>
-                <p className="text-sm font-extrabold text-amber-900 mt-0.5">👉 {tr(config, 'ไปหยอดเหรียญที่เครื่องเอง')} {selM.label}{cp.coin > 0 ? ` ฿${cp.coin}` : ''}</p>
-                {cp.pulse > 0 && <p className="text-sm font-bold text-sky-800">⚡ {tr(config, 'ส่วนโอน ยิงจากแอป')} ฿{cp.pulse}</p>}
+                <p className="text-sm font-extrabold text-amber-900 mt-0.5">👉 {tr(config, 'ไปหยอดเหรียญที่เครื่องเอง')} {selM.label} ฿{cp.coin}</p>
+                {cp.disc > 0 && <p className="text-sm font-bold text-amber-700">🎟️ {tr(config, 'ส่วนลด ยิงจากแอป')} ฿{cp.disc}</p>}
+                {cp.pulse - cp.disc > 0 && <p className="text-sm font-bold text-sky-800">⚡ {tr(config, 'ส่วนโอน ยิงจากแอป')} ฿{cp.pulse - cp.disc}</p>}
                 <p className="text-[11px] font-bold text-amber-800 mt-1">{tr(config, 'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วค่อยกดบันทึก')}</p>
               </div>
+            )}
+            {(fixed || job) && !block && pay && cp.disc > 0 && cp.coin === 0 && (
+              <p className="text-sm font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">🎟️ {tr(config, 'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)')} ฿{cp.disc}</p>
             )}
             {block && <p className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">🚫 {block}</p>}
             {block && firedHere && <p className="text-xs font-bold text-slate-600 px-1">💡 {tr(config, 'เครื่องมีปัญหา? กด ⚠️ ที่รายการด้านล่าง ให้เจ้าของคืนเครดิต')}</p>}
@@ -9215,7 +9268,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
             </button>
           )}
           <button disabled={!ready || !!busyText}
-            onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin }, () => setSel(null))}
+            onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin, discBaht: cp.disc }, () => setSel(null))}
             className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: cp.coin > 0 && cp.pulse === 0 && !block ? '#D97706' : config.gradient }}>
             {busyText ? `⏳ ${busyText}` : block ? `🚫 ${tr(config, 'ยิงไม่ได้')}` : !ready
               ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกความร้อนก่อน'))
@@ -9336,11 +9389,14 @@ function PulseStarterCard({ config, order, isOwner }) {
       <div className="h-1.5 rounded-full bg-slate-200 mt-2 overflow-hidden">
         <div className={`h-full ${allDone ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, need ? (fired / need) * 100 : 0)}%` }}></div>
       </div>
-      {pay.coinNeed > 0 && (
+      {(pay.coinNeed > 0 || pay.discountOn > 0) && (
         <p className="text-xs font-bold mt-1.5">
-          <span className="text-emerald-700">💵 {tr(config, 'เงินสด → หยอดเหรียญ')} ฿{pay.coinUsed}/{pay.coinNeed}</span>
-          {pay.pulseNeed > 0 && <span className="text-sky-700"> · ⚡ {tr(config, 'โอน → ยิงแอป')} ฿{pay.pulseLive}/{pay.pulseNeed}</span>}
-          {pay.manual > 0 && <span className="text-violet-700"> · ✍️ ฿{pay.manual}</span>}
+          {[
+            pay.coinNeed > 0 && <span key="c" className="text-emerald-700">💵 {tr(config, 'เงินสด → หยอดเหรียญ')} ฿{pay.coinUsed}/{pay.coinNeed}</span>,
+            pay.discountOn > 0 && <span key="d" className="text-amber-700">🎟️ {tr(config, 'ส่วนลด → ยิงแอป (ซัก)')} ฿{pay.discountUsed}/{pay.discountOn}</span>,
+            pay.transferOn > 0 && <span key="t" className="text-sky-700">⚡ {tr(config, 'โอน → ยิงแอป')} ฿{Math.min(pay.transferUsed, pay.transferOn)}/{pay.transferOn}</span>,
+            pay.manual > 0 && <span key="m" className="text-violet-700">✍️ ฿{pay.manual}</span>,
+          ].filter(Boolean).map((x, i) => <React.Fragment key={i}>{i > 0 && ' · '}{x}</React.Fragment>)}
         </p>
       )}
 
@@ -9814,6 +9870,125 @@ function JobFiredList({ config, logs, isOwner, order }) {
   );
 }
 
+// 📊 สรุป 5 ก้อน (v151): ค่าเครื่องที่เปิด แยกตามที่มาของเงิน — นับตามวันที่รับใบงาน (โปรซักเอง/คืนเครดิต นับตามวันที่ยิง)
+function pulseBucketsFor(config, orders, logs, from, to) {
+  const sinceMs = pulseSinceOf(config);
+  const B = { cash: 0, cashN: 0, transfer: 0, manual: 0, discount: 0, discountN: 0, promo: 0, clean: 0, cleanN: 0, repair: 0, repairN: 0, redo: 0, redoN: 0,
+    over: 0, refund: 0, refundN: 0, refire: 0, pending: 0, pendingN: 0, extraCash: 0, extraTransfer: 0 };
+  const mine = (logs || []).filter(l => l.brand === config.brand);
+  const sum = (list) => list.reduce((a, l) => a + (l.baht || 0), 0);
+  const inRange = (t) => t >= from && t < to;
+  (orders || []).filter(o => inRange(o.createdAt || 0) && (o.createdAt || 0) >= sinceMs && creditForOrder(o, config) > 0).forEach(o => {
+    const ol = mine.filter(l => l.refId === o.id);
+    const pulses = sum(ol.filter(l => pulseLive(l) && !pulseIsCoin(l) && !pulseIsManual(l)));
+    const manual = sum(ol.filter(l => pulseLive(l) && pulseIsManual(l)));
+    const coinsLive = sum(ol.filter(l => pulseLive(l) && pulseIsCoin(l)));
+    const left = Math.max(0, creditForOrder(o, config) - pulses - manual - coinsLive);
+    if (left > 0) { B.pending += left; B.pendingN++; }
+    if (isInternalOrder(o)) {
+      const used = pulses + manual;
+      if (o.internalType === 'clean') { B.clean += used; if (used > 0) B.cleanN++; }
+      else if (o.internalType === 'redo') { B.redo += used; if (used > 0) B.redoN++; }
+      else { B.repair += used; if (used > 0) B.repairN++; }
+      return;
+    }
+    const pay = payStateOf(o, config, ol);
+    B.cash += pay.coinUsed; if (pay.coinUsed > 0) B.cashN++;
+    B.discount += pay.discountUsed; if (pay.discountUsed > 0) B.discountN++;
+    const t = Math.min(pay.transferUsed, pay.transferOn);
+    B.transfer += t + manual; B.manual += manual;
+    B.refire += Math.min(Math.max(0, pay.transferUsed - pay.transferOn), pay.coinRefunded);
+    B.over += pay.pulseExcess;
+    B.extraCash += pay.nonMachineCash; B.extraTransfer += pay.nonMachineTransfer;
+  });
+  mine.filter(l => l.refType === 'promo' && pulseLive(l) && !pulseIsCoin(l) && inRange(l.createdAt || 0)).forEach(l => { B.discount += l.baht || 0; B.promo += l.baht || 0; });
+  mine.filter(l => pulseRefunded(l) && inRange(l.createdAt || 0)).forEach(l => { B.refund += l.baht || 0; B.refundN++; });
+  B.total = B.cash + B.transfer + B.discount + B.clean + B.repair + B.redo + B.refire + B.over;
+  return B;
+}
+
+function PulseBucketsCard({ config, orders }) {
+  const [mode, setMode] = useState('day');
+  const [anchor, setAnchor] = useState(() => dateKeyOf(new Date()));
+  const [logs, setLogs] = useState([]);
+  const range = useMemo(() => {
+    const d = new Date(anchor + 'T00:00:00');
+    const a = mode === 'day' ? d : new Date(d.getFullYear(), d.getMonth(), 1);
+    const b = mode === 'day' ? new Date(d.getTime() + 86400000) : new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    return { from: a.getTime(), to: b.getTime(), fromKey: dateKeyOf(a), toKey: dateKeyOf(new Date(b.getTime() + 3 * 86400000)) };
+  }, [mode, anchor]);
+  useEffect(() => {
+    if (!window.db) return;
+    const u = window.db.collection('pulseLogs').where('dateKey', '>=', range.fromKey).where('dateKey', '<=', range.toKey).onSnapshot(
+      sn => setLogs(sn.docs.map(x => ({ id: x.id, ...x.data() }))), e => console.error('buckets logs error:', e));
+    return () => { if (u) u(); };
+  }, [range.fromKey, range.toKey]);
+  const B = useMemo(() => pulseBucketsFor(config, orders, logs, range.from, range.to), [config, orders, logs, range]);
+  const todayKey = dateKeyOf(new Date());
+  const shift = (dir) => {
+    const d = new Date(anchor + 'T12:00:00');
+    if (mode === 'day') d.setDate(d.getDate() + dir); else d.setMonth(d.getMonth() + dir, 1);
+    const k = dateKeyOf(d);
+    if (k <= todayKey) setAnchor(k);
+  };
+  const dd = new Date(anchor + 'T12:00:00');
+  const label = mode === 'day' ? dd.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' }) : dd.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  const fm = (v) => '฿' + formatMoney(v);
+  const rows = [
+    ['💵', 'เงินสด', 'แม่บ้านหยอดเหรียญ', B.cash, B.cashN ? `${B.cashN} ใบ` : '', '#047857'],
+    ['💳', 'โอน', 'ยิงจากแอป', B.transfer, B.manual ? `รวมเจ้าของบันทึก ${fm(B.manual)}` : '', '#6D28D9'],
+    ['🎟️', 'ส่วนลด/คูปอง', 'ยิงแอป เฉพาะเครื่องซัก', B.discount, [B.discountN ? `${B.discountN} ใบ` : '', B.promo ? `รวมโปรซักเอง ${fm(B.promo)}` : ''].filter(Boolean).join(' · '), '#B45309'],
+    ['🧼', 'ล้างเครื่อง', 'แม่บ้าน เฉพาะเครื่องซัก', B.clean, B.cleanN ? `${B.cleanN} ใบ` : '', '#0369A1'],
+    ['🔧', 'ซ่อม/ทดสอบ', 'เจ้าของ', B.repair, B.repairN ? `${B.repairN} ใบ` : '', '#475569'],
+  ];
+  return (
+    <div className="bg-white rounded-2xl p-3 border border-slate-200 mb-3">
+      <div className="flex items-center gap-2 mb-2">
+        <p className="font-extrabold text-slate-900 flex-1">📊 ค่าเครื่องที่เปิด 5 ก้อน</p>
+        {['day', 'month'].map(m => (
+          <button key={m} onClick={() => { setMode(m); setAnchor(todayKey); }}
+            className={`px-3 py-1 rounded-lg text-xs font-bold ${mode === m ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>{m === 'day' ? 'รายวัน' : 'รายเดือน'}</button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 mb-2">
+        <button onClick={() => shift(-1)} className="w-9 h-9 rounded-xl bg-slate-100 font-bold text-slate-700 active:scale-95">◀</button>
+        <p className="flex-1 text-center text-sm font-bold text-slate-800">{label}</p>
+        <button onClick={() => shift(1)} className="w-9 h-9 rounded-xl bg-slate-100 font-bold text-slate-700 active:scale-95">▶</button>
+      </div>
+      <div className="space-y-1.5">
+        {rows.map(([ic, name, sub, v, note, color]) => (
+          <div key={name} className="flex items-center gap-2 rounded-xl px-3 py-2 bg-slate-50">
+            <span className="text-xl">{ic}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold" style={{ color }}>{name} <span className="text-[11px] font-bold text-slate-500">· {sub}</span></p>
+              {note && <p className="text-[11px] text-slate-500">{note}</p>}
+            </div>
+            <p className="text-base font-extrabold text-slate-900">{fm(v)}</p>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between mt-2 px-1">
+        <p className="text-xs font-bold text-slate-500">รวมค่าเครื่องที่เปิด</p>
+        <p className="text-lg font-extrabold text-slate-900">{fm(B.total)}</p>
+      </div>
+      {(B.extraCash > 0 || B.extraTransfer > 0) && (
+        <div className="mt-2 rounded-xl px-3 py-2 bg-sky-50 border border-sky-100">
+          <p className="text-xs font-extrabold text-sky-900">🧴 ค่าน้ำยา/ค่าส่ง/อื่นๆ (ไม่ใช่ค่าเครื่อง — แยกบันทึก)</p>
+          <p className="text-xs font-bold text-slate-700">💵 สด {fm(B.extraCash)} (แม่บ้านถือ รอเก็บ) · 💳 โอน {fm(B.extraTransfer)}</p>
+        </div>
+      )}
+      {(B.redo > 0 || B.refund > 0 || B.refire > 0 || B.over > 0 || B.pending > 0) && (
+        <div className="mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600 space-y-0.5">
+          {B.redo > 0 && <p>🔁 ซักซ้ำให้ลูกค้า {fm(B.redo)} ({B.redoN} ใบ) — รวมในยอดรวมแล้ว</p>}
+          {B.refund > 0 && <p>↩️ คืนเครดิต {fm(B.refund)} ({B.refundN} ครั้ง) — ร้านรับภาระ{B.refire > 0 ? ` · ยิงแทนเหรียญที่คืน ${fm(B.refire)}` : ''}</p>}
+          {B.over > 0 && <p className="text-rose-700 font-bold">⚠️ ยิงเกิน/ยิงแทนเงินสด {fm(B.over)} — ดูรายการในกระทบยอด</p>}
+          {B.pending > 0 && <p className="text-amber-700">⏳ ยังไม่ได้เริ่มเครื่อง {fm(B.pending)} ({B.pendingN} ใบ)</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // กล่องคำขอคืนเครดิต (หน้าเจ้าของ → ⚡ พัลส์)
 function PulseRefundInbox({ config }) {
   const list = usePulseRefundInbox(config, 7);
@@ -10143,6 +10318,7 @@ function OwnerPulseView({ config, orders }) {
   return (
     <div>
       <PulseRefundInbox config={config} />
+      <PulseBucketsCard config={config} orders={orders} />
       <PulseReconPanel config={config} orders={orders} dateKey={d} setDateKey={setD} isOwner={true} autoEc={true} />
     </div>
   );
