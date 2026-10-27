@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v162-2026-10-27';
+  window.APP_VERSION = 'v163-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2204,6 +2204,32 @@ const MM_DICT = {
   // หน้าเจ้าของ (v162)
   'ต้องตรวจ': 'စစ်ဆေးရန်',
   'รอเริ่มเครื่อง (รับไม่ถึง 3 ชม.)': 'စက်စတင်ရန် စောင့် (၃ နာရီ မပြည့်သေး)',
+  // 💵 เงินสดในมือ / หน้าแรก Teddy 2 (v163)
+  'เงินสดในมือ': 'လက်ထဲရှိ ငွေသား',
+  'ต้องมีเงินสดในลิ้นชัก': 'အံဆွဲထဲတွင် ရှိရမည့် ငွေသား',
+  'ลูกค้าจ่ายสดที่ยังไม่หยอดเครื่อง + ค่าน้ำยา/อื่นๆ · เจ้าของยังไม่เก็บ': 'စက်ထဲမထည့်ရသေးသော ငွေသား + ဆပ်ပြာခ/အခြား · ပိုင်ရှင် မကောက်ရသေး',
+  'นับเงินจริงในลิ้นชัก': 'အံဆွဲထဲ ငွေအမှန် ရေတွက်ပါ',
+  'ตรง ✓': 'ကိုက်ညီ ✓',
+  'บันทึกการนับ (เจ้าของเห็นยอดนี้)': 'ရေတွက်မှု သိမ်းရန် (ပိုင်ရှင် မြင်ရမည်)',
+  'นับล่าสุด': 'နောက်ဆုံး ရေတွက်မှု',
+  'นับได้': 'ရေတွက်ရ',
+  'มาจากใบงานไหน': 'ဘယ်အလုပ်စာရွက်မှလဲ',
+  'ใบ': 'စောင်',
+  'ไม่มีเงินสดค้าง — เจ้าของเก็บครบแล้ว': 'ငွေသား မကျန် — ပိုင်ရှင် ကောက်ပြီး',
+  'เข้าเครื่องแล้ว': 'စက်ထဲ ထည့်ပြီး',
+  'แตะเพื่อนับเงิน': 'ငွေရေတွက်ရန် နှိပ်ပါ',
+  'งานภายในร้าน': 'ဆိုင်တွင်းအလုပ်',
+  'ทุก 7 วัน': '၇ ရက်တစ်ခါ',
+  'ไม่ใช่รายได้': 'ဝင်ငွေ မဟုတ်',
+  'นับเงิน': 'ငွေရေတွက်',
+  'ค่าเครื่อง': 'စက်ခ',
+  'ตู้แลกเสีย': 'အကြွေလဲစက် ပျက်',
+  'รอเคลียร์': 'ရှင်းရန်ကျန်',
+  'ใกล้หมด': 'ကုန်ခါနီး',
+  'ลูกค้าใช้โปร': 'ဖောက်သည် ပရိုမိုးရှင်းသုံး',
+  'ซักเอง ไม่ฝาก': 'ကိုယ်တိုင်လျှော် · မအပ်',
+  'สแกนเครดิตให้ลูกค้า': 'ဖောက်သည်အတွက် ခရက်ဒစ် စကင်န်',
+  'เจ้าของเก็บแล้ว': 'ပိုင်ရှင် ကောက်ပြီး',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3322,6 +3348,11 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
       const tokenSum = activeTokens.reduce((s, t) => s + (t.amount || 0), 0);
       extraInfo += `\n\n🪙 เงินแลก token เงินสด (ไม่ใช่รายได้):\n   ${activeTokens.length} ครั้ง • ฿${formatMoney(tokenSum)}\n\n💰 รวมเงินสดที่แม่บ้านถือ:\n   ฿${formatMoney(totalShould + tokenSum)}`;
     }
+    if (method === 'cash') { // 💵 v163: แม่บ้านนับเงินหลังรอบเก็บล่าสุด ไม่ตรง → เตือนให้นับจริงก่อนยืนยัน
+      const lastCashAt = (collections || []).filter(r => r.method === 'cash' && !r.undone).reduce((m, r) => Math.max(m, r.collectedAt || 0), 0);
+      const cnt = (collections || []).filter(r => r.method === 'cashcount' && (r.collectedAt || 0) > lastCashAt).sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0))[0];
+      if (cnt && cnt.diff) extraInfo += `\n\n${cnt.diff < 0 ? '⚠️' : 'ℹ️'} แม่บ้านนับล่าสุด (${cnt.staffName || '-'}) ได้ ฿${formatMoney(cnt.counted || 0)} — ${cnt.diff < 0 ? 'ขาด' : 'เกิน'} ฿${formatMoney(Math.abs(cnt.diff))}\n   นับเงินจริงก่อนกดยืนยัน`;
+    }
     
     if (!confirm(`${methodLabel}?\n\n📋 รายได้ร้าน:\n   ${uncollected.length + splitOrders.length} รายการ • ฿${formatMoney(totalShould)}${extraInfo}`)) return;
 
@@ -3485,7 +3516,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
         </div>
       )}
       {deepJobId && <JobStartSheet config={config} orderId={deepJobId} orders={orders} onClose={onDeepDone} isOwner={isOwner} />}
-      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && <HomeView onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} collections={collections} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} onCancel={() => { setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
@@ -3801,7 +3832,7 @@ function RoleSwitchSheet({ config, currentStaff, prevStaff, onRoleSwitch, onClos
   );
 }
 
-function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchanges, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, onRoleSwitch, prevStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
+function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchanges, collections, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, onRoleSwitch, prevStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [roleSheet, setRoleSheet] = useState(false); // 🔄 v157
   const role = staffRoleOf(currentStaff);
@@ -4076,6 +4107,24 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
     return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
   });
   const currentPromo = checkPromotion(Date.now());
+  // 💵 v163 (Teddy 2): เงินสดในมือแทน 'รอเก็บเงิน'
+  const T2H = config.brand === 'teddy2';
+  const [cashSheet, setCashSheet] = useState(false);
+  const cashHand = T2H ? t2CashInHand(config, orders, tokenExchanges) : null;
+  const todayCust = todayOrders.filter(o => !isInternalOrder(o));
+  const todaySales = todayCust.reduce((s, o) => s + calculateTotal(o, config), 0);
+  const lastCount = T2H ? (collections || []).filter(r => r.method === 'cashcount').sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0))[0] : null;
+  const ownerNow = !!(currentStaff && currentStaff.isOwnerLogin);
+  const exOn = config.tokenEnabled !== false && menuOn(config, 'exchange');
+  const rowStatus = (o) => {
+    if (isInternalOrder(o)) return { t: 'งานภายใน', c: '#475569', bg: '#F1F5F9' };
+    const held = t2CashPending(o) ? (o.paymentMethod === 'cash' ? calculateTotal(o, config) - cashInMachineOf(o, config) : t2CashHeld(o, config)) : 0;
+    if (held > 0) return { t: 'เงินสดในมือ', amt: held, c: '#047857', bg: '#ECFDF5' };
+    if (o.paymentMethod === 'transfer') return { t: 'โอน', c: '#6D28D9', bg: '#F5F3FF' };
+    if (cashInMachineOf(o, config) > 0) return { t: 'เข้าเครื่องแล้ว', c: '#475569', bg: '#F1F5F9' };
+    if (o.paymentMethod === 'split') return { t: 'สด+โอน', c: '#475569', bg: '#F1F5F9' };
+    return { t: o.collected ? 'เจ้าของเก็บแล้ว' : 'เงินสด', c: '#475569', bg: '#F1F5F9' };
+  };
 
   return (
     <div className="min-h-screen">
@@ -4200,12 +4249,38 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
               <span className="text-white text-opacity-70 text-[10px]">{tr(config, "• สลับ")}</span>
             </button>
           )}
+          {/* 🌐 v163 (Teddy 2): ปุ่มภาษา = ธง + ชื่อภาษาที่จะเปลี่ยนไป (เขียนด้วยภาษานั้น) */}
+          {T2H && <button onClick={onToggleLang} className="mb-1 ml-2 mr-2 inline-flex items-center gap-1.5 bg-white bg-opacity-20 rounded-full px-3 py-1 border border-white border-opacity-30 text-white text-xs font-bold active:scale-95 transition"><span className="text-sm">{config.lang === 'mm' ? '🇹🇭' : '🇲🇲'}</span>{config.lang === 'mm' ? 'ไทย' : 'မြန်မာ'}</button>}
           {/* โหมดเครื่องพิมพ์ — เครื่องนี้พิมพ์ให้เครื่องอื่นที่ส่งงานมา (เฉพาะสาขาที่มีเครื่องพิมพ์) */}
-          {config.hasPrinter && <button onClick={onTogglePrintServer} className={`mb-1 ml-2 inline-flex items-center gap-1.5 backdrop-blur-sm rounded-full px-3 py-1 border active:scale-95 transition ${printServer ? 'bg-green-400 bg-opacity-90 border-green-200' : 'bg-white bg-opacity-20 border-white border-opacity-30'}`}>
+          {config.hasPrinter && <button onClick={onTogglePrintServer} className={`mb-1 ${T2H ? '' : 'ml-2'} inline-flex items-center gap-1.5 backdrop-blur-sm rounded-full px-3 py-1 border active:scale-95 transition ${printServer ? 'bg-green-400 bg-opacity-90 border-green-200' : 'bg-white bg-opacity-20 border-white border-opacity-30'}`}>
             <span className="text-sm">🖨️</span>
             <span className="text-white text-xs font-bold">{tr(config, printServer ? 'รับงานพิมพ์' : 'โหมดเครื่องพิมพ์')}</span>
             {printServer && printServerStatus && <span className="text-white text-opacity-80 text-[9px]">• {printServerStatus}</span>}
           </button>}
+          {T2H ? (
+            <div className="grid grid-cols-2 gap-3 mt-5">
+              <div className="bg-white bg-opacity-15 rounded-2xl p-3 border border-white border-opacity-25">
+                <p className="text-white text-xs font-bold">{tr(config, "วันนี้")}</p>
+                <p className="text-white text-2xl font-extrabold tabular-nums">{todayCust.length}<span className="text-sm font-bold ml-1">{tr(config, "งาน")}</span></p>
+                <p className="text-white text-sm font-bold tabular-nums">฿{formatMoney(todaySales)}</p>
+              </div>
+              {/* 💵 v163: เงินสดในมือ — ยอดที่ต้องมีในลิ้นชัก แตะเพื่อนับ */}
+              <button onClick={() => setCashSheet(true)} className="text-left bg-white rounded-2xl p-3 shadow-lg active:scale-95 transition flex flex-col">
+                <span className="flex items-center gap-1">
+                  <span className="flex-1 text-xs font-extrabold" style={{ color: '#047857' }}>💵 {tr(config, 'เงินสดในมือ')}</span>
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-extrabold" style={{ background: '#047857' }}>›</span>
+                </span>
+                <span className="text-2xl font-extrabold tabular-nums" style={{ color: '#047857' }}>฿{formatMoney(cashHand.total)}</span>
+                {lastCount && Date.now() - (lastCount.collectedAt || 0) < 86400000 ? (() => { const tt = t2CountTone(lastCount.diff || 0); const today = new Date(lastCount.collectedAt).toDateString() === new Date().toDateString(); return (
+                  <span className="self-start text-xs font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: tt.bg, color: tt.c }}>
+                    {lastCount.diff === 0 ? tr(config, 'ตรง ✓') : `${tr(config, tt.t)} ฿${formatMoney(Math.abs(lastCount.diff))}`} · {today ? new Date(lastCount.collectedAt).toTimeString().slice(0, 5) : tr(config, 'เมื่อวาน')}
+                  </span>
+                ); })() : (
+                  <span className="self-start text-xs font-extrabold px-2 py-0.5 rounded-full border whitespace-nowrap" style={{ borderColor: '#047857', color: '#047857' }}>{tr(config, 'นับเงิน')} ›</span>
+                )}
+              </button>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-3 mt-6">
             <div className="bg-white bg-opacity-15 backdrop-blur-sm rounded-2xl p-3 border border-white border-opacity-20">
               <p className="text-white text-xs opacity-90">{tr(config, "วันนี้")}</p>
@@ -4216,6 +4291,8 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
               <p className="text-white text-2xl font-bold">{uncollected.length}<span className="text-sm font-normal ml-1">{tr(config, "รายการ")}</span></p>
             </div>
           </div>
+          )}
+          {cashSheet && <T2CashSheet config={config} orders={orders} tokenExchanges={tokenExchanges} collections={collections} currentStaff={currentStaff} onClose={() => setCashSheet(false)} onSelectOrder={onSelectOrder} />}
         </div>
       </div>
 
@@ -4234,14 +4311,14 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       {/* 🧺 เริ่มเครื่อง — แตะเครื่องก่อน แล้วเลือกใบงานที่รอ (v144) */}
       {pulseOn(config) && <HomePulseStartCard config={config} orders={orders} />}
 
-      <div className="px-5 mt-3 flex justify-end">
+      {!T2H && <div className="px-5 mt-3 flex justify-end">
         <button onClick={onToggleLang} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs font-bold text-slate-600 active:scale-95 transition">
           {config.lang === 'mm' ? '🇹🇭 ภาษาไทย' : '🇲🇲 မြန်မာဘာသာ'}
         </button>
-      </div>
+      </div>}
 
       {/* ⚡ กระทบยอดเปิดเครื่อง (ยิงพัลส์จากแอป) */}
-      {pulseOn(config) && <PulseReconCard config={config} orders={orders} currentStaff={currentStaff} />}
+      {pulseOn(config) && <PulseReconCard config={config} orders={orders} currentStaff={currentStaff} slim={T2H} />}
 
       {/* 🕐 เข้า-ออกงานด้วยรูปร้าน */}
       {config.hasAttendance && <AttendanceCard config={config} currentStaff={currentStaff} />}
@@ -4262,7 +4339,34 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       )}
 
       {/* 🔧 งานภายในร้าน — ล้าง/ทดสอบเครื่อง (ไม่ใช่รายได้) */}
-      {menuOn(config, 'internal') && <div className="px-5 mt-3">
+      {T2H && (menuOn(config, 'internal') || menuOn(config, 'promoCredit') || exOn) && (
+        <div className={`px-5 mt-3 grid gap-2 ${[menuOn(config, 'internal'), menuOn(config, 'promoCredit'), exOn].filter(Boolean).length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {menuOn(config, 'internal') && (
+            <button onClick={onInternalOrder} className="bg-white rounded-2xl p-3 border border-slate-200 text-left active:scale-95 transition flex flex-col justify-start min-w-0">
+              <p className="text-2xl leading-none">{ownerNow ? '🔧' : '🧼'}</p>
+              <p className="font-extrabold text-slate-900 text-sm mt-1.5 truncate">{ownerNow ? tr(config, 'งานภายในร้าน') : tr(config, 'ล้างเครื่อง')}</p>
+              <p className="text-xs text-slate-500 leading-snug">{ownerNow ? tr(config, 'ไม่ใช่รายได้') : tr(config, 'ทุก 7 วัน')}</p>
+            </button>
+          )}
+          {menuOn(config, 'promoCredit') && (
+            <button onClick={() => setShowPromoForm(v => !v)} className={`rounded-2xl p-3 border text-left active:scale-95 transition flex flex-col justify-start min-w-0 ${showPromoForm ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-200'}`}>
+              <p className="text-2xl leading-none">🎟️</p>
+              <p className={`font-extrabold text-sm mt-1.5 ${showPromoForm ? 'text-white' : 'text-slate-900'}`}>{tr(config, 'ลูกค้าใช้โปร')}</p>
+              <p className={`text-xs leading-snug ${showPromoForm ? 'text-slate-300' : 'text-slate-500'}`}>{tr(config, pulseOn(config) ? 'ซักเอง ไม่ฝาก' : 'สแกนเครดิตให้ลูกค้า')}</p>
+            </button>
+          )}
+          {exOn && (() => { const fs = coinFloatStatus(config, tokenExchanges); const low = fs && fs.remain <= 10; return (
+            <button onClick={() => setShowTokenForm(v => !v)} className={`rounded-2xl p-3 border text-left active:scale-95 transition flex flex-col justify-start min-w-0 ${showTokenForm ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-200'}`}>
+              <p className="text-2xl leading-none">🪙</p>
+              <p className={`font-extrabold text-sm mt-1.5 ${showTokenForm ? 'text-white' : 'text-slate-900'}`}>{tr(config, exchangeName(config))}</p>
+              <p className={`text-xs leading-snug ${low ? 'font-bold' : ''} ${showTokenForm ? 'text-slate-300' : low ? 'text-red-600' : 'text-slate-500'}`}>
+                {low ? `${tr(config, exchangeUnit(config))} ${tr(config, 'ใกล้หมด')}` : activeTokenSum > 0 ? <><b className={showTokenForm ? 'text-white' : 'text-slate-800'}>฿{formatMoney(activeTokenSum)}</b> {tr(config, 'รอเคลียร์')}</> : tr(config, 'ตู้แลกเสีย')}
+              </p>
+            </button>
+          ); })()}
+        </div>
+      )}
+      {menuOn(config, 'internal') && !T2H && <div className="px-5 mt-3">
         <button onClick={onInternalOrder}
           className="w-full rounded-2xl p-3 border-2 border-amber-400 bg-amber-50 active:scale-95 transition flex items-center gap-3">
           {/* v155: แม่บ้านเห็นแค่ล้างเครื่อง · เจ้าของเห็นงานภายในครบ */}
@@ -4276,7 +4380,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
       </div>}
 
       {/* 🎟️ ลูกค้าใช้โปร (ซักเอง ไม่ฝาก) — ตัดเครดิตแม่บ้าน */}
-      {menuOn(config, 'promoCredit') && <div className="px-5 mt-3">
+      {menuOn(config, 'promoCredit') && (!T2H || showPromoForm) && <div className="px-5 mt-3">
         {!showPromoForm ? (
           <button onClick={() => setShowPromoForm(true)}
             className="w-full bg-rose-50 rounded-2xl p-3 border-2 border-rose-200 active:scale-95 transition flex items-center gap-3">
@@ -4294,6 +4398,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
               <p className="font-extrabold text-slate-900 flex-1">{tr(config, "บันทึกลูกค้าใช้โปร")}</p>
               <button onClick={() => setShowPromoForm(false)} className="text-slate-400 text-xl leading-none px-2">✕</button>
             </div>
+            {T2H && <p className="text-xs font-bold text-slate-500 -mt-1">{tr(config, pulseOn(config) ? 'เลือกเครื่อง → ถ่ายรูป → กดเริ่มเครื่อง' : "สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม")}</p>}
 
             <div>
               <p className="text-xs font-bold text-slate-600 mb-1.5">{tr(config, "โปรที่ใช้")}</p>
@@ -4404,9 +4509,9 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
         </div>
       )}
 
-      {/* ปุ่มแลก token (กรณีตู้แลกเหรียญเสีย) */}
-      <div className="px-5 mt-3">
-        {(config.tokenEnabled === false || !menuOn(config, 'exchange')) ? null : !showTokenForm ? (
+      {/* ปุ่มแลก token (กรณีตู้แลกเหรียญเสีย) — Teddy 2: เปิดจากปุ่ม 🪙 ด้านบน */}
+      <div className={T2H && !showTokenForm ? '' : 'px-5 mt-3'}>
+        {(config.tokenEnabled === false || !menuOn(config, 'exchange') || (T2H && !showTokenForm)) ? null : !showTokenForm ? (
           <button 
             onClick={() => setShowTokenForm(true)}
             className="w-full bg-amber-50 rounded-2xl p-3 border-2 border-amber-200 active:scale-95 transition flex items-center gap-3"
@@ -4588,7 +4693,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
         )}
 
         {/* รายการแลก token ล่าสุด — แสดงเฉพาะ active (ยังไม่ถูกเคลีย) */}
-        {!showTokenForm && activeTokens.length > 0 && (
+        {(T2H ? showTokenForm : !showTokenForm) && activeTokens.length > 0 && (
           <div className="mt-2 bg-white rounded-2xl p-3 border border-amber-100">
             <p className="text-[10px] uppercase tracking-wider font-bold text-amber-700 mb-2">{tr(config, "🪙 แลก Token ล่าสุด")}</p>
             <div className="space-y-1 max-h-44 overflow-auto">
@@ -4655,7 +4760,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
           const oldest = orders.reduce((m, o) => Math.min(m, o.createdAt || m), Date.now());
           const canPrev = oldest < s0;
           const dayWord = dayOff === 0 ? tr(config, 'วันนี้') : dayOff === 1 ? tr(config, 'เมื่อวาน') : '';
-          const dateTxt = dStart.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
+          const dateTxt = dStart.toLocaleDateString(T2H && config.lang === 'mm' ? 'en-GB' : 'th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
           const shortTxt = dStart.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
           const pickDay = (v) => {
             if (!v) return;
@@ -4673,7 +4778,7 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
               <div className={`flex items-center gap-2 mb-3 rounded-2xl p-1.5 ${dayOff > 0 ? 'bg-amber-100 border-2 border-amber-300' : 'bg-white border border-slate-100'}`}>
                 <button onClick={() => canPrev && setDayOffset(dayOff + 1)} disabled={!canPrev} className="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 font-bold text-lg active:scale-95 transition disabled:opacity-30">◀</button>
                 <label className="flex-1 relative text-center">
-                  <p className={`font-extrabold ${dayOff > 0 ? 'text-amber-900' : 'text-slate-900'}`}>📅 {dayWord ? dayWord + ' · ' : ''}{dateTxt}</p>
+                  <p className={`font-extrabold ${dayOff > 0 ? 'text-amber-900' : 'text-slate-900'}`}>{T2H ? '' : '📅 '}{dayWord ? dayWord + ' · ' : ''}{dateTxt}</p>
                   <p className={`text-[10px] ${dayOff > 0 ? 'text-amber-700 font-bold' : 'text-slate-400'}`}>{dayOff > 0 ? '⏪ ' + tr(config, 'กำลังดูย้อนหลัง') : tr(config, 'แตะเพื่อเลือกวัน')}</p>
                   <input type="date" value={dateKeyOf(dStart)} max={dateKeyOf(new Date())} onChange={(e) => pickDay(e.target.value)} className="absolute inset-0 w-full h-full opacity-0" />
                 </label>
@@ -4707,6 +4812,8 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
                     <img src={o.basketThumb || o.basketPhoto} alt="" className="w-full h-full object-cover" />
                     <span className="absolute bottom-0 right-0 bg-black bg-opacity-50 text-white text-[8px] px-1 rounded-tl">🔍</span>
                   </div>
+                ) : T2H ? (
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100 text-slate-700 font-extrabold tabular-nums">{isInternalOrder(o) ? '🔧' : o.queueNo != null ? '#' + o.queueNo : '–'}</div>
                 ) : (
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${o.collected ? 'bg-emerald-50' : (o.paymentMethod === 'transfer' ? 'bg-violet-50' : 'bg-sky-50')}`}>
                     <Icon name={o.collected ? "check" : (o.deliveryZone ? 'truck' : (o.paymentMethod === 'transfer' ? 'smartphone' : 'banknote'))} className={`w-6 h-6 ${o.collected ? 'text-emerald-500' : (o.paymentMethod === 'transfer' ? 'text-violet-500' : 'text-sky-500')}`} strokeWidth={o.collected ? 3 : 2} />
@@ -4721,13 +4828,17 @@ function HomeView({ onToggleLang, onOpenChecklist, config, orders, tokenExchange
                     {(o.dryItems || []).some(d => d.topUp > 0) && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⏱️</span>}
                     {o.backdated && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold">⏪</span>}
                   </div>
-                  <p className="text-xs text-slate-500">{formatDate(o.createdAt)}{o.staffName && <span className="ml-1 text-teal-600 font-medium">• 🧕 {o.staffName}</span>}</p>
+                  {T2H ? <p className="text-xs text-slate-500 tabular-nums">{new Date(o.createdAt).toTimeString().slice(0, 5)}{o.staffName ? ` · ${o.staffName}` : ''}</p>
+                  : <p className="text-xs text-slate-500">{formatDate(o.createdAt)}{o.staffName && <span className="ml-1 text-teal-600 font-medium">• 🧕 {o.staffName}</span>}</p>}
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-slate-900">฿{formatMoney(calculateTotal(o, config))}</p>
+                  {T2H ? (() => { const st = rowStatus(o); return (
+                    <span className="inline-block mt-0.5 text-xs font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: st.bg, color: st.c }}>{tr(config, st.t)}{st.amt != null ? ` ฿${formatMoney(st.amt)}` : ''}</span>
+                  ); })() : (
                   <p className={`text-xs font-medium ${o.collected ? 'text-emerald-600' : (o.paymentMethod === 'transfer' ? 'text-violet-600' : 'text-amber-600')}`}>
                     {o.collected && o.collectedVia === 'machine' ? '💵 ' + tr(config, 'หยอดเครื่องแล้ว') : tr(config, o.collected ? 'เก็บแล้ว' : (o.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'))}
-                  </p>
+                  </p>)}
                 </div>
               </button>
             ))}
@@ -5838,8 +5949,9 @@ async function printCanvasViaBluetooth(canvas, onProgress) {
       else await ch.writeValue(slice);
       sent += slice.length;
       if (onProgress) onProgress('กำลังพิมพ์ ' + Math.round(sent / total * 100) + '%');
-      await new Promise(r => setTimeout(r, 12));
+      await new Promise(r => setTimeout(r, 18)); // v163: ช้าลงนิด (มือถือ/เครื่องพิมพ์รุ่นเล็ก ข้อมูลหล่นกลางใบ)
     }
+    await new Promise(r => setTimeout(r, 80)); // v163: พักระหว่างช่วงภาพ ให้เครื่องพิมพ์พิมพ์ทัน
   }
   if (onProgress) onProgress('');
 }
@@ -6343,7 +6455,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
           <div className="w-full max-w-[340px]" onClick={(e) => e.stopPropagation()}>
             {/* โหนดจับภาพจริง — ซ่อนนอกจอ ไม่มี transform ใดๆ ภาพจึงตรงเป๊ะ */}
             <div style={{ position: 'fixed', left: '-10000px', top: '0px' }} aria-hidden="true">
-            <div ref={jobTicketRef} style={{ width: '576px', background: '#fff', padding: '20px 28px', boxSizing: 'border-box', fontFamily: '"Noto Sans Thai", sans-serif', color: '#000' }}>
+            <div ref={jobTicketRef} style={{ width: '576px', background: '#fff', padding: '20px 28px 100px', boxSizing: 'border-box', fontFamily: '"Noto Sans Thai", sans-serif', color: '#000' }}>
               {/* หัว */}
               <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1.1 }}>{config.name}</div>
@@ -9864,7 +9976,7 @@ function HomePulseStartCard({ config, orders }) {
     <div className="px-5 mt-3">
       <div className="flex gap-2">
       <button onClick={() => { setMsg(null); setOpen(true); }}
-        className={`flex-1 min-w-0 rounded-2xl p-4 shadow-lg active:scale-95 transition flex items-center gap-3 border-2 ${n ? 'bg-white border-amber-300' : 'bg-white border-slate-100'}`}>
+        className="flex-1 min-w-0 rounded-2xl p-4 shadow-lg active:scale-95 transition flex items-center gap-3 border bg-white border-slate-200">
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow" style={{ background: 'linear-gradient(135deg, #113D6C 0%, #5BB8E8 100%)' }}>🧺</div>
         <div className="text-left flex-1 min-w-0">
           <p className="text-slate-900 font-bold text-lg">{tr(config, 'เริ่มเครื่อง')}</p>
@@ -10686,7 +10798,7 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc,
 }
 
 // ---------- ⚡ การ์ดหน้าแรกแม่บ้าน + เด้งถามเหตุผลของเมื่อวาน ----------
-function PulseReconCard({ config, orders, currentStaff }) {
+function PulseReconCard({ config, orders, currentStaff, slim }) {
   const todayKey = dateKeyOf(new Date());
   const yKey = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 1); return dateKeyOf(d); }, [todayKey]);
   const { recon, ecBusy, refreshEc, unexplained, logs, ledger } = usePulseRecon(config, orders, todayKey);
@@ -10726,7 +10838,19 @@ function PulseReconCard({ config, orders, currentStaff }) {
   const dot = { slate: 'bg-slate-400', amber: 'bg-amber-500', rose: 'bg-rose-500', emerald: 'bg-emerald-500' }[tone];
 
   return (
-    <div className="px-5 mt-3">
+    <div className={slim && tone !== 'rose' ? 'px-5 mt-2' : 'px-5 mt-3'}>
+      {slim && tone !== 'rose' ? (
+        <button onClick={() => setSheetDate(todayKey)} className="w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: tone === 'emerald' ? '#047857' : '#94A3B8' }}></span>
+          <span className="flex-1 min-w-0 text-xs font-bold text-slate-700 truncate">
+            {tone === 'emerald' ? tr(config, 'ยอดเปิดเครื่องวันนี้ตรงกัน') : tone === 'amber' ? `${tr(config, 'รอเริ่มเครื่อง')} ${bad} ${tr(config, 'งาน')}` : tr(config, 'กระทบยอดเปิดเครื่อง')}
+            <span className="text-slate-500"> · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)} · EC {ecBusy ? '…' : recon.ecBaht == null ? '…' : '฿' + formatMoney(recon.ecBaht)}
+              {bad > 0 && unexplained.length === 0 ? ` · 📝 ${tr(config, 'ใส่เหตุผลแล้ว')}` : ''}
+              {recon.issues.some(i => i.key.startsWith('r:')) ? ` · ⏳ ${tr(config, 'รอเจ้าของคืนเครดิต')} ${recon.issues.filter(i => i.key.startsWith('r:')).length}` : ''}</span>
+          </span>
+          <span className="text-slate-400 font-bold">›</span>
+        </button>
+      ) : (
       <button onClick={() => setSheetDate(todayKey)} className={`w-full rounded-2xl p-3 border-2 active:scale-95 transition flex items-center gap-3 ${box}`}>
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${dot}`}>⚡</div>
         <div className="text-left flex-1 min-w-0">
@@ -10734,13 +10858,14 @@ function PulseReconCard({ config, orders, currentStaff }) {
             {onlyPending ? `⏳ ${tr(config, 'รอเริ่มเครื่อง')} ${bad} ${tr(config, 'งาน')} — ${tr(config, 'แตะดู')}` : bad > 0 ? `⚠️ ${tr(config, 'ยอดเปิดเครื่องไม่ตรง')} ${bad} ${tr(config, 'รายการ')} — ${tr(config, 'แตะดู')}` : `✅ ${tr(config, 'ยอดเปิดเครื่องวันนี้ตรงกัน')}`}
           </p>
           <p className="text-xs text-slate-600">
-            {tr(config, 'งาน')} ฿{formatMoney(recon.need)} · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)} · EC {ecBusy ? `⏳ ${ecBusy}` : recon.ecBaht == null ? '…' : '฿' + formatMoney(recon.ecBaht)}
+            {tr(config, slim ? 'ค่าเครื่อง' : 'งาน')} ฿{formatMoney(recon.need)} · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)} · EC {ecBusy ? `⏳ ${ecBusy}` : recon.ecBaht == null ? '…' : '฿' + formatMoney(recon.ecBaht)}
             {bad > 0 && unexplained.length === 0 ? ` · 📝 ${tr(config, 'ใส่เหตุผลแล้ว')}` : ''}
             {recon.issues.some(i => i.key.startsWith('r:')) ? ` · ⏳ ${tr(config, 'รอเจ้าของคืนเครดิต')} ${recon.issues.filter(i => i.key.startsWith('r:')).length}` : ''}
           </p>
         </div>
         <Icon name="chevron-right" className="w-5 h-5 text-slate-500" />
       </button>
+      )}
 
       {sheetDate && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={() => setSheetDate(null)}>
@@ -11404,6 +11529,121 @@ function T2Stat({ label, value, sub, color }) {
   );
 }
 
+// 💵 v163: เงินสดในมือแม่บ้าน — ยอดที่ต้องมีในลิ้นชัก (ลูกค้าจ่ายสดที่ยังไม่หยอดเครื่อง + ค่าน้ำยา/อื่นๆ ที่เจ้าของยังไม่เก็บ)
+function t2CashInHand(config, orders, tokenExchanges) {
+  const owe = (o) => (o.paymentMethod === 'cash' ? calculateTotal(o, config) - cashInMachineOf(o, config) : t2CashHeld(o, config));
+  const list = (orders || []).filter(o => !isInternalOrder(o) && t2CashPending(o) && owe(o) > 0).sort((a, b) => t2Ts(b.createdAt) - t2Ts(a.createdAt));
+  const tokens = (tokenExchanges || []).filter(t => !t.cleared && (t.paymentMethod || 'cash') === 'cash');
+  const tokenSum = tokens.reduce((s, t) => s + (t.amount || 0), 0);
+  return { list, owe, tokens, tokenSum, total: list.reduce((s, o) => s + owe(o), 0) + tokenSum };
+}
+const t2CountTone = (diff) => (diff === 0 ? { c: '#047857', bg: '#ECFDF5', t: 'ตรง ✓' } : diff < 0 ? { c: '#DC2626', bg: '#FEF2F2', t: 'ขาด' } : { c: '#B45309', bg: '#FEF3C7', t: 'เกิน' });
+
+// แผ่นเงินสดในมือ: ยอดที่ต้องมี · นับจริง → ขาด/เกิน · บันทึกให้เจ้าของเห็น
+function T2CashSheet({ config, orders, tokenExchanges, collections, currentStaff, onClose, onSelectOrder }) {
+  const [counted, setCounted] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(null);
+  const C = t2CashInHand(config, orders, tokenExchanges);
+  const n = parseInt(String(counted).replace(/[^\d]/g, ''), 10);
+  const has = counted !== '' && !isNaN(n);
+  const diff = has ? n - C.total : 0;
+  const tone = t2CountTone(diff);
+  const counts = (collections || []).filter(r => r.method === 'cashcount').sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0)).slice(0, 3);
+  const who = currentStaff ? (currentStaff.isOwnerLogin ? 'เจ้าของ' : currentStaff.name) : '';
+  const save = async () => {
+    if (!has || saving) return;
+    setSaving(true);
+    try {
+      const rec = { method: 'cashcount', collectedAt: Date.now(), expected: C.total, counted: n, diff, totalReceived: n, totalShould: C.total,
+        orderIds: C.list.map(o => o.id), orderCount: C.list.length, staffName: who, staffId: currentStaff && currentStaff.id ? currentStaff.id : null };
+      await saveCollectionToCloud(config.brand, rec);
+      setSaved(rec);
+      setCounted('');
+      playSuccessSound();
+    } catch (e) { alert(tr(config, 'บันทึกไม่สำเร็จ') + ': ' + (e && e.message ? e.message : e)); }
+    finally { setSaving(false); }
+  };
+  const when = (ts) => new Date(ts).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="bg-slate-100 rounded-t-3xl w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-slate-100 px-4 pt-4 pb-2 flex items-center gap-2">
+          <p className="text-lg font-extrabold text-slate-900 flex-1">{tr(config, 'เงินสดในมือ')}</p>
+          <button onClick={onClose} aria-label={tr(config, 'ปิด')} className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-600 text-lg font-bold">✕</button>
+        </div>
+        <div className="px-4 pb-8 space-y-3">
+          <div className="bg-white rounded-2xl p-4 border border-slate-200">
+            <p className="text-sm font-bold text-slate-500">{tr(config, 'ต้องมีเงินสดในลิ้นชัก')}</p>
+            <p className="text-4xl font-extrabold tabular-nums" style={{ color: '#047857' }}>฿{formatMoney(C.total)}</p>
+            <p className="text-xs text-slate-500 mt-1">{tr(config, 'ลูกค้าจ่ายสดที่ยังไม่หยอดเครื่อง + ค่าน้ำยา/อื่นๆ · เจ้าของยังไม่เก็บ')}</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 border border-slate-200">
+            <p className="text-sm font-extrabold text-slate-900 mb-2">{tr(config, 'นับเงินจริงในลิ้นชัก')}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-extrabold text-slate-500">฿</span>
+              <input value={counted} onChange={e => { setCounted(e.target.value.replace(/[^\d]/g, '')); setSaved(null); }} inputMode="numeric" placeholder="0"
+                className="flex-1 min-w-0 px-3 py-3 rounded-xl border-2 border-slate-300 text-2xl font-extrabold text-right tabular-nums" />
+            </div>
+            {has && (
+              <p className="mt-2 rounded-xl px-3 py-2.5 text-base font-extrabold text-center" style={{ background: tone.bg, color: tone.c }}>
+                {diff === 0 ? tr(config, 'ตรง ✓') : `${tr(config, tone.t)} ฿${formatMoney(Math.abs(diff))}`}
+              </p>
+            )}
+            <button onClick={save} disabled={!has || saving} className="w-full mt-2 py-3 rounded-xl bg-slate-900 text-white font-extrabold active:scale-95 disabled:opacity-40">
+              {saving ? '⏳' : tr(config, 'บันทึกการนับ (เจ้าของเห็นยอดนี้)')}
+            </button>
+            {saved && <p className="mt-2 text-sm font-bold text-slate-700 text-center">✓ {tr(config, 'บันทึกแล้ว')} · <span style={{ color: t2CountTone(saved.diff).c }}>{saved.diff === 0 ? tr(config, 'ตรง ✓') : `${tr(config, t2CountTone(saved.diff).t)} ฿${formatMoney(Math.abs(saved.diff))}`}</span></p>}
+            {counts.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-slate-100 space-y-1">
+                <p className="text-xs font-bold text-slate-500">{tr(config, 'นับล่าสุด')}</p>
+                {counts.map(r => { const tt = t2CountTone(r.diff || 0); return (
+                  <p key={r.id || r.collectedAt} className="text-xs text-slate-600 flex justify-between gap-2">
+                    <span>{when(r.collectedAt)} · {r.staffName || '-'} · {tr(config, 'นับได้')} ฿{formatMoney(r.counted || 0)}</span>
+                    <span className="font-extrabold" style={{ color: tt.c }}>{r.diff === 0 ? tr(config, 'ตรง ✓') : `${tr(config, tt.t)} ฿${formatMoney(Math.abs(r.diff || 0))}`}</span>
+                  </p>
+                ); })}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl p-3 border border-slate-200">
+            <p className="text-sm font-extrabold text-slate-900 px-1 mb-1">{tr(config, 'มาจากใบงานไหน')} <span className="text-slate-500 font-bold">· {C.list.length} {tr(config, 'ใบ')}</span></p>
+            {!C.list.length && !C.tokenSum && <p className="text-sm text-slate-500 px-1 py-2">{tr(config, 'ไม่มีเงินสดค้าง — เจ้าของเก็บครบแล้ว')}</p>}
+            <div className="divide-y divide-slate-100">
+              {C.list.map(o => {
+                const coin = cashInMachineOf(o, config);
+                return (
+                  <button key={o.id} onClick={() => { onClose(); onSelectOrder(o); }} className="w-full flex items-center gap-2 px-1 py-2 text-left">
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-900 truncate">{o.queueNo != null ? `#${o.queueNo} ` : ''}{o.customerName || '-'}</span>
+                      <span className="block text-xs text-slate-500">{when(o.createdAt)}{coin > 0 ? ` · ${tr(config, 'เข้าเครื่องแล้ว')} ฿${formatMoney(coin)}` : ''}{o.paymentMethod === 'split' ? ` · ${tr(config, 'สด+โอน')}` : ''}</span>
+                    </span>
+                    <span className="text-base font-extrabold tabular-nums" style={{ color: '#047857' }}>฿{formatMoney(C.owe(o))}</span>
+                  </button>
+                );
+              })}
+              {C.tokenSum > 0 && (
+                <div className="flex items-center gap-2 px-1 py-2">
+                  <span className="flex-1 text-sm font-bold text-slate-900">{tr(config, 'แลกเหรียญ')} · {C.tokens.length} {tr(config, 'ครั้ง')}</span>
+                  <span className="text-base font-extrabold tabular-nums" style={{ color: '#047857' }}>฿{formatMoney(C.tokenSum)}</span>
+                </div>
+              )}
+            </div>
+            {(C.list.length > 0 || C.tokenSum > 0) && (
+              <div className="flex items-center gap-2 px-1 pt-2 mt-1 border-t-2 border-slate-200">
+                <span className="flex-1 text-sm font-extrabold text-slate-900">{tr(config, 'รวม')}</span>
+                <span className="text-lg font-extrabold tabular-nums" style={{ color: '#047857' }}>฿{formatMoney(C.total)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // จำแท็บ/ช่วงเวลาไว้ระหว่างเปิดใบงานแล้วกดกลับ (ในรอบการใช้งานนี้)
 const T2_DASH_MEM = { tab: 'overview', mode: 'day', anchor: null };
 function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffList, onLogout, onSelectOrder, onCollect, onPayFees, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
@@ -11465,6 +11705,9 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   const riderUnpaidList = cust.filter(o => o.deliveryZone && !o.deliveryFeePaid);
   const riderUnpaid = riderUnpaidList.reduce((s, o) => s + riderFeeFor(o, config), 0);
   const rounds = (collections || []).slice().sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0));
+  const cashCounts = rounds.filter(r => r.method === 'cashcount'); // 💵 v163 แม่บ้านนับเงินสด
+  const lastCashRound = rounds.find(r => r.method === 'cash' && !r.undone);
+  const shortCount = cashCounts.find(r => (r.diff || 0) < 0 && Date.now() - (r.collectedAt || 0) < 3 * 86400000 && (!lastCashRound || (r.collectedAt || 0) > (lastCashRound.collectedAt || 0)));
 
   // ---------- ช่วงเวลา ----------
   const nowRange = t2Range(mode, Date.now());
@@ -11604,6 +11847,8 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   const group = T2_GROUPS.find(g => g.tabs.includes(tab)) || T2_GROUPS[0];
   const todo = [];
   if (cashPend + tokenCashSum > 0) todo.push({ k: 'cash', title: 'เงินสดที่แม่บ้านถือ', sub: `${cashPendList.length} ใบ · ค่าน้ำยา/ยังไม่หยอดเครื่อง${tokenCashSum > 0 ? ` · แลกเหรียญ ฿${formatMoney(tokenCashSum)}` : ''}`, act: `เก็บ ฿${formatMoney(cashPend + tokenCashSum)}`, onAct: () => doCollect('cash'), go: 'cash' });
+  // 💵 v163: แม่บ้านนับเงินสดขาด → แจ้งต่อจากรายการเก็บเงินสด
+  if (shortCount) todo.push({ k: 'warn', title: `แม่บ้านนับเงินสดขาด ฿${formatMoney(Math.abs(shortCount.diff))}`, sub: `${shortCount.staffName || '-'} · ${t2When(shortCount.collectedAt)} · ควรมี ฿${formatMoney(shortCount.expected || 0)} นับได้ ฿${formatMoney(shortCount.counted || 0)}`, nav: 'ดู', go: 'cash' });
   if (trPend > 0) todo.push({ k: 'transfer', title: 'โอนที่ยังไม่เคลียร์ยอด', sub: `${formatMoney(trPendList.length)} ใบ · เช็กยอดธนาคารก่อน`, act: `เคลียร์ ฿${formatMoney(trPend)}`, onAct: () => doCollect('transfer'), go: 'transfer' });
   if (riderUnpaid > 0) todo.push({ k: 'delivery', title: `ค่าไรเดอร์ค้างจ่าย ฿${formatMoney(riderUnpaid)}`, sub: `${riderUnpaidList.length} งานส่ง · จ่ายแยกตามคน`, nav: 'ดูรายคน', go: 'delivery' });
   if (refundPendingN > 0) todo.push({ k: 'warn', title: `แม่บ้านขอคืนเครดิต ${refundPendingN} รายการ`, sub: 'เครื่องมีปัญหา · อนุมัติแล้วใบงานเปิดเครื่องใหม่ได้', nav: 'ดู', go: 'pulse' });
@@ -11772,6 +12017,21 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
                 ? <div className="space-y-2">{actBtn('cash', `เก็บเงินสดแล้ว ฿${formatMoney(cashPend + tokenCashSum)}`, () => doCollect('cash'))}{list(cashPendList)}</div>
                 : <p className="text-sm font-bold text-emerald-700">✓ ไม่มีเงินสดค้างที่แม่บ้าน</p>}
             </T2Box>
+            {cashCounts.length > 0 && (
+              <T2Box k="cash" title="แม่บ้านนับเงินสด" right={<span className="text-xs font-bold text-slate-500">ล่าสุด {Math.min(10, cashCounts.length)} ครั้ง</span>}>
+                <div className="divide-y divide-slate-100">
+                  {cashCounts.slice(0, 10).map(r => { const tt = t2CountTone(r.diff || 0); return (
+                    <div key={r.id} className="flex items-center gap-2 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800">{r.staffName || '-'} · ควรมี ฿{formatMoney(r.expected || 0)} · นับได้ ฿{formatMoney(r.counted || 0)}</p>
+                        <p className="text-xs text-slate-500">{t2When(r.collectedAt)} · {r.orderCount || 0} ใบ</p>
+                      </div>
+                      <span className="text-xs font-extrabold px-2 py-1 rounded-full whitespace-nowrap" style={{ background: tt.bg, color: tt.c }}>{r.diff === 0 ? 'ตรง ✓' : `${tt.t} ฿${formatMoney(Math.abs(r.diff || 0))}`}</span>
+                    </div>
+                  ); })}
+                </div>
+              </T2Box>
+            )}
             {history(m => m === 'cash', 'cash')}
             {listHead(`ใบงานเงินสด · ${R.label}`, A.list.filter(o => orderCashPart(o, config) > 0).length)}
             {list(A.list.filter(o => orderCashPart(o, config) > 0))}
