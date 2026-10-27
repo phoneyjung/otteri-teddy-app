@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v148-2026-10-27';
+  window.APP_VERSION = 'v149-2026-10-27';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2092,6 +2092,11 @@ const MM_DICT = {
   'เช็กเหรียญ': 'အကြွေစေ့ စစ်',
   'ยกเลิก — ยังไม่ได้หยอด': 'ပယ်ဖျက် — မထည့်ရသေး',
   'ยกเลิกบันทึกหยอดเหรียญ? (เงินสดจะกลับไปรอเก็บจากแม่บ้าน)': 'အကြွေစေ့ထည့် မှတ်တမ်း ပယ်ဖျက်မလား? (ငွေသားကို အိမ်အကူထံမှ ပြန်ကောက်ရန် စောင့်မည်)',
+  // ✍️ เจ้าของบันทึกว่าเริ่มแล้ว (v149) — รอพนักงานพม่าตรวจคำแปล
+  'เจ้าของบันทึก': 'ပိုင်ရှင် မှတ်တမ်းတင်',
+  'เจ้าของบันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)': 'ပိုင်ရှင်က စတင်ပြီးဟု မှတ်တမ်းတင် (တကယ် မပို့)',
+  'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)': 'ပိုင်ရှင် မှတ်တမ်းတင်ပြီး (တကယ် မပို့)',
+  'เจ้าของ: บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)': 'ပိုင်ရှင်: စတင်ပြီးဟု မှတ်တမ်းတင် (တကယ် မပို့)',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -8136,7 +8141,7 @@ function SettingsView({ config, staffList }) {
 // เปิด/ปิดที่ หน้าเจ้าของ → ⚙️ ตั้งค่า · กระทบยอดเริ่มนับจากเวลาที่เปิด (settings.pulseSinceMs)
 // pulseLogs: 1 เอกสาร = ยิง 1 ครั้ง (id = reqId) · pulseDayNotes: เหตุผลยอดไม่ตรงรายวัน (id = brand_YYYY-MM-DD)
 const PULSE_BAHT = 10; // 1 พัลส์ = 10 บาท (เช็กกับประวัติ EC: QR 60฿ → 6 พัลส์)
-const PULSE_LIVE = ['confirmed', 'forced', 'sent', 'unknown', 'sending', 'coin']; // นับว่าเครื่องน่าจะได้รับ (coin = แม่บ้านหยอดเหรียญเอง v147)
+const PULSE_LIVE = ['confirmed', 'forced', 'sent', 'unknown', 'sending', 'coin', 'manual']; // นับว่าเครื่องน่าจะได้รับ (coin = แม่บ้านหยอดเหรียญเอง v147)
 const PULSE_EC_CACHE = {}; // brand|date → ผลอ่านประวัติเครื่องจาก EC (แคชในหน้าเว็บ)
 const PULSE_EC_INFLIGHT = {}; // brand|date → กำลังอ่านอยู่ (กันอ่านซ้ำพร้อมกันจากการ์ดกับหน้ารายละเอียด)
 const PULSE_GATE = {};     // brand → { needReason, open } — ใช้กันออกจากระบบ/ลงเวลาออกตอนยอดไม่ตรง
@@ -8304,6 +8309,23 @@ async function approvePulseRefund(config, log, reason, note) {
 // 💵 เงินสด → แม่บ้านหยอดเหรียญเอง · 💳 โอน → ยิงพัลส์จากแอป (v147) — ไม่ให้แม่บ้านถือเงินสดของร้าน
 // สด+โอน: เงินสดหยอดเครื่องก่อน ส่วนที่เหลือยิงจากแอป · บันทึกหยอดเหรียญ = pulseLogs method 'coin' (ไม่ส่งไป Worker)
 const pulseIsCoin = (l) => !!(l && l.method === 'coin');
+// ✍️ เจ้าของบันทึกว่าเริ่มเครื่องแล้ว (แบบโอน) โดยไม่ยิงจริง (v149) — แก้ใบงานที่แม่บ้านลงผิด
+const pulseIsManual = (l) => !!(l && l.method === 'manual');
+function recordManualStart(config, order, { machine, kind, kg, temp, heat, baht, warn }) {
+  const now = Date.now();
+  const id = `${config.brand}-manual-${now}-${Math.random().toString(36).slice(2, 8)}`;
+  const log = {
+    brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine, machineLabel: pulseMachineLabel(config, machine),
+    pulses: Math.round(baht / PULSE_BAHT), baht, method: 'manual', status: 'manual',
+    refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null, refLabel: pulseRefLabel(order, config),
+    staffId: 'owner', staffName: 'เจ้าของ', createdAt: now,
+    kind: kind || null, kg: kg || null, temp: temp || null, heat: heat || null,
+    dryMin: kind === 'dry' ? dryMinutesFor(config, kg, baht) : null, mismatch: warn || null,
+    manualNote: 'เจ้าของบันทึก (แบบโอน · ไม่ยิงเครื่อง)',
+  };
+  pulseLogRef(id).set(log).catch(e => console.error('manual log error:', e));
+  return { id, ...log };
+}
 function orderCashPart(order, config) {
   if (!order) return 0;
   if (order.paymentMethod === 'cash') return calculateTotal(order, config);
@@ -8323,10 +8345,11 @@ function payStateOf(order, config, logs) {
   const sum = (list) => list.reduce((a, l) => a + (l.baht || 0), 0);
   const coinUsed = sum(mine.filter(l => pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l))));
   const coinRefunded = sum(mine.filter(l => pulseIsCoin(l) && pulseRefunded(l)));
-  const pulseLiveBaht = sum(mine.filter(l => !pulseIsCoin(l) && pulseLive(l)));
+  const pulseLiveBaht = sum(mine.filter(l => !pulseIsCoin(l) && !pulseIsManual(l) && pulseLive(l)));
+  const manual = sum(mine.filter(l => pulseIsManual(l) && pulseLive(l))); // ✍️ เจ้าของบันทึก ไม่นับเป็นยิงเครดิต
   const pulseAllowed = p.pulseNeed + coinRefunded;
   return {
-    ...p, coinUsed, coinRefunded, pulseLive: pulseLiveBaht, pulseAllowed,
+    ...p, coinUsed, coinRefunded, pulseLive: pulseLiveBaht, pulseAllowed, manual,
     coinLeft: Math.max(0, p.coinNeed - coinUsed), pulseLeft: Math.max(0, pulseAllowed - pulseLiveBaht),
   };
 }
@@ -8484,8 +8507,9 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
   const dayRefunded = refundedAll.filter(l => inDay(l.createdAt || 0));
   const refundSeen = {}; // id → true/false (เครื่องได้รับไหม เมื่อเทียบ EC แล้ว)
   // 💵 หยอดเหรียญ (v147) ไม่ใช่พัลส์ — ไม่เอาไปจับคู่กับ "บังคับส่งพัลส์" ของ EC
-  const dayPulse = dayLogs.filter(l => !pulseIsCoin(l));
-  const dayRefundedPulse = dayRefunded.filter(l => !pulseIsCoin(l));
+  const dayPulse = dayLogs.filter(l => !pulseIsCoin(l) && !pulseIsManual(l));
+  const dayRefundedPulse = dayRefunded.filter(l => !pulseIsCoin(l) && !pulseIsManual(l));
+  const dayManual = dayLogs.filter(pulseIsManual); // ✍️ v149
   const dayCoins = [...dayLogs, ...dayRefunded].filter(pulseIsCoin);
   dayLogs.filter(pulseRefundPending).forEach(l => add(`r:${l.id}`, 'warn', 'รอเจ้าของคืนเครดิต', { label: `${l.machineLabel} · ${l.refLabel || ''}`, amount: l.baht }));
   const orderIds = new Set((orders || []).map(o => o.id));
@@ -8542,6 +8566,7 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
     firedForRecords: records.reduce((s, r) => s + r.fired, 0),
     appBaht: sumBaht(dayPulse) + sumBaht(dayRefundedPulse),
     coinBaht: sumBaht(dayCoins),
+    manualBaht: sumBaht(dayManual), manualCount: dayManual.length,
     ecBaht: ec && ec.byMachine && Object.keys(ec.byMachine).length ? machineRows.reduce((s, r) => s + (r.ecBaht || 0), 0) : null,
     machineRows, ecAt: ec ? ec.at : null, ecErrors: ec ? ec.errors : null,
     refunds: dayRefunded.map(l => ({ id: l.id, machineLabel: l.machineLabel, refLabel: l.refLabel || '', baht: l.baht || 0, reason: l.refundReason, note: l.refundNote || '', ecSeen: l.id in refundSeen ? refundSeen[l.id] : null })),
@@ -8867,6 +8892,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   const [temp, setTemp] = useState(preset ? preset.temp || null : null);
   const [heat, setHeat] = useState(preset ? preset.heat || null : null);
   const [amount, setAmount] = useState(preset ? preset.baht || 0 : 0);
+  const [ownerMsg, setOwnerMsg] = useState(null); // ✍️ v149
   const maxBaht = ((config.pulse && config.pulse.maxPerShot) || 12) * PULSE_BAHT;
   const openOf = (j) => (j ? j.alloc.slots.filter(s => s.got < s.baht) : []);
   const job = jobs.find(j => j.order.id === jobId) || null;
@@ -8888,6 +8914,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
   });
 
   const selM = ms.find(m => m.id === sel) || null;
+  const owner = pulseIsOwnerNow(config, isOwner); // ✍️ v149: บันทึกว่าเริ่มแล้วโดยไม่ยิงจริง ได้เฉพาะเจ้าของ
   // ❗ เครื่องที่แม่บ้านแจ้งปัญหาวันนี้ (ยิงแล้วไม่ทำงาน / หยุดกลางคัน)
   const todayKey0 = dateKeyOf(new Date());
   const problems = new Set((dayLogs || []).filter(l => l.dateKey === todayKey0 && (
@@ -8986,7 +9013,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
         <button onClick={onClose} disabled={!!busyText} className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 text-xl font-bold active:scale-95">✕</button>
       </div>
 
-      <div className="p-3 space-y-3 pb-28">
+      <div className="p-3 space-y-3 pb-28" style={owner ? { paddingBottom: 176 } : undefined}>
         {banner}
         {fixed ? (
           <div className={`rounded-2xl px-3 py-2 border ${openSlots.length ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
@@ -9117,11 +9144,25 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
         )}
 
         {msg && <p className={`text-sm font-bold text-center ${msg.ok === true ? 'text-emerald-700' : msg.ok === false ? 'text-rose-700' : 'text-amber-700'}`}>{msg.text}</p>}
+        {ownerMsg && <p className="text-sm font-bold text-center text-violet-700">{ownerMsg}</p>}
         {fixed && <JobFiredList config={config} logs={jobLogs} isOwner={isOwner} order={job ? job.order : null} />}
       </div>
 
       {selM && (fixed || job) && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3">
+          {owner && ready && !busyText && (
+            <button onClick={() => {
+              const o = job.order;
+              const cashNote = (o.paymentMethod === 'cash' || o.paymentMethod === 'split') ? '\n\n💡 ใบงานนี้ลงว่าจ่ายเงินสด — ถ้าลูกค้าโอนจริง ให้แก้วิธีจ่ายในใบงานเป็น "โอน" ด้วย' : '';
+              if (!confirm(`✍️ เจ้าของบันทึกว่าเริ่มเครื่องแล้ว (แบบโอน)\n\n📋 ${pulseRefLabel(o, config)}\n🧺 ${selM.label} (${selM.kg}kg) · ฿${baht}\n\n⚠️ แอปจะไม่สั่งเครื่อง — ใช้แก้ใบงานที่เริ่มเครื่องไปแล้วด้วยวิธีอื่น${cashNote}`)) return;
+              recordManualStart(config, o, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn });
+              setOwnerMsg(`✍️ ${selM.label} ฿${baht} — ${tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)')}`);
+              setSel(null);
+            }}
+              className="w-full mb-2 py-2.5 rounded-xl border-2 text-sm font-extrabold active:scale-95 transition" style={{ borderColor: '#8B5CF6', background: '#F5F3FF', color: '#5B21B6' }}>
+              ✍️ {tr(config, 'เจ้าของ: บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)')} {selM.label} ฿{baht}
+            </button>
+          )}
           <button disabled={!ready || !!busyText}
             onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? temp : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin }, () => setSel(null))}
             className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: cp.coin > 0 && cp.pulse === 0 && !block ? '#D97706' : config.gradient }}>
@@ -9203,6 +9244,7 @@ function PulseStarterCard({ config, order, isOwner }) {
       sending: ['bg-amber-100 text-amber-800', '⚠️ ' + tr(config, 'ยังไม่ยืนยัน')],
       failed: ['bg-rose-100 text-rose-700', '❌ ' + tr(config, 'ไม่สำเร็จ')],
       coin: ['bg-emerald-100 text-emerald-800', '💵 ' + tr(config, 'หยอดเหรียญ')],
+      manual: ['bg-violet-100 text-violet-800', '✍️ ' + tr(config, 'เจ้าของบันทึก')],
     };
     const [cls, text] = map[l.status] || ['bg-slate-100 text-slate-600', l.status];
     return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cls}`}>{text}</span>;
@@ -9247,6 +9289,7 @@ function PulseStarterCard({ config, order, isOwner }) {
         <p className="text-xs font-bold mt-1.5">
           <span className="text-emerald-700">💵 {tr(config, 'เงินสด → หยอดเหรียญ')} ฿{pay.coinUsed}/{pay.coinNeed}</span>
           {pay.pulseNeed > 0 && <span className="text-sky-700"> · ⚡ {tr(config, 'โอน → ยิงแอป')} ฿{pay.pulseLive}/{pay.pulseNeed}</span>}
+          {pay.manual > 0 && <span className="text-violet-700"> · ✍️ ฿{pay.manual}</span>}
         </p>
       )}
 
@@ -9568,6 +9611,8 @@ function RefundAction({ config, log, isOwner, hideRequest }) {
   const btn = (cls, onClick, text) => (
     <button onClick={onClick} disabled={busy} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border active:scale-95 disabled:opacity-50 ${cls}`}>{busy ? '…' : text}</button>
   );
+  // ✍️ รายการที่เจ้าของบันทึกเอง: เจ้าของลบได้ (ไม่มีขอคืนเครดิต)
+  if (pulseIsManual(log)) return owner ? btn('bg-white border-slate-300 text-slate-500', () => { if (confirm('ลบรายการที่เจ้าของบันทึก (ไม่ยิงจริง)?')) run(() => voidPulseLog(log.id, 'เจ้าของลบรายการที่บันทึกเอง')); }, '🗑️ ' + tr(config, 'ลบ')) : null;
   if (pulseRefundPending(log)) {
     return (
       <>
@@ -9710,6 +9755,7 @@ function JobFiredList({ config, logs, isOwner, order }) {
           <span className="text-[11px] text-slate-500">{new Date(l.createdAt || 0).toTimeString().slice(0, 5)} · ฿{l.baht}</span>
           {pulseIsCoin(l) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">💵 {tr(config, 'หยอดเหรียญ')}</span>}
           {pulseIsCoin(l) && <CoinCheckAction config={config} log={l} order={order} logs={logs} />}
+          {pulseIsManual(l) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-800">✍️ {tr(config, 'เจ้าของบันทึก')}</span>}
           <RefundAction config={config} log={l} isOwner={isOwner} hideRequest={pulseIsCoin(l) && l.coinSeen !== true} />
         </div>
       ))}
@@ -9831,6 +9877,9 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc 
             ))}
           </div>
 
+          {recon.manualBaht > 0 && (
+            <p className="text-xs font-bold text-violet-800 bg-violet-50 border border-violet-200 rounded-xl px-3 py-2">✍️ {tr(config, 'เจ้าของบันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)')} ฿{formatMoney(recon.manualBaht)} · {recon.manualCount} {tr(config, 'รายการ')}</p>
+          )}
           {recon.coinBaht > 0 && (
             <p className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">💵 {tr(config, 'หยอดเหรียญ (เงินสดลูกค้า)')} ฿{formatMoney(recon.coinBaht)}</p>
           )}
