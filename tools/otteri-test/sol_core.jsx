@@ -16,6 +16,16 @@ function solPendingAdd(config, p) {
   solPendingSave(config, list);
 }
 function solPendingRemove(config, key) { solPendingSave(config, solPendingList(config).filter(x => x.key !== key)); }
+function solNotify(detail) { window.dispatchEvent(new CustomEvent('sol-done', { detail })); }
+// ข้อความ "ไปกด Start ใน SOL…" ในหน้าเลือกเครื่อง → เปลี่ยนเป็นผลจริงเมื่อกด ✅ / ยกเลิก ที่แถบล่าง
+function useSolMsgSync(msg, setMsg) {
+  useEffect(() => {
+    if (!msg || !msg.solPending) return;
+    const f = (e) => setMsg(e.detail);
+    window.addEventListener('sol-done', f);
+    return () => window.removeEventListener('sol-done', f);
+  }, [msg]);
+}
 
 // บันทึกว่าเริ่มเครื่องใน SOL แล้ว (แทนการยิงพัลส์) — นับเหมือนพัลส์ที่เครื่องรับแล้ว
 function solRecordStart(config, { machine, pulses, refType, refId, slotKey, refLabel, meta }) {
@@ -135,7 +145,19 @@ function SolPendingBar({ config }) {
     window.addEventListener('storage', f);
     return () => { window.removeEventListener('sol-pending', f); window.removeEventListener('storage', f); };
   }, [config.brand]);
-  if (!list.length) return null;
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    let tm = null;
+    const f = (e) => { setToast(e.detail); clearTimeout(tm); tm = setTimeout(() => setToast(null), 2600); };
+    window.addEventListener('sol-done', f);
+    return () => { window.removeEventListener('sol-done', f); clearTimeout(tm); };
+  }, []);
+  const toastEl = toast ? (
+    <div className="fixed left-0 right-0 flex justify-center pointer-events-none" style={{ zIndex: 71, bottom: list.length ? 360 : 24 }} data-sol-toast="1">
+      <div className={`m-2 px-4 py-3 rounded-2xl shadow-2xl font-extrabold text-white text-center ${toast.ok ? 'bg-emerald-600' : 'bg-slate-700'}`}>{toast.text}</div>
+    </div>
+  ) : null;
+  if (!list.length) return toastEl;
   const p = list[list.length - 1];
   const copy = async () => {
     try { await navigator.clipboard.writeText(p.code); setCopied(true); setTimeout(() => setCopied(false), 1500); }
@@ -151,13 +173,18 @@ function SolPendingBar({ config }) {
       });
       solPendingRemove(config, p.key);
       playSuccessSound();
+      solNotify({ ok: true, text: `✅ ${p.machineLabel} — ${tr(config, 'บันทึกแล้ว · เครื่องเริ่มทำงาน')}` });
     } catch (e) { alert(tr(config, 'บันทึกไม่สำเร็จ') + ': ' + (e && e.message ? e.message : e)); }
     setBusy(false);
   };
   const cancel = () => {
-    if (confirm(`${tr(config, 'ยกเลิกรายการนี้? (ยังไม่ได้กด Start ใน SOL)')}\n\n🧺 ${p.machineLabel} · ${p.refLabel}`)) solPendingRemove(config, p.key);
+    if (confirm(`${tr(config, 'ยกเลิกรายการนี้? (ยังไม่ได้กด Start ใน SOL)')}\n\n🧺 ${p.machineLabel} · ${p.refLabel}`)) {
+      solPendingRemove(config, p.key);
+      solNotify({ ok: null, text: `${tr(config, 'ยกเลิกแล้ว')} · ${p.machineLabel}` });
+    }
   };
   return (
+    <>{toastEl}
     <div className="fixed left-0 right-0 bottom-0 flex justify-center pointer-events-none" style={{ zIndex: 70 }}>
       <div className="w-full max-w-md m-2 rounded-2xl bg-slate-900 text-white shadow-2xl p-3 pointer-events-auto" data-sol-bar="1">
         <div className="flex items-center gap-2">
@@ -174,6 +201,7 @@ function SolPendingBar({ config }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

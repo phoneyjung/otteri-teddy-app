@@ -89,7 +89,7 @@ rep("""  const progLabel = kind === 'wash' ? tr(config, washTempLabel(temp)) : (
 """, 'fireForOrder sol')
 
 rep("""  if (res.status === 'coin') return { ok: true, text: `✅ ${mLabel} · ${coinTxt} — ${tr(config, 'บันทึกแล้ว — กำลังเช็กว่าเครื่องนับเหรียญ')}` };""",
-    """  if (res.status === 'sol-pending') return { ok: null, text: `👉 ${mLabel} — ${tr(config, 'ไปกด Start ใน SOL แล้วกด ✅ ที่แถบล่าง')}${coinTxt ? ' · ' + coinTxt : ''}` };
+    """  if (res.status === 'sol-pending') return { ok: null, solPending: true, text: `👉 ${mLabel} — ${tr(config, 'ไปกด Start ใน SOL แล้วกด ✅ ที่แถบล่าง')}${coinTxt ? ' · ' + coinTxt : ''}` };
   if (res.status === 'coin' && isSol(config)) return { ok: true, text: `✅ ${mLabel} · ${coinTxt} — ${tr(config, 'บันทึกแล้ว')}` };
   if (res.status === 'coin') return { ok: true, text: `✅ ${mLabel} · ${coinTxt} — ${tr(config, 'บันทึกแล้ว — กำลังเช็กว่าเครื่องนับเหรียญ')}` };""", 'result msg')
 
@@ -187,6 +187,9 @@ rep("[tr(config, 'ยิงจากแอป'), recon.appBaht, tr(config, 'ท�
     "[isSol(config) ? 'ติ๊กในแอป' : tr(config, 'ยิงจากแอป'), recon.appBaht, tr(config, 'ทุกเครื่อง')],", 'panel app tile')
 rep("{T2C[k].name}{k === 'pulse' && refundPendingN > 0 ?",
     "{k === 'pulse' && isSol(config) ? 'เริ่มเครื่อง' : T2C[k].name}{k === 'pulse' && refundPendingN > 0 ?", 'owner tab name')
+
+# ข้อความ "ไปกด Start ใน SOL" เปลี่ยนเป็น "เริ่มแล้ว" เมื่อกด ✅ ที่แถบล่าง (3 จุดที่มีข้อความผลเริ่มเครื่อง)
+rep("  const [msg, setMsg] = useState(null);\n", "  const [msg, setMsg] = useState(null);\n  useSolMsgSync(msg, setMsg); // 🟦\n", 'sol msg sync', count=3)
 
 FEATURE_ONLY = '--feature-only' in sys.argv
 if FEATURE_ONLY:
