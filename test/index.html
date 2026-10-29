@@ -9820,11 +9820,17 @@ function MachineGrid({ config, machines, marks, selected, onPick, problems }) {
 // ⚙️ ตั้งค่า (เจ้าของ) — โหมด SOL
 function SolSettingsCard({ config }) {
   const on = pulseOn(config);
+  const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
   const toggle = async () => {
-    if (!on && !confirm('เปิดระบบเริ่มเครื่องผ่าน SOL?\n\n• แม่บ้านใช้บัญชี SOL ของตัวเอง (สิทธิ์ Wash Dry Fold)\n• กดเริ่มในแอป → ไปกด Start ใน SOL → กลับมากด ✅\n• กระทบยอด: เจ้าของใส่ยอด WDF จากหน้า Dashboard ของ SOL')) return;
+    if (!on && !confirm('เปิดระบบเริ่มเครื่องผ่าน SOL?\n\n• แม่บ้านใช้บัญชี SOL ของตัวเอง (สิทธิ์ Wash Dry Fold)\n• กดเริ่มในแอป → ไปกด Start ใน SOL → กลับมากด ✅\n• กระทบยอด: เจ้าของใส่ยอด WDF จากหน้า Dashboard ของ SOL\n• นับใบงานตั้งแต่เช้าวันนี้')) return;
     try {
-      await saveShopSettings(config.brand, on ? { pulseEnabled: false } : { pulseEnabled: true, pulseSinceMs: pulseSinceOf(config) || Date.now() });
+      // เปิดครั้งแรก = นับใบงานตั้งแต่เช้าวันนี้ (ใบที่รับก่อนเปิดสวิตช์ก็ขึ้นให้เริ่มเครื่อง)
+      await saveShopSettings(config.brand, on ? { pulseEnabled: false } : { pulseEnabled: true, pulseSinceMs: pulseSinceOf(config) || today0 });
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
+  };
+  const fromToday = async () => {
+    if (!confirm('นับใบงานตั้งแต่เช้าวันนี้ (00:00)?\n\nใบงานที่รับวันนี้ก่อนเปิดสวิตช์ จะขึ้นในรายการรอเริ่มเครื่องและในกระทบยอด')) return;
+    try { await saveShopSettings(config.brand, { pulseSinceMs: today0 }); } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
   };
   return (
     <div className="bg-white rounded-2xl p-4 border border-slate-200">
@@ -9836,6 +9842,9 @@ function SolSettingsCard({ config }) {
       </button>
       <p className="text-[11px] text-slate-400 mt-1.5">เปิดแล้ว: หน้าแรกมีปุ่ม 🧺 เริ่มเครื่อง · ใบงานโอน = กดใน SOL · ใบงานเงินสด = หยอดเหรียญที่เครื่อง</p>
       {pulseSinceOf(config) > 0 && <p className="text-[11px] text-slate-400">เริ่มกระทบยอดตั้งแต่ {formatDate(pulseSinceOf(config))}</p>}
+      {on && pulseSinceOf(config) > today0 && (
+        <button onClick={fromToday} className="w-full mt-2 py-2 rounded-xl text-sm font-bold bg-sky-50 border border-sky-300 text-sky-800 active:scale-95">📅 นับใบงานตั้งแต่เช้าวันนี้</button>
+      )}
     </div>
   );
 }
