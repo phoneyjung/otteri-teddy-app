@@ -33,24 +33,67 @@ function solRecordStart(config, { machine, pulses, refType, refId, slotKey, refL
   return { id, ...log };
 }
 
-// ขั้นตอนที่หน้าเว็บ SOL ของเครื่องนั้น
+// สิ่งที่ต้องกดในหน้าต่าง "Select Menu" ของ SOL (ไม่มีลิงก์ตรงไปเครื่อง — URL ของ SOL ค้างที่ /dashboard)
+const SOL_WASH_BTNS = [['hot', 'Hot', '#F8A5A5'], ['warm', 'Warm', '#FBD938'], ['cold', 'Cold', '#93C5FD']]; // สีเหมือนปุ่มใน SOL
+const SOL_DRY_BTNS = [['high', 'High', '#64748B'], ['med', 'Mid', '#64748B'], ['low', 'Low', '#64748B']]; // เครื่องอบ: ยังไม่ได้เห็นหน้าจริง
+function solPlan(config, p) {
+  if (p.kind === 'wash') return { btns: SOL_WASH_BTNS, prog: p.temp || 'cold', price: p.baht, extra: 0 };
+  const base = dryPriceFor(config, p.kg);
+  const prog = p.heat || 'high';
+  if (p.baht >= base && base > 0) return { btns: SOL_DRY_BTNS, prog, price: base, extra: p.baht - base };
+  return { btns: null, prog, price: null, extra: p.baht }; // เติมเวลาอย่างเดียว
+}
+// ข้อความขั้นตอน (ใช้ทดสอบ/อ่านง่าย)
 function solSteps(config, p) {
-  const out = [`${tr(config, 'เปิด SOL → แตะ ⚙️ ที่เครื่อง')} ${p.machine}`];
-  if (p.kind === 'wash') {
-    out.push(`${tr(config, 'เลือก')} ${SOL_PROG[p.temp] || p.temp || '-'} (${p.progLabel || ''})`);
+  const pl = solPlan(config, p);
+  const out = [`${tr(config, 'เปิด SOL → แตะเครื่อง')} ${p.machine} → Select Menu`];
+  if (pl.price != null) {
+    out.push(`${tr(config, 'กด')} ${SOL_PROG[pl.prog] || pl.prog} → Price ${pl.price} → Note ${p.code} → Start`);
+    if (pl.extra > 0) out.push(`${tr(config, 'แล้วเพิ่มเวลา (Extra)')} +฿${pl.extra}`);
   } else {
-    const base = dryPriceFor(config, p.kg);
-    const heat = SOL_PROG[p.heat] || 'High';
-    if (p.baht >= base && base > 0) {
-      out.push(`${tr(config, 'เลือก')} ${heat} → ${tr(config, 'ราคา')} ฿${base}`);
-      if (p.baht > base) out.push(`${tr(config, 'กด Start แล้วเพิ่มเวลา (Extra)')} +฿${p.baht - base}`);
-    } else {
-      out.push(`${tr(config, 'เพิ่มเวลา (Extra)')} +฿${p.baht}`);
-    }
+    out.push(`${tr(config, 'เพิ่มเวลา (Extra)')} +฿${pl.extra} · Note ${p.code}`);
   }
-  out.push(`${tr(config, 'ช่อง Note ใส่')} ${p.code} → ${tr(config, 'กด Start')}`);
   out.push(tr(config, 'กลับมาแอป กด ✅'));
   return out;
+}
+// หน้าตาเหมือนหน้าต่าง Select Menu ของ SOL — แม่บ้านกดตามช่องที่ชี้ไว้
+function SolDialogGuide({ config, p, copied, onCopy }) {
+  const pl = solPlan(config, p);
+  const lab = 'shrink-0 whitespace-nowrap text-[12px] font-bold text-slate-500';
+  const labW = { width: 68 };
+  const box = 'flex-1 min-w-0 rounded-lg border-2 border-slate-300 px-2 py-1 text-lg font-black leading-tight';
+  return (
+    <div className="mt-2 rounded-xl bg-white text-slate-900 p-2.5" data-sol-guide="1">
+      <p className="text-[12px] font-bold text-slate-500">① {tr(config, 'ใน SOL แตะเครื่อง')} <span className="text-base font-black text-slate-900 px-1.5 rounded bg-amber-200">{p.machine}</span> → <span className="text-slate-900">Select Menu</span></p>
+      {pl.price != null ? (
+        <>
+          <p className="text-[12px] font-bold text-slate-500 mt-2">② {tr(config, 'กด')}</p>
+          <div className="grid grid-cols-3 gap-1.5 mt-1">
+            {pl.btns.map(([k, label, color]) => {
+              const on = k === pl.prog;
+              return (
+                <div key={k} className="rounded-lg py-2 text-center text-sm font-extrabold text-white"
+                  style={{ background: color, opacity: on ? 1 : 0.18, boxShadow: on ? '0 0 0 3px #0F172A' : 'none', textShadow: '0 1px 2px rgba(0,0,0,.35)' }}>
+                  {on ? '👉 ' : ''}{label}
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 mt-2"><span className={lab} style={labW}>③ Price</span><span className={box}>{pl.price}</span></div>
+        </>
+      ) : (
+        <p className="text-sm font-extrabold mt-2">② {tr(config, 'เพิ่มเวลา (Extra)')} +฿{pl.extra}</p>
+      )}
+      <div className="flex items-center gap-2 mt-1.5">
+        <span className={lab} style={labW}>{pl.price != null ? '④' : '③'} Note</span>
+        <span className={box}>{p.code}</span>
+        <button onClick={onCopy} className="shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-extrabold active:scale-95">{copied ? `✓ ${tr(config, 'คัดลอกแล้ว')}` : `📋 ${tr(config, 'คัดลอก')} ${p.code}`}</button>
+      </div>
+      <p className="text-[12px] font-bold text-slate-500 mt-2">{pl.price != null ? '⑤' : '④'} {tr(config, 'กด')} <span className="inline-block px-3 py-0.5 rounded-md text-white font-extrabold" style={{ background: '#7DA2F5' }}>Start</span>
+        {pl.price != null && pl.extra > 0 && <span className="text-slate-900"> → {tr(config, 'แล้วเพิ่มเวลา (Extra)')} +฿{pl.extra}</span>}
+      </p>
+    </div>
+  );
 }
 
 function SolPendingBar({ config }) {
@@ -94,13 +137,8 @@ function SolPendingBar({ config }) {
           {list.length > 1 && <span className="text-xs font-bold text-amber-300">+{list.length - 1} {tr(config, 'รายการ')}</span>}
         </div>
         <p className="text-xs text-slate-300 mt-0.5 truncate">{p.refLabel}</p>
-        <ol className="text-[13px] mt-2 space-y-0.5 list-decimal pl-5 leading-snug">
-          {solSteps(config, p).map((s, i) => <li key={i}>{s}</li>)}
-        </ol>
-        <div className="grid grid-cols-2 gap-2 mt-2.5">
-          <button onClick={copy} className="py-2.5 rounded-xl bg-white text-slate-900 font-extrabold text-sm active:scale-95">{copied ? `✓ ${tr(config, 'คัดลอกแล้ว')}` : `📋 ${tr(config, 'คัดลอก')} ${p.code}`}</button>
-          <a href={config.pulse.solUrl} target="_blank" rel="noopener noreferrer" className="py-2.5 rounded-xl bg-sky-500 text-white font-extrabold text-sm text-center active:scale-95">↗ {tr(config, 'เปิด SOL')}</a>
-        </div>
+        <SolDialogGuide config={config} p={p} copied={copied} onCopy={copy} />
+        <a href={config.pulse.solUrl} target="_blank" rel="noopener noreferrer" className="block mt-2 py-2.5 rounded-xl bg-sky-500 text-white font-extrabold text-sm text-center active:scale-95">↗ {tr(config, 'เปิด SOL')} → {tr(config, 'แตะเครื่อง')} {p.machine}</a>
         <div className="grid grid-cols-3 gap-2 mt-2">
           <button onClick={cancel} disabled={busy} className="py-3 rounded-xl bg-slate-700 font-bold text-sm active:scale-95">{tr(config, 'ยกเลิก')}</button>
           <button onClick={done} disabled={busy} className="col-span-2 py-3 rounded-xl bg-emerald-500 font-extrabold active:scale-95 disabled:opacity-50">{busy ? '⏳' : `✅ ${tr(config, 'กด Start ใน SOL แล้ว')}`}</button>
