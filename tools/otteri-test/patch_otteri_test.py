@@ -40,7 +40,7 @@ rep("""  hasToken: false, // Otteri ใช้แค่เหรียญ 10 ไ�
 if (window.TEST_MODE) Object.assign(OTTERI_CONFIG, {
   t2Sys: true,
   defaultPay: 'transfer', // ให้แม่บ้านถือเงินสดน้อยที่สุด
-  pulse: { mode: 'sol', solUrl: 'https://backoffice.otteri-sol.com/dashboard', maxPerShot: 15, stacks: 0, dryMinPer10: {}, washBusyMin: 35 },
+  pulse: { mode: 'sol', solUrl: 'https://backoffice.otteri-sol.com/dashboard', maxPerShot: 15, stacks: 0, dryMinPer10: {}, washBusyMin: 35, dayStartHour: 9 },
 });""", 'otteri flags')
 
 rep("""  brand: 'teddy2',

@@ -148,16 +148,19 @@ function MachineGrid({ config, machines, marks, selected, onPick, problems }) {
 // ⚙️ ตั้งค่า (เจ้าของ) — โหมด SOL
 function SolSettingsCard({ config }) {
   const on = pulseOn(config);
-  const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
+  // เวลาเริ่มนับใบงาน = เวลาเข้างานแม่บ้าน (ค่าเริ่มต้น 09:00) — ถ้ายังไม่ถึงเวลา ใช้เวลาตอนกด
+  const startHour = (config.pulse && config.pulse.dayStartHour != null) ? config.pulse.dayStartHour : 9;
+  const hhmm = String(startHour).padStart(2, '0') + ':00';
+  const today0 = (() => { const d = new Date(); d.setHours(startHour, 0, 0, 0); return Math.min(d.getTime(), Date.now()); })();
   const toggle = async () => {
-    if (!on && !confirm('เปิดระบบเริ่มเครื่องผ่าน SOL?\n\n• แม่บ้านใช้บัญชี SOL ของตัวเอง (สิทธิ์ Wash Dry Fold)\n• กดเริ่มในแอป → ไปกด Start ใน SOL → กลับมากด ✅\n• กระทบยอด: เจ้าของใส่ยอด WDF จากหน้า Dashboard ของ SOL\n• นับใบงานตั้งแต่เช้าวันนี้')) return;
+    if (!on && !confirm('เปิดระบบเริ่มเครื่องผ่าน SOL?\n\n• แม่บ้านใช้บัญชี SOL ของตัวเอง (สิทธิ์ Wash Dry Fold)\n• กดเริ่มในแอป → ไปกด Start ใน SOL → กลับมากด ✅\n• กระทบยอด: เจ้าของใส่ยอด WDF จากหน้า Dashboard ของ SOL\n• นับใบงานตั้งแต่ ' + hhmm + ' วันนี้ (เวลาเข้างานแม่บ้าน)')) return;
     try {
-      // เปิดครั้งแรก = นับใบงานตั้งแต่เช้าวันนี้ (ใบที่รับก่อนเปิดสวิตช์ก็ขึ้นให้เริ่มเครื่อง)
+      // เปิดครั้งแรก = นับใบงานตั้งแต่เวลาเข้างานวันนี้ (ใบที่รับก่อนเปิดสวิตช์ก็ขึ้นให้เริ่มเครื่อง)
       await saveShopSettings(config.brand, on ? { pulseEnabled: false } : { pulseEnabled: true, pulseSinceMs: pulseSinceOf(config) || today0 });
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
   };
   const fromToday = async () => {
-    if (!confirm('นับใบงานตั้งแต่เช้าวันนี้ (00:00)?\n\nใบงานที่รับวันนี้ก่อนเปิดสวิตช์ จะขึ้นในรายการรอเริ่มเครื่องและในกระทบยอด')) return;
+    if (!confirm('นับใบงานตั้งแต่ ' + hhmm + ' วันนี้?\n\nใบงานที่รับวันนี้ก่อนเปิดสวิตช์ จะขึ้นในรายการรอเริ่มเครื่องและในกระทบยอด')) return;
     try { await saveShopSettings(config.brand, { pulseSinceMs: today0 }); } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
   };
   return (
@@ -171,7 +174,7 @@ function SolSettingsCard({ config }) {
       <p className="text-[11px] text-slate-400 mt-1.5">เปิดแล้ว: หน้าแรกมีปุ่ม 🧺 เริ่มเครื่อง · ใบงานโอน = กดใน SOL · ใบงานเงินสด = หยอดเหรียญที่เครื่อง</p>
       {pulseSinceOf(config) > 0 && <p className="text-[11px] text-slate-400">เริ่มกระทบยอดตั้งแต่ {formatDate(pulseSinceOf(config))}</p>}
       {on && pulseSinceOf(config) > today0 && (
-        <button onClick={fromToday} className="w-full mt-2 py-2 rounded-xl text-sm font-bold bg-sky-50 border border-sky-300 text-sky-800 active:scale-95">📅 นับใบงานตั้งแต่เช้าวันนี้</button>
+        <button onClick={fromToday} className="w-full mt-2 py-2 rounded-xl text-sm font-bold bg-sky-50 border border-sky-300 text-sky-800 active:scale-95">📅 นับใบงานตั้งแต่ {hhmm} วันนี้</button>
       )}
     </div>
   );
