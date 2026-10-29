@@ -47,7 +47,7 @@
   };
   firebase.initializeApp(firebaseConfig);
   window.db = firebase.firestore();
-  window.APP_VERSION = 'otteri-test-2026-10-28';
+  window.APP_VERSION = 'otteri-test-2026-10-29';
   // 🧪 ทุกคอลเลกชันขึ้นต้น test_ — ไม่แตะใบงาน/เงินของร้านจริง
   (function () {
     var d = window.db, orig = d.collection.bind(d);
@@ -372,6 +372,8 @@ const OTTERI_CONFIG = {
 };
 // 🧪 Otteri ใช้ระบบแบบเท็ดดี้ 2 (เงินสดในมือ · เริ่มเครื่องผ่าน SOL · กระทบยอด WDF) — เปิดเฉพาะหน้าทดสอบก่อน
 if (window.TEST_MODE) Object.assign(OTTERI_CONFIG, {
+  ownerLaundry: true, // 👔 แม่บ้านลงผ้าเจ้าของเองได้ (ฟรี · งานภายใน)
+  accounts: [{ id: 'geisha', name: 'ร้านเกอิชา', emoji: '🏢', noFold: true }], // 🏢 ค้างจ่าย รวมบิลสิ้นเดือน · ไม่พับ · ราคาปกติ (ไม่ใช้โปรวันพุธ)
   t2Sys: true,
   defaultPay: 'transfer', // ให้แม่บ้านถือเงินสดน้อยที่สุด
   pulse: { mode: 'sol', solUrl: 'https://backoffice.otteri-sol.com/dashboard', maxPerShot: 15, stacks: 0, dryMinPer10: {}, washBusyMin: 35, dayStartHour: 9, solMap: { top: ['', '', '', '', '', '', '', '', 'D4', 'D6'], bottom: ['W1', 'W2', 'W3', 'W4', 'W6', 'W7', 'W8', 'D1', 'D5', 'D7'] } },
@@ -403,7 +405,7 @@ const TEDDY_CONFIG = {
   linePromoDiscount: 40,
   hasKev: true,
   deliveryZones: [
-    { id: 'free', label: 'ส่งฟรี 0฿ (ในมหาลัย)', price: 0, riderFee: 20, color: '#14B8A6' },
+    { id: 'free', label: 'ส่งฟรี 0฿ (ในมหาลัย)', price: 0, riderFee: 20, color: '#14B8A6', hidden: true }, // v170: ยังไม่มีโปรส่งฟรี → ไม่ให้เลือกตอนลง/แก้ออเดอร์ (ใบงานเก่ายังหาชื่อโซนนี้เจอ) · เริ่มโปรเมื่อไหร่ ลบ hidden: true ออก
     { id: 'green', label: 'เขียว (ใกล้สุด)', price: 20, color: '#10B981' },
     { id: 'yellow', label: 'เหลือง', price: 30, color: '#F59E0B' },
     { id: 'blue', label: 'ฟ้า', price: 40, color: '#3B82F6' },
@@ -589,6 +591,7 @@ const APP_SHARE_QR = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAXIAAAFyCAIA
 
 // เมนูพิเศษหน้าแม่บ้าน (งานภายใน / ลูกค้าใช้โปร / แลกเหรียญ) — Otteri ยังไม่เปิดใช้
 const SHOP_MENUS = { otteri: { internal: false, promoCredit: false, exchange: false } };
+if (window.TEST_MODE) SHOP_MENUS.otteri.internal = true; // 🧪 Otteri: แม่บ้านล้างเครื่อง (ทุก 7 วัน) + ผ้าเจ้าของ
 const menuOn = (config, key) => {
   const m = SHOP_MENUS[config.brand];
   return !m || m[key] !== false;
@@ -1034,7 +1037,7 @@ function exportMonthlyExcel(orders, config, year, month) {
       `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`,
       d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
       o.customerName || '', o.customerPhone || '', o.staffName || '',
-      o.paymentMethod === 'transfer' ? 'โอน' : o.paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด',
+      o.paymentMethod === 'account' ? accountPayText(o, config) : o.paymentMethod === 'transfer' ? 'โอน' : o.paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด',
       x.total, x.cash, x.transfer, x.wash, x.dry, x.extras, x.fold, x.foldBaskets, x.delivery, zone,
       x.lineDiscount, x.promoDiscount, o.collected ? 'เก็บแล้ว' : 'รอเก็บ', o.note || '',
     ]);
@@ -1636,9 +1639,14 @@ const INTERNAL_TYPES = [
   { id: 'clean', label: 'ล้างเครื่อง', emoji: '🧼' },
   { id: 'test', label: 'ซ่อม/ทดสอบเครื่อง', emoji: '🔧' },
   { id: 'redo', label: 'ซักซ้ำให้ลูกค้า', emoji: '🔁' },
+  { id: 'mine', label: 'ผ้าเจ้าของ', emoji: '👔', cfg: 'ownerLaundry' }, // แม่บ้านลงได้ · ฟรี · ไม่ต้องระบุเครื่อง
   { id: 'other', label: 'อื่นๆ', emoji: '📝' },
 ];
 const isInternalOrder = (o) => !!(o && o.internalType);
+const internalTypesFor = (config) => INTERNAL_TYPES.filter(t => !t.cfg || !!(config && config[t.cfg]));
+// 🏢 ลูกค้าประจำแบบค้างจ่าย (paymentMethod 'account' + accountId) — ไม่ใช่เงินสด/โอน · เจ้าของกดรับเงินทีหลัง
+const accountOf = (o, config) => (o && o.paymentMethod === 'account' ? (((config && config.accounts) || []).find(a => a.id === o.accountId) || { id: o.accountId || '', name: o.customerName || '' }) : null);
+const accountPayText = (o, config) => { const a = accountOf(o, config); return a ? `ค้างจ่าย · ${a.name}` : ''; };
 // 🔧 สิทธิ์งานภายใน (v154): แม่บ้าน = ล้างเครื่องเท่านั้น (เฉพาะซัก เครื่องละ 1 ครั้งต่อ 7 วัน) · ซ่อม/ทดสอบ + ซักซ้ำ + อื่นๆ = เจ้าของ
 const INTERNAL_OWNER_ONLY = ['test', 'redo', 'other'];
 const CLEAN_EVERY_DAYS = 7;
@@ -2285,6 +2293,22 @@ const MM_DICT = {
   'ทิ้งใบรับงานที่กรอกค้างนี้?': 'ဖြည့်ထားသော အလုပ်စာရွက်ကို ဖျက်မလား?',
   'ทิ้ง': 'ဖျက်',
   'ทำต่อ': 'ဆက်လုပ်',
+  // 👔 ผ้าเจ้าของ · 🏢 ลูกค้าค้างจ่าย (หน้าทดสอบ Otteri)
+  'ผ้าเจ้าของ': 'ပိုင်ရှင်၏ အဝတ်',
+  'ฟรี · ไม่นับรายได้': 'အခမဲ့ · ဝင်ငွေ မတွက်',
+  'ผ้าเจ้าของ · ฟรี': 'ပိုင်ရှင်၏ အဝတ် · အခမဲ့',
+  'ฟรี · ไม่นับเป็นรายได้ · เลือกซัก/อบด้านล่าง แล้วเริ่มเครื่องเหมือนงานลูกค้า': 'အခမဲ့ · ဝင်ငွေ မတွက် · အောက်တွင် လျှော်/အခြောက်ခံ ရွေးပြီး ဖောက်သည်အလုပ်လို စက်စပါ',
+  'เลือกซักหรืออบอย่างน้อย 1 อย่าง': 'လျှော် သို့မဟုတ် အခြောက်ခံ အနည်းဆုံး ၁ ခု ရွေးပါ',
+  'ร้านเกอิชา': 'Geisha ဆိုင်',
+  'ค้างจ่าย': 'အကြွေး',
+  'ค้างจ่าย · ไม่พับ': 'အကြွေး · မခေါက်',
+  'ค้างจ่าย · รับแล้ว': 'အကြွေး · ငွေရပြီး',
+  'ไม่พับ': 'မခေါက်',
+  'ไม่พับ · ซักอบอย่างเดียว': 'မခေါက် · လျှော်/အခြောက်ခံ သာ',
+  'ค้างจ่าย รวมบิลสิ้นเดือน · ไม่ต้องรับเงิน': 'အကြွေး လကုန်ပေါင်းရှင်း · ငွေမယူရ',
+  'ไม่ต้องรับเงิน ไม่ต้องให้สแกน — เจ้าของเก็บรวมสิ้นเดือน': 'ငွေမယူရ · စကင်မဖတ်ခိုင်းရ — ပိုင်ရှင် လကုန်တွင် ပေါင်းကောက်မည်',
+  'ยอดลงบิล': 'ဘေလ်ထဲထည့်မည့်ငွေ',
+  'รวมในบิลค้างจ่าย': 'အကြွေးဘေလ်ထဲ ပေါင်းထည့်',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3146,7 +3170,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
   const [printServerStatus, setPrintServerStatus] = useState('');
   const [backdateDay, setBackdateDay] = useState(null); // ⏪ ลงงานย้อนหลัง (ms ต้นวัน) — null = งานวันนี้
   const [homeDayOffset, setHomeDayOffset] = useState(0); // วันที่ดูในหน้าแรก: 0 = วันนี้, 1 = เมื่อวาน ...
-  const [internalMode, setInternalMode] = useState(false); // 🔧 เปิดหน้ารับงานในโหมดงานภายในร้าน
+  const [internalMode, setInternalMode] = useState(false); // 🔧 เปิดหน้ารับงานในโหมดงานภายในร้าน (true = ล้างเครื่อง · 'mine' = ผ้าเจ้าของ)
+  const [accountMode, setAccountMode] = useState(null); // 🏢 เปิดหน้ารับงานเป็นงานลูกค้าประจำค้างจ่าย
   const [autoOpenTicket, setAutoOpenTicket] = useState(false); // เปิดใบงานอัตโนมัติหลังรับงานใหม่
 
   // Real-time subscription to Firestore
@@ -3584,15 +3609,15 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
         </div>
       )}
       {deepJobId && <JobStartSheet config={config} orderId={deepJobId} orders={orders} onClose={onDeepDone} isOwner={isOwner} />}
-      {view === 'home' && <HomeView onResumeDraft={(d) => { setOrderDraft(d); setInternalMode(false); setBackdateDay(null); setView('newOrder'); }} onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} collections={collections} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setOrderDraft(null); setInternalMode(false); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={() => { setOrderDraft(null); setInternalMode(true); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && <HomeView onResumeDraft={(d) => { setOrderDraft(d); setInternalMode(false); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} collections={collections} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setOrderDraft(null); setInternalMode(false); setAccountMode(null); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={(t) => { setOrderDraft(null); setAccountMode(null); setInternalMode(typeof t === 'string' ? t : true); setBackdateDay(null); setView('newOrder'); }} onAccountOrder={(id) => { setOrderDraft(null); setInternalMode(false); setAccountMode(id); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
-      {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} draft={internalMode ? null : orderDraft} onCancel={() => { if (!internalMode) clearOrderDraft(config.brand); setOrderDraft(null); setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
+      {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} draft={internalMode ? null : orderDraft} accountMode={internalMode ? null : accountMode} onCancel={() => { if (!internalMode) clearOrderDraft(config.brand); setOrderDraft(null); setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} collections={collections} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {isSol(config) && <SolPendingBar config={config} />}
-      {view === 'ownerDashboard' && config.t2Sys && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setOrderDraft(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
-      {view === 'ownerDashboard' && !config.t2Sys && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setOrderDraft(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && config.t2Sys && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setOrderDraft(null); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && !config.t2Sys && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setOrderDraft(null); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} orders={orders} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
@@ -3901,7 +3926,7 @@ function RoleSwitchSheet({ config, currentStaff, prevStaff, onRoleSwitch, onClos
   );
 }
 
-function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders, tokenExchanges, collections, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, onRoleSwitch, prevStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
+function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders, tokenExchanges, collections, onAddToken, onDeleteToken, onNewOrder, onInternalOrder, onAccountOrder, onOwnerLogin, onSelectOrder, onChangeBrand, onOpenDelivery, currentStaff, onSwitchStaff, onRoleSwitch, prevStaff, printServer, printServerStatus, onTogglePrintServer, dayOffset = 0, setDayOffset = () => {} }) {
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [roleSheet, setRoleSheet] = useState(false); // 🔄 v157
   const role = staffRoleOf(currentStaff);
@@ -4192,6 +4217,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
   const detTodayN = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return (tokenExchanges || []).filter(t => t.kind === 'detergent' && (t.createdAt || 0) >= d.getTime()).length; })();
   const rowStatus = (o) => {
     if (isInternalOrder(o)) return { t: 'งานภายใน', c: '#475569', bg: '#F1F5F9' };
+    if (o.paymentMethod === 'account') return { t: o.collected ? 'ค้างจ่าย · รับแล้ว' : 'ค้างจ่าย', c: '#0369A1', bg: '#E0F2FE' };
     const held = t2CashPending(o) ? (o.paymentMethod === 'cash' ? calculateTotal(o, config) - cashInMachineOf(o, config) : t2CashHeld(o, config)) : 0;
     if (held > 0) return { t: 'เงินสดในมือ', amt: held, c: '#047857', bg: '#ECFDF5' };
     if (o.paymentMethod === 'transfer') return { t: 'โอน', c: '#6D28D9', bg: '#F5F3FF' };
@@ -4434,6 +4460,8 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
         const low = !!(fs && fs.remain <= 10);
         const tiles = [
           menuOn(config, 'internal') && { k: 'clean', icon: ownerNow ? '🔧' : '🧼', title: ownerNow ? tr(config, 'งานภายในร้าน') : tr(config, 'ล้างเครื่อง'), sub: ownerNow ? tr(config, 'ไม่ใช่รายได้') : tr(config, 'ทุก 7 วัน'), on: false, click: onInternalOrder },
+          menuOn(config, 'internal') && config.ownerLaundry && { k: 'mine', icon: '👔', title: tr(config, 'ผ้าเจ้าของ'), sub: tr(config, 'ฟรี · ไม่นับรายได้'), on: false, click: () => onInternalOrder('mine') },
+          ...(config.accounts || []).map(a => ({ k: 'acct-' + a.id, icon: a.emoji || '🏢', title: tr(config, a.name), sub: tr(config, a.noFold ? 'ค้างจ่าย · ไม่พับ' : 'ค้างจ่าย'), on: false, click: () => onAccountOrder && onAccountOrder(a.id) })),
           menuOn(config, 'promoCredit') && { k: 'promo', icon: '🎟️', title: tr(config, 'ลูกค้าใช้โปร'), sub: tr(config, pulseOn(config) ? 'ซักเอง ไม่ฝาก' : 'สแกนเครดิตให้ลูกค้า'), on: showPromoForm, click: () => setShowPromoForm(v => !v) },
           { k: 'det', icon: '🧴', title: tr(config, 'ขายน้ำยา'), sub: detTodayN > 0 ? <><b className="text-slate-800">{detTodayN}</b> {tr(config, 'ครั้งวันนี้')}</> : tr(config, 'ไม่ใช่รับงาน'), on: false, click: () => setDetSheet(true) },
           exOn && { k: 'ex', icon: '🪙', title: tr(config, exchangeName(config)), warn: low,
@@ -4950,7 +4978,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
   );
 }
 
-function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode, backdateDay, orders, draft }) {
+function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, internalMode, backdateDay, orders, draft, accountMode }) {
   const [webOrders, setWebOrders] = useState([]);
   const [showWeb, setShowWeb] = useState(false);
   const [webPicked, setWebPicked] = useState(null); // { id, code }
@@ -4959,10 +4987,13 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     const u = subscribeToWebOrders(config.brand, setWebOrders);
     return () => u && u();
   }, [config.brand]);
-  const [internalType, setInternalType] = useState(() => editingOrder?.internalType || (internalMode ? 'clean' : ''));
+  const [internalType, setInternalType] = useState(() => editingOrder?.internalType || (internalMode ? (typeof internalMode === 'string' ? internalMode : 'clean') : ''));
   const [internalReason, setInternalReason] = useState(() => editingOrder?.internalReason || '');
   const [internalCustom, setInternalCustom] = useState(() => editingOrder?.internalCustom != null ? String(editingOrder.internalCustom) : '');
   const [internalMachines, setInternalMachines] = useState(() => editingOrder?.internalMachines || []);
+  // 🏢 ลูกค้าประจำค้างจ่าย
+  const [accountId, setAccountId] = useState(() => (editingOrder ? (editingOrder.paymentMethod === 'account' ? editingOrder.accountId || null : null) : ((draft && draft.accountId) || accountMode || null)));
+  const acct = internalType || !accountId ? null : (((config.accounts || []).find(a => a.id === accountId)) || (editingOrder && editingOrder.paymentMethod === 'account' ? { id: accountId, name: editingOrder.customerName || '' } : null));
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const clientIdRef = useRef(!editingOrder && draft && draft.clientId ? draft.clientId : null);
@@ -4998,13 +5029,20 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const [dryItems, setDryItems] = useState(seed?.dryItems || []);
   const [detergentQty, setDetergentQty] = useState(seed?.detergentQty || 0);
   const [softenerQty, setSoftenerQty] = useState(seed?.softenerQty || 0);
-  const [foldBaskets, setFoldBaskets] = useState(seed?.foldBaskets ?? (config.freeService ? 0 : 1));
+  const [foldBaskets, setFoldBaskets] = useState(seed?.foldBaskets ?? (acct && acct.noFold ? 0 : config.freeService ? 0 : 1));
   const [noFold, setNoFold] = useState(seed?.noFold || false); // ลูกค้าไม่ต้องการพับ (เฉพาะร้านฟรี)
+  const pickAccount = (id) => { // 🏢 สลับ งานลูกค้าทั่วไป ⇄ งานลูกค้าประจำค้างจ่าย
+    const a = id ? (config.accounts || []).find(x => x.id === id) : null;
+    setAccountId(id || null);
+    if (a && a.noFold) setFoldBaskets(0);
+    else if (!a && !config.freeService && foldBaskets === 0) setFoldBaskets(1);
+  };
   const [paymentMethod, setPaymentMethod] = useState(seed?.paymentMethod || config.defaultPay || 'cash');
   const [splitCash, setSplitCash] = useState(seed?.cashAmount != null ? String(seed.cashAmount) : '');
   const [splitTransfer, setSplitTransfer] = useState(seed?.transferAmount != null ? String(seed.transferAmount) : '');
   const [note, setNote] = useState(seed?.note || '');
   const [deliveryZone, setDeliveryZone] = useState(seed?.deliveryZone || null);
+  const seedZone = seed?.deliveryZone || null; // โซนเดิมของใบงานที่เปิดแก้ — ถ้าเป็นโซนที่ซ่อนแล้ว ยังโชว์ปุ่มให้เห็นว่าเลือกอยู่
   const [riderId, setRiderId] = useState(seed?.riderId || null);
   const [fromKev, setFromKev] = useState(seed?.fromKev || false);
   const [fromLine, setFromLine] = useState(seed?.fromLine || false);
@@ -5026,8 +5064,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     if (!clientIdRef.current) clientIdRef.current = 'c' + Date.now() + Math.random().toString(36).slice(2, 7);
     saveOrderDraft(config.brand, { clientId: clientIdRef.current, customerName: name, customerPhone: phone, clothCount, washItems, dryItems, detergentQty, softenerQty,
       foldBaskets, noFold, paymentMethod, cashAmount: splitCash === '' ? null : Number(splitCash), transferAmount: splitTransfer === '' ? null : Number(splitTransfer),
-      note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, hadPhoto: !!basketPhoto });
-  }, [name, phone, clothCount, washItems, dryItems, detergentQty, softenerQty, foldBaskets, noFold, paymentMethod, splitCash, splitTransfer, note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, basketPhoto]);
+      note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, hadPhoto: !!basketPhoto, accountId: accountId || null });
+  }, [name, phone, clothCount, washItems, dryItems, detergentQty, softenerQty, foldBaskets, noFold, paymentMethod, splitCash, splitTransfer, note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, basketPhoto, accountId]);
   const [customDateTime, setCustomDateTime] = useState(() => {
     if (backdateMode) {
       const now = new Date(), b = new Date(backdateDay);
@@ -5113,10 +5151,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   }, [maidClean, internalMachines.join('|')]);
 
   const tempOrder = { 
-    washItems, dryItems, detergentQty, softenerQty, foldBaskets,
+    washItems, dryItems, detergentQty, softenerQty, foldBaskets: internalType ? 0 : foldBaskets, // งานภายในไม่มีค่าพับ (ร้านที่คิดค่าพับ เช่น Otteri)
     deliveryZone, useLinePromo,
     createdAt: orderTime,
-    noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false),
+    noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false || !!acct), // 🏢 ค้างจ่าย = ราคาปกติ
     internalType: internalType || null,
     internalCustom: internalType && customAmt > 0 ? customAmt : null,
   };
@@ -5126,11 +5164,11 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   // Teddy 2 บังคับใส่เบอร์ลูกค้า (ใช้ติดต่อกลับ/ตามงาน)
   // บังคับชื่อ + เบอร์ เฉพาะลูกค้าหน้าร้าน (งาน LINE / เคฟ ไม่บังคับ)
   const isWalkIn = !fromKev && !fromLine;
-  const needCustomerInfo = !isInternal && !!config.requirePhone && isWalkIn;
+  const needCustomerInfo = !isInternal && !acct && !!config.requirePhone && isWalkIn;
   const needPhone = needCustomerInfo;
   const phoneOk = !needPhone || phone.trim().length >= 9;
   const nameOk = !needCustomerInfo || name.trim().length > 0;
-  const internalOk = !isInternal || (internalMachines.length > 0 && (!needInternalDetail || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0))));
+  const internalOk = !isInternal || (internalType === 'mine' ? (washItems.length > 0 || dryItems.length > 0) : (internalMachines.length > 0 && (!needInternalDetail || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0)))));
   // 🔧 กติกางานภายในสำหรับแม่บ้าน (v150) — เจ้าของไม่ติด
   const cleanLocks = !isOwner && isInternal ? cleanLocksOf(orders, editingOrder && editingOrder.id) : {};
   const internalMaidIssues = [];
@@ -5155,7 +5193,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
-  if (isInternal && internalMachines.length === 0) missingList.push('เลือกเครื่องที่ทำ (บังคับ)');
+  if (isInternal && internalType !== 'mine' && internalMachines.length === 0) missingList.push('เลือกเครื่องที่ทำ (บังคับ)');
+  if (internalType === 'mine' && !washItems.length && !dryItems.length) missingList.push(tr(config, 'เลือกซักหรืออบอย่างน้อย 1 อย่าง'));
   internalMaidIssues.forEach(t => missingList.push(t));
   if (isInternal && needInternalDetail) {
     if (!hasAnyItem && customAmt <= 0) missingList.push('เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง');
@@ -5263,7 +5302,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     let splitCashNum = 0, splitTransferNum = 0;
     if (isInternal) {
       const tLabel = (INTERNAL_TYPES.find(t => t.id === internalType) || {}).label || '';
-      if (!confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}\nเครื่อง: ${internalMachines.join(', ')}${internalReason.trim() ? "\nเหตุผล: " + internalReason.trim() : ""}\nเครดิตที่ใช้: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
+      if (!confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}${internalMachines.length ? '\nเครื่อง: ' + internalMachines.join(', ') : ''}${internalReason.trim() ? "\nเหตุผล: " + internalReason.trim() : ""}\nเครดิตที่ใช้: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
+    } else if (acct) { // 🏢 ค้างจ่าย — ไม่รับเงิน
+      if (!confirm(`✅ ${tr(config, 'ยืนยันการรับงาน')}\n\n${acct.emoji || '🏢'} ${tr(config, acct.name)}\n${tr(config, 'วิธีจ่าย')}: ${tr(config, 'ค้างจ่าย รวมบิลสิ้นเดือน · ไม่ต้องรับเงิน')}\n${tr(config, 'ยอด')}: ${formatMoney(total)} ${tr(config, 'บาท')}${acct.noFold ? '\n🚫 ' + tr(config, 'ไม่พับ · ซักอบอย่างเดียว') : ''}`)) return;
     } else if (paymentMethod === 'split') {
       splitCashNum = parseFloat(splitCash) || 0;
       splitTransferNum = parseFloat(splitTransfer) || 0;
@@ -5285,8 +5326,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       id: editingOrder?.id || generateId(),
       createdAt: finalCreatedAt,
       updatedAt: Date.now(),
-      customerName: name.trim() || '(ไม่ระบุชื่อ)',
-      customerPhone: phone.trim() || '',
+      customerName: acct ? acct.name : internalType === 'mine' ? '👔 ผ้าเจ้าของ' : (name.trim() || '(ไม่ระบุชื่อ)'),
+      customerPhone: acct ? '' : (phone.trim() || ''),
       pickupTime: pickupTime.trim() || '',
       basketPhoto: basketPhoto === null ? null : (basketPhoto || ''),
       moneyPhoto: moneyPhoto === null ? null : (moneyPhoto || ''),
@@ -5299,11 +5340,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       dryItems: dryItems || [],
       detergentQty: detergentQty || 0,
       softenerQty: softenerQty || 0,
-      foldBaskets: foldBaskets || 0,
-      noFold: config.freeService ? (noFold || false) : false,
-      paymentMethod: internalType ? 'internal' : (paymentMethod || 'cash'),
-      cashAmount: paymentMethod === 'split' ? splitCashNum : null,
-      transferAmount: paymentMethod === 'split' ? splitTransferNum : null,
+      foldBaskets: internalType || (acct && acct.noFold) ? 0 : (foldBaskets || 0),
+      noFold: acct && acct.noFold ? true : config.freeService ? (noFold || false) : false,
+      paymentMethod: internalType ? 'internal' : acct ? 'account' : (paymentMethod || 'cash'),
+      accountId: acct ? acct.id : null,
+      cashAmount: !acct && paymentMethod === 'split' ? splitCashNum : null,
+      transferAmount: !acct && paymentMethod === 'split' ? splitTransferNum : null,
       cashReceived: total,
       note: note.trim() || '',
       deliveryZone: deliveryZone || null,
@@ -5311,7 +5353,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       fromKev: fromKev || false,
       fromLine: fromLine || false,
       useLinePromo: useLinePromo || false,
-      noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false),
+      noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false || !!acct), // 🏢 ค้างจ่าย = ราคาปกติ
       webCode: webPicked ? webPicked.code : (editingOrder && editingOrder.webCode) || null,
       internalType: internalType || null,
       internalReason: internalType ? internalReason.trim() : '',
@@ -5322,8 +5364,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       cashInMachine: editingOrder?.cashInMachine || null,
       collectedVia: editingOrder?.collectedVia || null,
       // preserve split collected flags (กันเก็บซ้ำตอนแก้ไข)
-      cashCollected: paymentMethod === 'split' ? (editingOrder?.cashCollected || false) : null,
-      transferCollected: paymentMethod === 'split' ? (editingOrder?.transferCollected || false) : null,
+      cashCollected: !acct && paymentMethod === 'split' ? (editingOrder?.cashCollected || false) : null,
+      transferCollected: !acct && paymentMethod === 'split' ? (editingOrder?.transferCollected || false) : null,
     };
     if (submittingRef.current) return; // กันกดรัว
     if (!editingOrder) {
@@ -5436,23 +5478,25 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
         {isInternal && (
           <div className="rounded-2xl p-4 border-2 border-amber-400" style={{background: 'repeating-linear-gradient(45deg, #FEF3C7, #FEF3C7 12px, #FDE68A 12px, #FDE68A 24px)'}}>
             <div className="flex items-center justify-between mb-3">
-              <p className="font-extrabold text-slate-900">{isOwner ? '🔧 งานภายในร้าน' : '🧼 ' + tr(config, 'ล้างเครื่อง')}</p>
+              <p className="font-extrabold text-slate-900">{isOwner ? '🔧 งานภายในร้าน' : internalType === 'mine' ? '👔 ' + tr(config, 'ผ้าเจ้าของ') : '🧼 ' + tr(config, 'ล้างเครื่อง')}</p>
               <button onClick={() => { setInternalType(''); setInternalReason(''); setInternalCustom(''); }}
                 className="text-[11px] font-bold text-slate-600 bg-white rounded-lg px-2 py-1">เปลี่ยนเป็นงานลูกค้า</button>
             </div>
             {isOwner && <p className="text-xs font-bold text-slate-700 mb-1.5">ประเภทงาน</p>}
-            {isOwner && <div className="flex flex-wrap gap-1.5 mb-3">
-              {INTERNAL_TYPES.map(t => {
+            {(isOwner || config.ownerLaundry) && <div className="flex flex-wrap gap-1.5 mb-3">
+              {internalTypesFor(config).filter(t => isOwner || !INTERNAL_OWNER_ONLY.includes(t.id)).map(t => {
                 const locked = !isOwner && INTERNAL_OWNER_ONLY.includes(t.id);
                 return (
-                  <button key={t.id} onClick={() => { if (locked) { alert('🔒 ' + t.label + ' — เฉพาะเจ้าของ'); return; } setInternalType(t.id); }}
+                  <button key={t.id} data-itype={t.id} onClick={() => { if (locked) { alert('🔒 ' + t.label + ' — เฉพาะเจ้าของ'); return; } if (t.id !== internalType && (t.id === 'mine' || internalType === 'mine')) { setInternalMachines([]); if (!isOwner) { setWashItems([]); setDryItems([]); } } setInternalType(t.id); }}
                     className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${internalType === t.id ? 'bg-slate-900 text-white border-slate-900' : locked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
-                    {locked ? '🔒' : t.emoji} {t.label}
+                    {locked ? '🔒' : t.emoji} {isOwner ? t.label : tr(config, t.label)}
                   </button>
                 );
               })}
             </div>}
-            {!isOwner && <p className="text-[11px] font-bold text-slate-700 mb-3">{tr(config, 'ล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ 7 วัน')}</p>}
+            {!isOwner && internalType === 'clean' && <p className="text-[11px] font-bold text-slate-700 mb-3">{tr(config, 'ล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ 7 วัน')}</p>}
+            {internalType === 'mine' && <p className="text-[11px] font-bold text-slate-700 mb-1">{tr(config, 'ฟรี · ไม่นับเป็นรายได้ · เลือกซัก/อบด้านล่าง แล้วเริ่มเครื่องเหมือนงานลูกค้า')}</p>}
+            {internalType !== 'mine' && <React.Fragment>
             <p className="text-xs font-bold text-slate-700 mb-1.5">{isOwner ? 'เครื่องที่ทำ' : tr(config, 'เครื่องซักที่จะล้าง')} <span className="text-rose-600">*บังคับ</span> (เลือกได้หลายเครื่อง)</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
@@ -5469,6 +5513,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                 );
               })}
             </div>
+            </React.Fragment>}
 
             {maidClean && (
               <div className="rounded-xl bg-white border-2 border-rose-200 px-3 py-2 mb-2">
@@ -5490,7 +5535,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                 <p className="text-[11px] text-slate-600 mt-1">เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้</p>
               </React.Fragment>
             ) : (
-              <p className="text-[11px] text-slate-700">{maidClean ? tr(config, 'กดบันทึกด้านล่าง แล้วกดเริ่มเครื่องได้เลย') : 'เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา'}</p>
+              <p className="text-[11px] text-slate-700">{maidClean ? tr(config, 'กดบันทึกด้านล่าง แล้วกดเริ่มเครื่องได้เลย') : internalType === 'mine' ? '' : 'เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา'}</p>
             )}
           </div>
         )}
@@ -5592,6 +5637,20 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
 
 
         {!isInternal && <Section iconName="user" title={tr(config, "ข้อมูลลูกค้า")}>
+          {(config.accounts || []).length > 0 && <div className="flex flex-wrap gap-1.5 mb-3">
+            {(config.accounts || []).map(a => (
+              <button key={a.id} data-account={a.id} onClick={() => pickAccount(accountId === a.id ? null : a.id)}
+                className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 transition ${accountId === a.id ? 'bg-sky-700 text-white border-sky-700' : 'bg-white text-sky-800 border-sky-200'}`}>
+                {accountId === a.id ? '✓ ' : ''}{a.emoji || '🏢'} {tr(config, a.name)} · {tr(config, 'ค้างจ่าย')}
+              </button>
+            ))}
+          </div>}
+          {acct ? (
+            <div className="rounded-xl bg-sky-50 border-2 border-sky-300 px-3 py-2.5" data-account-box>
+              <p className="font-extrabold text-sky-900">{acct.emoji || '🏢'} {tr(config, acct.name)}</p>
+              <p className="text-xs font-bold text-sky-800">{tr(config, 'ค้างจ่าย รวมบิลสิ้นเดือน · ไม่ต้องรับเงิน')}{acct.noFold ? ' · ' + tr(config, 'ไม่พับ') : ''}</p>
+            </div>
+          ) : <React.Fragment>
           <Field label={tr(config, needCustomerInfo ? 'ชื่อลูกค้า *' : 'ชื่อลูกค้า')}>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={tr(config, "ชื่อ-นามสกุล / ชื่อเล่น / ชื่อตึก / หอ")} className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needCustomerInfo && !nameOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
             {needCustomerInfo && !nameOk && <p className="text-xs text-amber-700 mt-1 font-medium">{tr(config, "จำเป็นต้องกรอก — ใช้เรียกลูกค้าตอนมารับผ้า")}</p>}
@@ -5600,6 +5659,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0XX-XXX-XXXX" inputMode="tel" className={`w-full px-4 py-3 rounded-xl border outline-none transition ${needPhone && !phoneOk ? 'bg-amber-50 border-amber-400 focus:border-amber-500' : 'bg-slate-50 border-slate-200 focus:border-sky-500 focus:bg-white'}`} />
             {needPhone && !phoneOk && <p className="text-xs text-amber-700 mt-1 font-medium">{tr(config, "จำเป็นต้องกรอก — ใช้ติดต่อลูกค้าตอนงานเสร็จ")}</p>}
           </Field>
+          </React.Fragment>}
         </Section>}
 
         {!isInternal && <Section iconName="camera" title={tr(config, "รูปตะกร้าผ้า")}>
@@ -5674,7 +5734,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           <p className="text-[11px] text-slate-500 -mt-2 mb-2">{tr(config, "💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ")}</p>
           <CounterRow iconEmoji="🧴" label={tr(config, "น้ำยาซัก")} sublabel={`฿${config.detergentPrice} / ซอง`} unit={tr(config, "ซอง")} qty={detergentQty} onAdd={() => setDetergentQty(q => q + 1)} onRemove={() => setDetergentQty(q => Math.max(0, q - 1))} colorActive="bg-purple-500" />
           <CounterRow iconEmoji="🌸" label={tr(config, "น้ำยาปรับผ้านุ่ม")} sublabel={`฿${config.softenerPrice} / ซอง`} unit={tr(config, "ซอง")} qty={softenerQty} onAdd={() => setSoftenerQty(q => q + 1)} onRemove={() => setSoftenerQty(q => Math.max(0, q - 1))} colorActive="bg-pink-500" />
-          {!config.freeService && (
+          {acct && acct.noFold && <p className="text-xs font-bold text-sky-800 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">🚫 {tr(config, acct.name)}: {tr(config, 'ไม่พับ · ซักอบอย่างเดียว')}</p>}
+          {!config.freeService && !(acct && acct.noFold) && (
             <CounterRow iconEmoji="🧺" label={tr(config, "ค่าพับผ้า")} sublabel={`฿${config.foldPricePerBasket} / ตะกร้า`} unit={tr(config, "ตะกร้า")} qty={foldBaskets} onAdd={() => setFoldBaskets(q => q + 1)} onRemove={() => setFoldBaskets(q => Math.max(0, q - 1))} colorActive="bg-emerald-500" hint={foldBaskets === 0 ? '⚠️ ไม่คิดค่าพับ' : null} />
           )}
           {config.freeService && (
@@ -5714,7 +5775,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                   <span className="text-xs text-slate-400">{tr(config, "ไม่คิดค่าส่ง")}</span>
                 </div>
               </button>
-              {config.deliveryZones.map(z => (
+              {config.deliveryZones.filter(z => !z.hidden || z.id === seedZone).map(z => (
                 <button key={z.id} onClick={() => pickDeliveryZone(z.id)} className={`p-3 rounded-xl border-2 transition ${deliveryZone === z.id ? 'border-current' : 'bg-slate-50 border-transparent'}`} style={deliveryZone === z.id ? {backgroundColor: z.color + '20', color: z.color} : {}}>
                   <div className="flex flex-col items-center gap-1">
                     <div className="w-4 h-4 rounded-full" style={{backgroundColor: z.color}}></div>
@@ -5802,7 +5863,20 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           </Section>
         )}
 
-        {!isInternal && <Section iconName="dollar-sign" title={tr(config, "การชำระเงิน")}>
+        {!isInternal && acct && <Section iconName="dollar-sign" title={tr(config, "การชำระเงิน")}>
+          <div className="rounded-2xl p-4 border bg-sky-50 border-sky-200" data-account-pay>
+            <p className="text-sm font-extrabold text-sky-900">{acct.emoji || '🏢'} {tr(config, 'ค้างจ่าย')} · {tr(config, acct.name)}</p>
+            <p className="text-xs font-bold text-sky-800 mt-0.5">{tr(config, 'ไม่ต้องรับเงิน ไม่ต้องให้สแกน — เจ้าของเก็บรวมสิ้นเดือน')}</p>
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-slate-600 text-sm font-semibold">{tr(config, 'ยอดลงบิล')}</span>
+              <span className="text-2xl font-extrabold text-sky-700">฿{formatMoney(total)}</span>
+            </div>
+          </div>
+          <Field label={tr(config, "หมายเหตุ (ไม่บังคับ)")}>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-sky-500 focus:bg-white outline-none transition resize-none" />
+          </Field>
+        </Section>}
+        {!isInternal && !acct && <Section iconName="dollar-sign" title={tr(config, "การชำระเงิน")}>
           <div>
             <p className="text-xs font-medium text-slate-600 mb-2">{tr(config, "วิธีชำระเงิน ")}<span className="text-rose-500">*</span></p>
             <div className="grid grid-cols-3 gap-2">
@@ -5946,7 +6020,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           <div className="flex items-center gap-2 mb-2">
             <div className="flex-1">
               <p className="text-xs text-slate-500">
-                {isInternal ? '🔧 เครดิตที่ใช้ (งานภายใน)' : tr(config, 'ยอดรวม') + ' • ' + tr(config, paymentMethod === 'transfer' ? 'โอน' : 'เงินสด')}
+                {isInternal ? (internalType === 'mine' ? '👔 ' + tr(config, 'ผ้าเจ้าของ · ฟรี') : '🔧 เครดิตที่ใช้ (งานภายใน)') : tr(config, 'ยอดรวม') + ' • ' + (acct ? tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'))}
                 {breakdown.totalDiscount > 0 && <span className="ml-1 text-rose-600 font-bold">• {tr(config, 'ลด')} ฿{breakdown.totalDiscount}</span>}
               </p>
               <p className="text-xl font-extrabold text-slate-900">฿{formatMoney(total)}</p>
@@ -6256,7 +6330,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
       // ส่งแค่ใบรับงาน 1 รูป (ไม่ส่งรูปตะกร้าซ้ำ)
       const files = [receiptFile];
       const emoji = config.brand === 'otteri' ? '🦦' : '🐻';
-      const text = `${emoji} ${config.name} - รับงานใหม่\n━━━━━━━━━━━\n👤 ${order.customerName}\n📞 ${order.customerPhone}${order.clothCount ? `\n🧺 ${order.clothCount}` : ''}${order.deliveryZone ? `\n🚚 Delivery (${config.deliveryZones.find(z => z.id === order.deliveryZone)?.label})${order.riderId && config.riders ? ` • ${config.riders.find(r => r.id === order.riderId)?.label || ''}` : ''}` : ''}${order.fromKev ? '\n👨‍💼 จากเคฟ' : ''}\n💵 ${formatMoney(total)} บาท (${order.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'})\n⏰ ${formatDate(order.createdAt)}`;
+      const text = `${emoji} ${config.name} - รับงานใหม่\n━━━━━━━━━━━\n👤 ${order.customerName}\n📞 ${order.customerPhone}${order.clothCount ? `\n🧺 ${order.clothCount}` : ''}${order.deliveryZone ? `\n🚚 Delivery (${config.deliveryZones.find(z => z.id === order.deliveryZone)?.label})${order.riderId && config.riders ? ` • ${config.riders.find(r => r.id === order.riderId)?.label || ''}` : ''}` : ''}${order.fromKev ? '\n👨‍💼 จากเคฟ' : ''}\n💵 ${formatMoney(total)} บาท (${order.paymentMethod === 'account' ? accountPayText(order, config) : order.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'})\n⏰ ${formatDate(order.createdAt)}`;
       
       if (navigator.share && navigator.canShare?.({ files })) {
         await navigator.share({ files, title: `${config.name} - ${order.customerName}`, text });
@@ -6466,7 +6540,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
               <div>
                 <p className="text-xs text-slate-500">{internal ? 'ประเภท' : 'วิธีชำระ'}</p>
                 <p className={`font-bold text-sm ${internal ? 'text-amber-700' : 'text-slate-900'}`}>
-                  {internal ? '🔧 งานภายใน (ไม่ใช่รายได้)' : (order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด')}
+                  {internal ? '🔧 งานภายใน (ไม่ใช่รายได้)' : order.paymentMethod === 'account' ? '🏢 ' + accountPayText(order, config) : (order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด')}
                 </p>
               </div>
               {order.deliveryZone && (
@@ -6702,6 +6776,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
                     if (config.freeService && isDropoff) {
                       return order.noFold ? '☒ ไม่พับ (ลูกค้าไม่ต้องการ)' : '☑ พับ';
                     }
+                    if (order.paymentMethod === 'account' && order.noFold) return '☒ ไม่พับ (ซักอบอย่างเดียว)';
                     return `${order.foldBaskets > 0 ? '☑' : '☐'} พับ${order.foldBaskets > 0 ? ` (${order.foldBaskets})` : ''}`;
                   })()}</span>
                   <span>{order.deliveryZone ? '☑' : '☐'} เดลิเวอรี{order.deliveryZone ? ` (${config.deliveryZones?.find(z => z.id === order.deliveryZone)?.label || ''})` : ''}</span>
@@ -6734,7 +6809,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
                   <tr>
                     <td style={{ fontWeight: 700, padding: '2px 0', width: '38%' }}>การจ่าย</td>
                     <td style={{ padding: '2px 0', fontWeight: 700 }}>
-                      {order.paymentMethod === 'transfer' ? 'โอน' : order.paymentMethod === 'split' ? `แยกจ่าย (สด ${formatMoney(order.cashAmount || 0)} / โอน ${formatMoney(order.transferAmount || 0)})` : 'เงินสด'}
+                      {order.paymentMethod === 'account' ? accountPayText(order, config) : order.paymentMethod === 'transfer' ? 'โอน' : order.paymentMethod === 'split' ? `แยกจ่าย (สด ${formatMoney(order.cashAmount || 0)} / โอน ${formatMoney(order.transferAmount || 0)})` : 'เงินสด'}
                     </td>
                   </tr>
                   {breakdown.totalDiscount > 0 && (
@@ -6934,7 +7009,7 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
         </button>
         <h1 className="font-bold text-slate-900 text-lg flex-1">รายละเอียด</h1>
         <span className={`text-xs px-2 py-1 rounded-full font-bold ${order.paymentMethod === 'transfer' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
-          {order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 สด'}
+          {order.paymentMethod === 'account' ? '🏢 ค้างจ่าย' : order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 สด'}
         </span>
         {order.collected && (<span className="text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-full font-bold">เคลียร์แล้ว</span>)}
       </div>
@@ -7049,7 +7124,7 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
         <div className="bg-white rounded-2xl p-4">
           <p className="text-xs text-slate-500 uppercase tracking-wide font-bold mb-2">การชำระเงิน</p>
           <div className="flex items-center justify-between text-sm">
-            <span>{order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด'}</span>
+            <span>{order.paymentMethod === 'account' ? '🏢 ' + accountPayText(order, config) : order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด'}</span>
             <span className="font-bold text-slate-900">฿{formatMoney(total)}</span>
           </div>
           {photos.moneyPhoto && (<img src={photos.moneyPhoto} className="w-full rounded-xl mt-3" />)}
@@ -10296,7 +10371,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
 
             {/* ⏱️ v158: ลูกค้าเพิ่มเวลาอบ → เพิ่มในใบงานก่อน แล้วเปิดเครื่องตามใบงาน */}
             {(fixed || job) && canAddTime && (!addOpen ? (
-              <button onClick={() => { setAddOpen(true); setAddAmt(PULSE_BAHT * 2); setAddPay(job.order.paymentMethod === 'transfer' ? 'transfer' : job.order.paymentMethod === 'cash' ? 'cash' : null); setAddMsg(null); }}
+              <button onClick={() => { setAddOpen(true); setAddAmt(PULSE_BAHT * 2); setAddPay(job.order.paymentMethod === 'transfer' || job.order.paymentMethod === 'account' ? 'transfer' : job.order.paymentMethod === 'cash' ? 'cash' : null); setAddMsg(null); }}
                 className="w-full py-3 rounded-2xl border-2 border-dashed text-sm font-extrabold active:scale-95 transition" style={{ borderColor: '#F59E0B', color: '#92400E', background: '#FFFBEB' }}>
                 ⏱️ {tr(config, 'ลูกค้าเพิ่มเวลาอบ')} ({selM.label})
               </button>
@@ -10315,8 +10390,10 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
                 </div>
                 <p className="text-xs font-bold text-slate-600">{tr(config, 'ลูกค้าจ่ายเพิ่มยังไง')}</p>
                 <div className="flex gap-2">
+                  {job.order.paymentMethod === 'account' ? tile(true, '#0369A1', () => setAddPay('transfer'), '🏢', <span>{tr(config, 'รวมในบิลค้างจ่าย')}</span>, null) : <React.Fragment>
                   {tile(addPay === 'cash', '#059669', () => setAddPay('cash'), '💵', <span>{tr(config, 'เงินสด')}<br /><span className="text-[11px] font-bold opacity-80">{tr(config, 'หยอดเหรียญที่เครื่อง')}</span></span>, null)}
                   {tile(addPay === 'transfer', '#0284C7', () => setAddPay('transfer'), '💳', <span>{tr(config, 'โอน')}<br /><span className="text-[11px] font-bold opacity-80">{tr(config, 'ยิงจากแอป')}</span></span>, null)}
+                  </React.Fragment>}
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button onClick={() => setAddOpen(false)} disabled={addBusy} className="px-4 py-3 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-600 active:scale-95">{tr(config, 'ยกเลิก')}</button>
@@ -11110,7 +11187,7 @@ function JobFiredList({ config, logs, isOwner, order }) {
 // 📊 สรุป 5 ก้อน (v151): ค่าเครื่องที่เปิด แยกตามที่มาของเงิน — นับตามวันที่รับใบงาน (โปรซักเอง/คืนเครดิต นับตามวันที่ยิง)
 function pulseBucketsFor(config, orders, logs, from, to) {
   const sinceMs = pulseSinceOf(config);
-  const B = { cash: 0, cashN: 0, transfer: 0, manual: 0, discount: 0, discountN: 0, promo: 0, clean: 0, cleanN: 0, repair: 0, repairN: 0, redo: 0, redoN: 0,
+  const B = { cash: 0, cashN: 0, transfer: 0, manual: 0, discount: 0, discountN: 0, promo: 0, clean: 0, cleanN: 0, repair: 0, repairN: 0, redo: 0, redoN: 0, mine: 0, mineN: 0, account: 0, accountN: 0,
     over: 0, refund: 0, refundN: 0, refire: 0, pending: 0, pendingN: 0, extraCash: 0, extraTransfer: 0 };
   const mine = (logs || []).filter(l => l.brand === config.brand);
   const sum = (list) => list.reduce((a, l) => a + (l.baht || 0), 0);
@@ -11126,6 +11203,7 @@ function pulseBucketsFor(config, orders, logs, from, to) {
       const used = pulses + manual;
       if (o.internalType === 'clean') { B.clean += used; if (used > 0) B.cleanN++; }
       else if (o.internalType === 'redo') { B.redo += used; if (used > 0) B.redoN++; }
+      else if (o.internalType === 'mine') { B.mine += used; if (used > 0) B.mineN++; }
       else { B.repair += used; if (used > 0) B.repairN++; }
       return;
     }
@@ -11133,14 +11211,15 @@ function pulseBucketsFor(config, orders, logs, from, to) {
     B.cash += pay.coinUsed; if (pay.coinUsed > 0) B.cashN++;
     B.discount += pay.discountUsed; if (pay.discountUsed > 0) B.discountN++;
     const t = Math.min(pay.transferUsed, pay.transferOn);
-    B.transfer += t + manual; B.manual += manual;
+    if (o.paymentMethod === 'account') { B.account += t + manual; if (t + manual > 0) B.accountN++; } else B.transfer += t + manual;
+    B.manual += manual;
     B.refire += Math.min(Math.max(0, pay.transferUsed - pay.transferOn), pay.coinRefunded);
     B.over += pay.pulseExcess;
     B.extraCash += pay.nonMachineCash; B.extraTransfer += pay.nonMachineTransfer;
   });
   mine.filter(l => l.refType === 'promo' && pulseLive(l) && !pulseIsCoin(l) && inRange(l.createdAt || 0)).forEach(l => { B.discount += l.baht || 0; B.promo += l.baht || 0; });
   mine.filter(l => pulseRefunded(l) && inRange(l.createdAt || 0)).forEach(l => { B.refund += l.baht || 0; B.refundN++; });
-  B.total = B.cash + B.transfer + B.discount + B.clean + B.repair + B.redo + B.refire + B.over;
+  B.total = B.cash + B.transfer + B.discount + B.clean + B.repair + B.redo + B.mine + B.account + B.refire + B.over;
   return B;
 }
 
@@ -12012,6 +12091,7 @@ const T2C = {
   overview: { c: T2_NEUTRAL, soft: '#F1F5F9', ic: '📋', name: 'ภาพรวม' },
   cash: { c: '#047857', soft: '#ECFDF5', ic: '💵', name: 'เงินสด' },
   transfer: { c: '#6D28D9', soft: '#F5F3FF', ic: '💳', name: 'โอน' },
+  account: { c: '#0369A1', soft: '#E0F2FE', ic: '🏢', name: 'ค้างจ่าย' },
   discount: { c: '#B45309', soft: '#FEF3C7', ic: '🎟️', name: 'ส่วนลด' },
   internal: { c: '#64748B', soft: '#F1F5F9', ic: '🔧', name: 'งานภายใน' },
   delivery: { c: T2_NEUTRAL, soft: '#F1F5F9', ic: '🚚', name: 'ค่าส่ง' },
@@ -12023,7 +12103,7 @@ const T2C = {
 };
 // เมนูล่าง 4 กลุ่ม + ปุ่มรับงานตรงกลาง · แถบย่อยด้านบนเลือกหน้าในกลุ่ม (ไม่ต้องปัดหา)
 const T2_GROUPS = [
-  { id: 'money', ic: '💰', label: 'เงิน', tabs: ['overview', 'cash', 'transfer', 'discount'] },
+  { id: 'money', ic: '💰', label: 'เงิน', tabs: ['overview', 'cash', 'transfer', 'discount', 'account'] }, // account = เฉพาะร้านที่มีลูกค้าค้างจ่าย
   { id: 'work', ic: '🧺', label: 'งาน', tabs: ['internal', 'delivery', 'fold'] },
   { id: 'machine', ic: '⚡', label: 'เครื่อง', tabs: ['pulse', 'coins', 'stats'] },
   { id: 'settings', ic: '⚙️', label: 'ตั้งค่า', tabs: ['settings'] },
@@ -12065,7 +12145,7 @@ function t2Agg(config, orders, from, to, dets) {
   const A = { jobs: 0, sales: 0, cash: 0, transfer: 0, coin: 0, held: 0, heldPending: 0, cashN: 0, transferN: 0,
     discount: 0, discN: 0, lineDisc: 0, promoDisc: 0, internal: 0, internalN: 0, intType: {},
     delivN: 0, delivCharge: 0, riderFee: 0, riderUnpaid: 0, foldN: 0, noFoldN: 0, topUp: 0, customers: 0, list: [], ilist: [],
-    det: 0, detN: 0, detCash: 0, detTransfer: 0, dlist: [] };
+    det: 0, detN: 0, detCash: 0, detTransfer: 0, dlist: [], account: 0, accountN: 0, accountPending: 0 };
   const phones = new Set();
   (orders || []).forEach(o => {
     const t = t2Ts(o.createdAt);
@@ -12082,6 +12162,7 @@ function t2Agg(config, orders, from, to, dets) {
     const b = calculateBreakdown(o, config);
     A.jobs++; A.sales += b.total; A.list.push(o);
     const cash = orderCashPart(o, config), tr = orderTransferPart(o, config);
+    if (o.paymentMethod === 'account') { A.account += b.total; A.accountN++; if (!o.collected) A.accountPending += b.total; }
     A.cash += cash; A.transfer += tr;
     if (cash > 0) A.cashN++;
     if (tr > 0) A.transferN++;
@@ -12148,7 +12229,7 @@ async function undoCollectionRound(config, round, orders) {
   await window.db.collection('collections').doc(round.id).set({ undone: true, undoneAt: now, brand: config.brand }, { merge: true });
   return rows.length;
 }
-const t2RoundLabel = (m) => (m === 'cash' ? 'เก็บเงินสด' : m === 'transfer' ? 'เคลียร์ยอดโอน' : m === 'service' ? 'จ่ายค่าพับ' : String(m || '').startsWith('delivery') ? 'จ่ายค่าส่ง' : m);
+const t2RoundLabel = (m) => (m === 'account' ? 'รับเงินค้างจ่าย' : m === 'cash' ? 'เก็บเงินสด' : m === 'transfer' ? 'เคลียร์ยอดโอน' : m === 'service' ? 'จ่ายค่าพับ' : String(m || '').startsWith('delivery') ? 'จ่ายค่าส่ง' : m);
 
 // แถวใบงาน v162: การ์ดขาว + แถบซ้ายบอกวิธีจ่าย (สีเดียว) · ป้ายวิธีจ่ายมีสี · ป้ายอื่นเป็นเทา
 function T2OrderRow({ config, o, onClick, selecting, checked, timeOnly }) {
@@ -12157,7 +12238,7 @@ function T2OrderRow({ config, o, onClick, selecting, checked, timeOnly }) {
   const b = calculateBreakdown(o, config);
   const coin = cashInMachineOf(o, config);
   const pm = o.paymentMethod;
-  const bar = internal ? T2C.internal.c : pm === 'transfer' ? T2C.transfer.c : pm === 'split' ? `linear-gradient(${T2C.cash.c} 0 50%, ${T2C.transfer.c} 50% 100%)` : T2C.cash.c;
+  const bar = internal ? T2C.internal.c : pm === 'account' ? T2C.account.c : pm === 'transfer' ? T2C.transfer.c : pm === 'split' ? `linear-gradient(${T2C.cash.c} 0 50%, ${T2C.transfer.c} 50% 100%)` : T2C.cash.c;
   const pay = (txt, k) => <span key={k + txt} className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: T2C[k].soft, color: T2C[k].c }}>{txt}</span>;
   const tag = (txt) => <span key={txt} className="text-xs px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-600">{txt}</span>;
   return (
@@ -12175,7 +12256,7 @@ function T2OrderRow({ config, o, onClick, selecting, checked, timeOnly }) {
         <span className="flex flex-wrap gap-1 mt-1">
           {internal ? pay('ภายใน · ไม่ใช่รายได้', 'internal')
             : pm === 'split' ? [pay(`สด ฿${formatMoney(o.cashAmount || 0)}`, 'cash'), pay(`โอน ฿${formatMoney(o.transferAmount || 0)}`, 'transfer')]
-            : pm === 'transfer' ? pay('โอน', 'transfer') : pay('สด', 'cash')}
+            : pm === 'account' ? pay(o.collected ? 'ค้างจ่าย · รับแล้ว' : 'ค้างจ่าย', 'account') : pm === 'transfer' ? pay('โอน', 'transfer') : pay('สด', 'cash')}
           {b.totalDiscount > 0 && pay(`ลด ฿${formatMoney(b.totalDiscount)}`, 'discount')}
           {o.deliveryZone && tag('ส่ง')}
           {coin > 0 && tag(`เข้าเครื่อง ฿${formatMoney(coin)}`)}
@@ -12609,6 +12690,21 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
       if (r && r.id) showToast(`✓ ${t2RoundLabel(method)} ฿${formatMoney(r.total)} (${shownN} ใบ)`, () => undoRound({ ...r.round, id: r.id }, false));
     } finally { setBusy(false); }
   };
+  const doCollectAccount = async (a, items) => { // 🏢 รับเงินบิลค้างจ่าย (กด ↶ ยกเลิกได้)
+    const sum = items.reduce((s, o) => s + calculateTotal(o, config), 0);
+    if (!items.length || !confirm(`🏢 รับเงินจาก ${a.name} แล้ว?\n\nบิล${R.label} · ${items.length} ใบ · ฿${formatMoney(sum)}\n\nใบงานจะเป็น "รับเงินแล้ว" (กด ↶ ยกเลิกได้)`)) return;
+    setBusy(true);
+    try {
+      const now = Date.now();
+      const round = { prev: items.map(o => ({ id: o.id, collected: !!o.collected, collectedAt: o.collectedAt || null, collectedVia: o.collectedVia || null })),
+        collectedAt: now, method: 'account', accountId: a.id, accountName: a.name, period: R.label,
+        orderIds: items.map(o => o.id), orderCount: items.length, totalReceived: sum, totalShould: sum };
+      const id = await saveCollectionToCloud(config.brand, round);
+      await batchUpdateOrders(round.orderIds, { collected: true, collectedAt: now, collectedVia: 'account' });
+      showToast(`✓ รับเงิน ${a.name} ฿${formatMoney(sum)} (${items.length} ใบ)`, () => undoRound({ ...round, id }, false));
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  };
   const doPayRider = async (riderId) => {
     setBusy(true);
     try {
@@ -12714,6 +12810,8 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   // 💵 v163: แม่บ้านนับเงินสดขาด → แจ้งต่อจากรายการเก็บเงินสด
   if (shortCount) todo.push({ k: 'warn', title: `แม่บ้านนับเงินสดขาด ฿${formatMoney(Math.abs(shortCount.diff))}`, sub: `${shortCount.staffName || '-'} · ${t2When(shortCount.collectedAt)} · ควรมี ฿${formatMoney(shortCount.expected || 0)} นับได้ ฿${formatMoney(shortCount.counted || 0)}`, nav: 'ดู', go: 'cash' });
   if (trPend > 0) todo.push({ k: 'transfer', title: 'โอนที่ยังไม่เคลียร์ยอด', sub: `${formatMoney(trPendList.length)} ใบ${detTrList.length ? ` · ขายน้ำยา ${detTrList.length} ครั้ง` : ''} · เช็กยอดธนาคารก่อน`, act: `เคลียร์ ฿${formatMoney(trPend)}`, onAct: () => doCollect('transfer'), go: 'transfer' });
+  const accPendList = cust.filter(o => o.paymentMethod === 'account' && !o.collected); // 🏢
+  if (accPendList.length) todo.push({ k: 'account', title: `🏢 ค้างจ่าย ฿${formatMoney(accPendList.reduce((s, o) => s + calculateTotal(o, config), 0))}`, sub: `${accPendList.length} ใบ · ${[...new Set(accPendList.map(o => (accountOf(o, config) || {}).name))].join(', ')} · รวมบิลสิ้นเดือน`, nav: 'ดูบิล', go: 'account' });
   if (riderUnpaid > 0) todo.push({ k: 'delivery', title: `ค่าไรเดอร์ค้างจ่าย ฿${formatMoney(riderUnpaid)}`, sub: `${riderUnpaidList.length} งานส่ง · จ่ายแยกตามคน`, nav: 'ดูรายคน', go: 'delivery' });
   if (refundPendingN > 0) todo.push({ k: 'warn', title: `แม่บ้านขอคืนเครดิต ${refundPendingN} รายการ`, sub: 'เครื่องมีปัญหา · อนุมัติแล้วใบงานเปิดเครื่องใหม่ได้', nav: 'ดู', go: 'pulse' });
 
@@ -12775,11 +12873,13 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
           </div>
           <div className="mt-3 h-3 rounded-full overflow-hidden flex bg-slate-100" aria-label={`สด ${cashPct}% โอน ${A.sales > 0 ? 100 - cashPct : 0}%`}>
             <div style={{ width: cashPct + '%', background: T2C.cash.c }}></div>
-            <div style={{ width: (A.sales > 0 ? 100 - cashPct : 0) + '%', background: T2C.transfer.c }}></div>
+            <div style={{ width: (A.sales > 0 ? 100 - cashPct - pct(A.account) : 0) + '%', background: T2C.transfer.c }}></div>
+            {A.account > 0 && <div style={{ width: pct(A.account) + '%', background: T2C.account.c }}></div>}
           </div>
           <div className="mt-1 divide-y divide-slate-100">
             {moneyRow('cash', A.cash, `เข้าเครื่อง ฿${formatMoney(A.coin)} · แม่บ้านรับ ฿${formatMoney(A.held)}`, cashPct)}
-            {moneyRow('transfer', A.transfer, `${formatMoney(A.transferN)} ใบ`, A.sales > 0 ? 100 - cashPct : 0)}
+            {moneyRow('transfer', A.transfer, `${formatMoney(A.transferN)} ใบ`, A.sales > 0 ? 100 - cashPct - pct(A.account) : 0)}
+            {A.account > 0 && moneyRow('account', A.account, `${formatMoney(A.accountN)} ใบ · ${A.accountPending > 0 ? 'ยังไม่ได้รับ ฿' + formatMoney(A.accountPending) : 'รับเงินครบแล้ว'}`, pct(A.account))}
           </div>
           {A.detN > 0 && <p className="text-xs font-bold text-slate-500 px-1 pb-2">🧴 รวมขายน้ำยา ฿{formatMoney(A.det)} · {A.detN} ครั้ง (สด ฿{formatMoney(A.detCash)} · โอน ฿{formatMoney(A.detTransfer)}) — ไม่นับเป็นงาน</p>}
           {(A.discount > 0 || A.internal > 0) && (
@@ -12787,7 +12887,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
               <p className="text-xs font-extrabold text-slate-500 pt-2">ไม่นับเป็นรายได้</p>
               <div className="divide-y divide-slate-200">
                 {A.discount > 0 && moneyRow('discount', A.discount, `${formatMoney(A.discN)} ใบ · คูปอง/โปร`, null, true)}
-                {A.internal > 0 && moneyRow('internal', A.internal, `${A.internalN} งาน · ล้าง/ซ่อม/ซักซ้ำ`, null, true)}
+                {A.internal > 0 && moneyRow('internal', A.internal, `${A.internalN} งาน · ${config.ownerLaundry ? 'ล้าง/ผ้าเจ้าของ/ซ่อม' : 'ล้าง/ซ่อม/ซักซ้ำ'}`, null, true)}
               </div>
             </div>
           )}
@@ -12819,7 +12919,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
         {/* ---------- แถบย่อยของกลุ่ม (ติดด้านบนตอนเลื่อน) ---------- */}
         <div ref={tabsRef} className="sticky top-0 z-20 -mx-4 px-4 pt-2 pb-2 bg-slate-100">
           {group.tabs.length > 1 && <div className="flex gap-1.5">
-            {group.tabs.map(k => (
+            {group.tabs.filter(k => k !== 'account' || (config.accounts || []).length > 0).map(k => (
               <button key={k} onClick={() => setTab(k)}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-extrabold whitespace-nowrap border transition flex items-center justify-center gap-1.5 ${tab === k ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>
                 {['cash', 'transfer', 'discount'].includes(k) && <span className="w-2 h-2 rounded-full" style={{ background: T2C[k].c }}></span>}
@@ -12938,6 +13038,35 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
           </div>
         )}
 
+        {tab === 'account' && (() => {
+          const accAll = cust.filter(o => o.paymentMethod === 'account');
+          const inR = (o) => { const t = t2Ts(o.createdAt); return t >= R.from && t < R.to; };
+          const sumOf = (arr) => arr.reduce((s, o) => s + calculateTotal(o, config), 0);
+          const accList = A.list.filter(o => o.paymentMethod === 'account');
+          return (
+          <div className="space-y-2.5">
+            {(config.accounts || []).map(a => {
+              const mine = accAll.filter(o => o.accountId === a.id);
+              const per = mine.filter(inR), perPend = per.filter(o => !o.collected), allPend = mine.filter(o => !o.collected);
+              return (
+                <T2Box key={a.id} k="account" title={`${a.emoji || '🏢'} ${a.name} · ${R.label}`} right={<span className="text-xs font-bold text-slate-500">{a.noFold ? 'ไม่พับ · ' : ''}รวมบิลสิ้นเดือน</span>}>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <T2Stat label="ยอดบิล" value={'฿' + formatMoney(sumOf(per))} sub={`${per.length} ใบ`} color={T2C.account.c} />
+                    <T2Stat label="ยังไม่ได้รับ" value={'฿' + formatMoney(sumOf(perPend))} sub={allPend.length > perPend.length ? `ค้างทุกเดือน ฿${formatMoney(sumOf(allPend))}` : `${perPend.length} ใบ`} />
+                  </div>
+                  {perPend.length > 0
+                    ? actBtn('account', `รับเงินแล้ว · บิล${R.label} ฿${formatMoney(sumOf(perPend))}`, () => doCollectAccount(a, perPend))
+                    : <p className="text-sm font-bold text-emerald-700">✓ {R.label} รับเงินครบแล้ว{allPend.length ? ` · ยังค้างช่วงอื่น ${allPend.length} ใบ` : ''}</p>}
+                  {mode === 'day' && perPend.length > 0 && <p className="text-xs text-slate-500 mt-1.5">💡 เลือก "รายเดือน" ด้านบน เพื่อรับเงินทั้งบิลของเดือน</p>}
+                </T2Box>
+              );
+            })}
+            {history(m => m === 'account', 'account')}
+            {listHead(`ใบงานค้างจ่าย · ${R.label}`, accList.length)}
+            {list(accList)}
+          </div>
+          ); })()}
+
         {tab === 'discount' && (
           <div className="space-y-2.5">
             <T2Box k="discount" title={`ส่วนลด · ${R.label}`}>
@@ -12957,7 +13086,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
           <div className="space-y-2.5">
             <T2Box k="internal" title={`งานภายใน · ${R.label}`} right={<span className="text-xs font-bold text-slate-500">ไม่นับเป็นรายได้</span>}>
               <div className="grid grid-cols-2 gap-2">
-                {INTERNAL_TYPES.map(t => (
+                {internalTypesFor(config).map(t => (
                   <T2Stat key={t.id} label={`${t.emoji} ${t.label}`} value={'฿' + formatMoney((A.intType[t.id] || {}).v || 0)} sub={`${(A.intType[t.id] || {}).n || 0} งาน`} />
                 ))}
               </div>
@@ -13009,7 +13138,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             <T2Box k="pulse" title={`ค่าเครื่องที่เปิด · ${R.label}`}>
               {PB.total === 0 ? <p className="text-sm text-slate-500">ยังไม่มีการเปิดเครื่องผ่านแอปใน{R.label}</p> : (
               <div className="divide-y divide-slate-100">
-                {[['cash', 'เงินสด (หยอดเหรียญ)', PB.cash], ['transfer', isSol(config) ? 'โอน (กดใน SOL)' : 'โอน (ยิงแอป)', PB.transfer], ['discount', isSol(config) ? 'ส่วนลด (กดใน SOL)' : 'ส่วนลด (ยิงแอป)', PB.discount], ['internal', 'ล้างเครื่อง', PB.clean], ['internal', 'ซ่อม/ทดสอบ', PB.repair]].map(([k, lb, v], i) => (
+                {[['cash', 'เงินสด (หยอดเหรียญ)', PB.cash], ['transfer', isSol(config) ? 'โอน (กดใน SOL)' : 'โอน (ยิงแอป)', PB.transfer], ['discount', isSol(config) ? 'ส่วนลด (กดใน SOL)' : 'ส่วนลด (ยิงแอป)', PB.discount], ['internal', 'ล้างเครื่อง', PB.clean], ['internal', 'ซ่อม/ทดสอบ', PB.repair], ...(PB.mine ? [['internal', 'ผ้าเจ้าของ', PB.mine]] : []), ...(PB.account ? [['account', isSol(config) ? 'ค้างจ่าย (กดใน SOL)' : 'ค้างจ่าย (ยิงแอป)', PB.account]] : [])].map(([k, lb, v], i) => (
                   <div key={i} className="flex items-center gap-3 py-2">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ background: T2C[k].c }}></span>
                     <p className="flex-1 text-sm font-bold text-slate-800">{lb}</p>
