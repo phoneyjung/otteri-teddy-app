@@ -373,6 +373,9 @@ const OTTERI_CONFIG = {
 // 🧪 Otteri ใช้ระบบแบบเท็ดดี้ 2 (เงินสดในมือ · เริ่มเครื่องผ่าน SOL · กระทบยอด WDF) — เปิดเฉพาะหน้าทดสอบก่อน
 if (window.TEST_MODE) Object.assign(OTTERI_CONFIG, {
   ownerLaundry: true, // 👔 แม่บ้านลงผ้าเจ้าของเองได้ (ฟรี · งานภายใน)
+  ui2: true, // 🎨 หน้าตาแบบใหม่ (แจ้งเตือนภาษาคน · แถบเข้างานเล็ก · ฟอร์มสั้นลง · สีเดียว · ผังเครื่องตามหน้าร้าน)
+  ui2Accent: '#0EA5E9', // ฟ้า Otteri — ปุ่ม + ทุกปุ่ม
+  t2Primary: '#0284C7', // ปุ่มรับงานหน้าเจ้าของ = ฟ้า Otteri (เดิมเขียว Teddy 2)
   accounts: [{ id: 'geisha', name: 'ร้านเกอิชา', emoji: '🏢', noFold: true }], // 🏢 ค้างจ่าย รวมบิลสิ้นเดือน · ไม่พับ · ราคาปกติ (ไม่ใช้โปรวันพุธ)
   t2Sys: true,
   defaultPay: 'transfer', // ให้แม่บ้านถือเงินสดน้อยที่สุด
@@ -1644,6 +1647,8 @@ const INTERNAL_TYPES = [
 ];
 const isInternalOrder = (o) => !!(o && o.internalType);
 const internalTypesFor = (config) => INTERNAL_TYPES.filter(t => !t.cfg || !!(config && config[t.cfg]));
+// ชื่องานภายในในรายการ เช่น "🧼 ล้างเครื่อง · W1" (เดิมขึ้น "(ไม่ระบุชื่อ)")
+const internalTitleOf = (o, config) => { const t = INTERNAL_TYPES.find(x => x.id === o.internalType) || {}; const ms = (o.internalMachines || []).map(m => String(m).replace(/^(ซัก|อบ) /, '')); return `${t.emoji || '🔧'} ${tr(config, t.label || 'งานภายใน')}${ms.length ? ' · ' + ms.join(', ') : ''}`; };
 // 🏢 ลูกค้าประจำแบบค้างจ่าย (paymentMethod 'account' + accountId) — ไม่ใช่เงินสด/โอน · เจ้าของกดรับเงินทีหลัง
 const accountOf = (o, config) => (o && o.paymentMethod === 'account' ? (((config && config.accounts) || []).find(a => a.id === o.accountId) || { id: o.accountId || '', name: o.customerName || '' }) : null);
 const accountPayText = (o, config) => { const a = accountOf(o, config); return a ? `ค้างจ่าย · ${a.name}` : ''; };
@@ -2309,6 +2314,22 @@ const MM_DICT = {
   'ไม่ต้องรับเงิน ไม่ต้องให้สแกน — เจ้าของเก็บรวมสิ้นเดือน': 'ငွေမယူရ · စကင်မဖတ်ခိုင်းရ — ပိုင်ရှင် လကုန်တွင် ပေါင်းကောက်မည်',
   'ยอดลงบิล': 'ဘေလ်ထဲထည့်မည့်ငွေ',
   'รวมในบิลค้างจ่าย': 'အကြွေးဘေလ်ထဲ ပေါင်းထည့်',
+  // 🎨 ui2 (หน้าทดสอบ Otteri)
+  'และอีก': 'နှင့် နောက်ထပ်',
+  'แตะเพื่อเริ่มเครื่อง': 'စက်စရန် နှိပ်ပါ',
+  'แตะดูว่าต้องทำอะไร': 'ဘာလုပ်ရမလဲ ကြည့်ရန် နှိပ်ပါ',
+  'เข้างาน': 'အလုပ်ဝင်',
+  'ออกงาน': 'အလုပ်ဆင်း',
+  'ออกงานแล้ว': 'အလုပ်ဆင်းပြီး',
+  'งานประจำวัน': 'နေ့စဉ်အလုပ်',
+  'ติ๊กก่อนกลับบ้าน': 'အိမ်မပြန်ခင် အမှတ်ခြစ်ပါ',
+  'งานจาก Line': 'LINE မှ အလုပ်',
+  'ถ่าย': 'ရိုက်',
+  'เลือกอัลบั้ม': 'အယ်လ်ဘမ်မှ ရွေး',
+  'เริ่มเครื่อง (กดใน SOL)': 'စက်စတင် (SOL တွင်နှိပ်)',
+  'เริ่มแล้ว': 'စပြီး',
+  'ยังไม่เริ่ม': 'မစရသေး',
+  'เรียงตามหน้าร้าน ซ้าย → ขวา (เหมือนใน SOL)': 'ဆိုင်ရှေ့အတိုင်း ဘယ် → ညာ (SOL ကဲ့သို့)',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -3172,6 +3193,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
   const [homeDayOffset, setHomeDayOffset] = useState(0); // วันที่ดูในหน้าแรก: 0 = วันนี้, 1 = เมื่อวาน ...
   const [internalMode, setInternalMode] = useState(false); // 🔧 เปิดหน้ารับงานในโหมดงานภายในร้าน (true = ล้างเครื่อง · 'mine' = ผ้าเจ้าของ)
   const [accountMode, setAccountMode] = useState(null); // 🏢 เปิดหน้ารับงานเป็นงานลูกค้าประจำค้างจ่าย
+  window.UI_ACCENT = config.ui2 ? (config.ui2Accent || config.primaryColor) : null; // 🎨 ui2: ปุ่ม + สีเดียว
   const [autoOpenTicket, setAutoOpenTicket] = useState(false); // เปิดใบงานอัตโนมัติหลังรับงานใหม่
 
   // Real-time subscription to Firestore
@@ -4359,7 +4381,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
           </button>}
           {T2H ? (
             <div className="grid grid-cols-2 gap-3 mt-5">
-              <div className="bg-white bg-opacity-15 rounded-2xl p-3 border border-white border-opacity-25">
+              <div className={`rounded-2xl p-3 border border-white border-opacity-25 ${config.ui2 ? '' : 'bg-white bg-opacity-15'}`} style={config.ui2 ? { background: 'rgba(3,105,161,0.78)' } : undefined}>
                 <p className="text-white text-xs font-bold">{tr(config, "วันนี้")}</p>
                 <p className="text-white text-2xl font-extrabold tabular-nums">{todayCust.length}<span className="text-sm font-bold ml-1">{tr(config, "งาน")}</span></p>
                 <p className="text-white text-sm font-bold tabular-nums">฿{formatMoney(todaySales)}</p>
@@ -4439,7 +4461,16 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
       {config.hasAttendance && <AttendanceCard config={config} currentStaff={currentStaff} />}
 
       {/* 📋 งานประจำวันแม่บ้าน (Checklist) */}
-      {config.hasChecklist && (
+      {config.hasChecklist && config.ui2 && (
+        <div className="px-5 mt-2">
+          <button onClick={onOpenChecklist} data-check-slim className="w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition">
+            <span className="text-base leading-none">📋</span>
+            <span className="flex-1 min-w-0 text-xs font-bold text-slate-700 truncate">{tr(config, 'งานประจำวัน')} <span className="text-slate-500">· {tr(config, 'ติ๊กก่อนกลับบ้าน')}</span></span>
+            <span className="text-slate-400 font-bold">›</span>
+          </button>
+        </div>
+      )}
+      {config.hasChecklist && !config.ui2 && (
         <div className="px-5 mt-3">
           <button onClick={onOpenChecklist}
             className="w-full rounded-2xl p-3 border-2 border-emerald-300 bg-emerald-50 active:scale-95 transition flex items-center gap-3">
@@ -4780,7 +4811,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => tokenCameraRef.current?.click()} className="py-3 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                       <Icon name="camera" className="w-5 h-5 text-sky-600" />
-                      <span className="text-xs text-sky-700 font-bold">{tr(config, "📷 ถ่าย")}</span>
+                      <span className="text-xs text-sky-700 font-bold">{tr(config, config.ui2 ? "ถ่าย" : "📷 ถ่าย")}</span>
                     </button>
                     <button onClick={() => tokenInputRef.current?.click()} className="py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                       <Icon name="image" className="w-5 h-5 text-slate-500" />
@@ -4931,7 +4962,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
                     <span className="absolute bottom-0 right-0 bg-black bg-opacity-50 text-white text-[8px] px-1 rounded-tl">🔍</span>
                   </div>
                 ) : T2H ? (
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100 text-slate-700 font-extrabold tabular-nums">{isInternalOrder(o) ? '🔧' : o.queueNo != null ? '#' + o.queueNo : '–'}</div>
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100 text-slate-700 font-extrabold tabular-nums">{isInternalOrder(o) ? ((INTERNAL_TYPES.find(t => t.id === o.internalType) || {}).emoji || '🔧') : o.queueNo != null ? '#' + o.queueNo : '–'}</div>
                 ) : (
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${o.collected ? 'bg-emerald-50' : (o.paymentMethod === 'transfer' ? 'bg-violet-50' : 'bg-sky-50')}`}>
                     <Icon name={o.collected ? "check" : (o.deliveryZone ? 'truck' : (o.paymentMethod === 'transfer' ? 'smartphone' : 'banknote'))} className={`w-6 h-6 ${o.collected ? 'text-emerald-500' : (o.paymentMethod === 'transfer' ? 'text-violet-500' : 'text-sky-500')}`} strokeWidth={o.collected ? 3 : 2} />
@@ -4939,7 +4970,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="font-semibold text-slate-900 truncate">{o.customerName}</p>
+                    <p className="font-semibold text-slate-900 truncate">{isInternalOrder(o) ? internalTitleOf(o, config) : o.customerName}</p>
                     {o.deliveryZone && <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🚚</span>}
                     {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">{tr(config, "เคฟ")}</span>}
                     {o.fromLine && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💬</span>}
@@ -5029,13 +5060,14 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const [dryItems, setDryItems] = useState(seed?.dryItems || []);
   const [detergentQty, setDetergentQty] = useState(seed?.detergentQty || 0);
   const [softenerQty, setSoftenerQty] = useState(seed?.softenerQty || 0);
-  const [foldBaskets, setFoldBaskets] = useState(seed?.foldBaskets ?? (acct && acct.noFold ? 0 : config.freeService ? 0 : 1));
+  const [foldBaskets, setFoldBaskets] = useState(seed?.foldBaskets ?? (acct && acct.noFold ? 0 : config.freeService || config.ui2 ? 0 : 1));
+  const foldTouched = useRef(!!seed); // 🎨 ui2: แม่บ้านแตะจำนวนพับเองแล้ว
   const [noFold, setNoFold] = useState(seed?.noFold || false); // ลูกค้าไม่ต้องการพับ (เฉพาะร้านฟรี)
   const pickAccount = (id) => { // 🏢 สลับ งานลูกค้าทั่วไป ⇄ งานลูกค้าประจำค้างจ่าย
     const a = id ? (config.accounts || []).find(x => x.id === id) : null;
     setAccountId(id || null);
     if (a && a.noFold) setFoldBaskets(0);
-    else if (!a && !config.freeService && foldBaskets === 0) setFoldBaskets(1);
+    else if (!a && !config.freeService && foldBaskets === 0 && (!config.ui2 || washItems.length || dryItems.length)) setFoldBaskets(1);
   };
   const [paymentMethod, setPaymentMethod] = useState(seed?.paymentMethod || config.defaultPay || 'cash');
   const [splitCash, setSplitCash] = useState(seed?.cashAmount != null ? String(seed.cashAmount) : '');
@@ -5150,6 +5182,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     setDryItems([]);
   }, [maidClean, internalMachines.join('|')]);
 
+  useEffect(() => { // 🎨 ui2: มีซัก/อบ = ฝากพับ 1 ตะกร้า (ยังไม่เลือกอะไร = ยอด 0)
+    if (!config.ui2 || foldTouched.current || config.freeService || internalType || (acct && acct.noFold)) return;
+    setFoldBaskets(washItems.length || dryItems.length ? 1 : 0);
+  }, [washItems.length, dryItems.length]);
   const tempOrder = { 
     washItems, dryItems, detergentQty, softenerQty, foldBaskets: internalType ? 0 : foldBaskets, // งานภายในไม่มีค่าพับ (ร้านที่คิดค่าพับ เช่น Otteri)
     deliveryZone, useLinePromo,
@@ -5540,7 +5576,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           </div>
         )}
 
-        {!isInternal && !isEdit && (
+        {!isInternal && !isEdit && (!config.ui2 || pendingWeb.length > 0 || !!webPicked) && (
           <div>
             <button onClick={() => setShowWeb(true)}
               className={`w-full rounded-2xl p-3 border-2 flex items-center gap-3 active:scale-95 transition ${webPicked ? 'border-emerald-400 bg-emerald-50' : pendingWeb.length ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white'}`}>
@@ -5611,7 +5647,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
         )}
 
         {/* ปุ่มงานจาก Line - ใช้ได้ทั้ง Otteri และ Teddy (ใช้ร่วมกับเคฟไม่ได้) */}
-        {!isInternal && <button 
+        {!isInternal && !config.ui2 && <button 
           onClick={() => !fromKev && setFromLine(!fromLine)}
           disabled={fromKev}
           className={`w-full rounded-2xl p-4 shadow-lg transition ${fromKev ? 'opacity-40 cursor-not-allowed' : 'active:scale-[0.98]'} ${fromLine ? 'shadow-green-300' : ''}`}
@@ -5637,7 +5673,13 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
 
 
         {!isInternal && <Section iconName="user" title={tr(config, "ข้อมูลลูกค้า")}>
-          {(config.accounts || []).length > 0 && <div className="flex flex-wrap gap-1.5 mb-3">
+          {((config.accounts || []).length > 0 || config.ui2) && <div className="flex flex-wrap gap-1.5 mb-3">
+            {config.ui2 && !acct && (
+              <button data-line-chip onClick={() => !fromKev && setFromLine(!fromLine)}
+                className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 transition ${fromLine ? 'text-white border-transparent' : 'bg-white text-green-700 border-green-200'}`} style={fromLine ? { background: '#06C755' } : undefined}>
+                {fromLine ? '✓ ' : '💬 '}{tr(config, 'งานจาก Line')}
+              </button>
+            )}
             {(config.accounts || []).map(a => (
               <button key={a.id} data-account={a.id} onClick={() => pickAccount(accountId === a.id ? null : a.id)}
                 className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 transition ${accountId === a.id ? 'bg-sky-700 text-white border-sky-700' : 'bg-white text-sky-800 border-sky-200'}`}>
@@ -5676,11 +5718,11 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => basketCameraRef.current?.click()} className="py-6 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                 <Icon name="camera" className="w-7 h-7 text-sky-600" />
-                <span className="text-xs text-sky-700 font-bold">{tr(config, "📷 ถ่ายรูป")}</span>
+                <span className="text-xs text-sky-700 font-bold">{tr(config, config.ui2 ? "ถ่ายรูป" : "📷 ถ่ายรูป")}</span>
               </button>
               <button onClick={() => basketInputRef.current?.click()} className="py-6 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                 <Icon name="image" className="w-7 h-7 text-slate-500" />
-                <span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ เลือกจากอัลบั้ม")}</span>
+                <span className="text-xs text-slate-600 font-bold">{tr(config, config.ui2 ? "เลือกจากอัลบั้ม" : "🖼️ เลือกจากอัลบั้ม")}</span>
               </button>
             </div>
           )}
@@ -5736,7 +5778,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           <CounterRow iconEmoji="🌸" label={tr(config, "น้ำยาปรับผ้านุ่ม")} sublabel={`฿${config.softenerPrice} / ซอง`} unit={tr(config, "ซอง")} qty={softenerQty} onAdd={() => setSoftenerQty(q => q + 1)} onRemove={() => setSoftenerQty(q => Math.max(0, q - 1))} colorActive="bg-pink-500" />
           {acct && acct.noFold && <p className="text-xs font-bold text-sky-800 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">🚫 {tr(config, acct.name)}: {tr(config, 'ไม่พับ · ซักอบอย่างเดียว')}</p>}
           {!config.freeService && !(acct && acct.noFold) && (
-            <CounterRow iconEmoji="🧺" label={tr(config, "ค่าพับผ้า")} sublabel={`฿${config.foldPricePerBasket} / ตะกร้า`} unit={tr(config, "ตะกร้า")} qty={foldBaskets} onAdd={() => setFoldBaskets(q => q + 1)} onRemove={() => setFoldBaskets(q => Math.max(0, q - 1))} colorActive="bg-emerald-500" hint={foldBaskets === 0 ? '⚠️ ไม่คิดค่าพับ' : null} />
+            <CounterRow iconEmoji="🧺" label={tr(config, "ค่าพับผ้า")} sublabel={`฿${config.foldPricePerBasket} / ตะกร้า`} unit={tr(config, "ตะกร้า")} qty={foldBaskets} onAdd={() => { foldTouched.current = true; setFoldBaskets(q => q + 1); }} onRemove={() => { foldTouched.current = true; setFoldBaskets(q => Math.max(0, q - 1)); }} colorActive="bg-emerald-500" hint={foldBaskets === 0 && (!config.ui2 || washItems.length || dryItems.length) ? '⚠️ ไม่คิดค่าพับ' : null} />
           )}
           {config.freeService && (
             <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3 space-y-3">
@@ -5853,7 +5895,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                       </button>
                       <button onClick={() => linePromoInputRef.current?.click()} className="py-5 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                         <Icon name="image" className="w-6 h-6 text-slate-500" />
-                        <span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ เลือกอัลบั้ม")}</span>
+                        <span className="text-xs text-slate-600 font-bold">{tr(config, config.ui2 ? "เลือกอัลบั้ม" : "🖼️ เลือกอัลบั้ม")}</span>
                       </button>
                     </div>
                   </div>
@@ -5999,11 +6041,11 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => moneyCameraRef.current?.click()} className="py-4 bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                   <Icon name="camera" className="w-5 h-5 text-sky-600" />
-                  <span className="text-xs text-sky-700 font-bold">{tr(config, "📷 ถ่าย")}</span>
+                  <span className="text-xs text-sky-700 font-bold">{tr(config, config.ui2 ? "ถ่าย" : "📷 ถ่าย")}</span>
                 </button>
                 <button onClick={() => moneyInputRef.current?.click()} className="py-4 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center gap-1 active:scale-95 transition">
                   <Icon name="image" className="w-5 h-5 text-slate-500" />
-                  <span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ เลือกอัลบั้ม")}</span>
+                  <span className="text-xs text-slate-600 font-bold">{tr(config, config.ui2 ? "เลือกอัลบั้ม" : "🖼️ เลือกอัลบั้ม")}</span>
                 </button>
               </div>
             )}
@@ -7894,6 +7936,14 @@ function AttendanceCard({ config, currentStaff }) {
 
   return (
     <div className="px-5 mt-3">
+      {config.ui2 && state !== 'none' && (
+        <button onClick={() => { if (state === 'in') startCapture('out'); }} disabled={busy || state === 'out'} data-att-slim
+          className="w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: '#047857' }}></span>
+          <span className="flex-1 min-w-0 text-xs font-bold text-slate-700 truncate">✓ {tr(config, 'เข้างาน')} {fmtTime(rec.inAt)}{state === 'out' ? ` · ${tr(config, 'ออกงานแล้ว')} ${fmtTime(rec.outAt)}` : ''}</span>
+          {state === 'in' && <span className="text-xs font-extrabold whitespace-nowrap" style={{ color: '#0369A1' }}>🚪 {tr(config, 'ออกงาน')} ›</span>}
+        </button>
+      )}
       {state === 'none' && (
         <button onClick={() => startCapture('in')} disabled={busy} className="w-full rounded-2xl p-3 border-2 border-sky-300 bg-sky-50 active:scale-95 transition flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center text-xl flex-shrink-0">📸</div>
@@ -7901,14 +7951,14 @@ function AttendanceCard({ config, currentStaff }) {
           <Icon name="chevron-right" className="w-5 h-5 text-sky-700" />
         </button>
       )}
-      {state === 'in' && (
+      {state === 'in' && !config.ui2 && (
         <button onClick={() => startCapture('out')} disabled={busy} className="w-full rounded-2xl p-3 border-2 border-orange-300 bg-orange-50 active:scale-95 transition flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center text-xl flex-shrink-0">🚪</div>
           <div className="text-left flex-1"><p className="font-bold text-orange-900 text-sm">ออกงาน — ถ่ายรูปร้านก่อนกลับ</p><p className="text-xs text-orange-700">เข้างาน {fmtTime(rec.inAt)}{rec.lateMin > 0 ? ` (สาย ${rec.lateMin} นาที)` : ''} · ต้องติ๊กงานประจำวันให้ครบ</p></div>
           <Icon name="chevron-right" className="w-5 h-5 text-orange-700" />
         </button>
       )}
-      {state === 'out' && (
+      {state === 'out' && !config.ui2 && (
         <div className="w-full rounded-2xl p-3 border-2 border-emerald-200 bg-emerald-50 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-xl flex-shrink-0">✓</div>
           <div className="text-left flex-1"><p className="font-bold text-emerald-900 text-sm">ออกงานแล้ว {fmtTime(rec.outAt)}</p><p className="text-xs text-emerald-700">เข้า {fmtTime(rec.inAt)} · ทำงาน {fmtDur(rec.outAt - rec.inAt)} · งาน {rec.checklistDone}/{rec.checklistTotal}</p></div>
@@ -8835,7 +8885,7 @@ function currentStaffLS(config) {
 }
 
 function pulseRefLabel(order, config) {
-  if (isInternalOrder(order)) return '🔧 ' + ((INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).label || 'งานภายใน');
+  if (isInternalOrder(order)) return (config && config.ui2 ? ((INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).emoji || '🔧') : '🔧') + ' ' + ((INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).label || 'งานภายใน');
   return `#${order.queueNo != null ? order.queueNo : (order.id || '').slice(-4)} ${order.customerName || ''}`.trim();
 }
 
@@ -9954,6 +10004,43 @@ function SolPendingBar({ config }) {
 
 // เครื่องแบบตาราง (ร้านที่ไม่ได้วางเครื่องเป็นแท่นอบบน-ซักล่าง เช่น Otteri)
 function MachineGrid({ config, machines, marks, selected, onPick, problems }) {
+  // 🎨 ui2: เรียงตามหน้าร้านจริง (ผังเดียวกับแถบ SOL) — 2 แถว แถวละ 5 ช่อง · เครื่องอบซ้อนบน-ล่างเหมือนของจริง
+  const map = config.ui2 && config.pulse && config.pulse.solMap;
+  if (map && map.bottom) {
+    const byId = {};
+    machines.forEach(m => { byId[m.id] = m; });
+    const cols = map.bottom.map((b, i) => ({ top: (map.top || [])[i] || '', bottom: b }));
+    const half = Math.ceil(cols.length / 2);
+    const cell = (id, small) => {
+      const m = byId[id];
+      if (!m) return null;
+      const mk = marks[m.id];
+      const sel = selected === m.id;
+      const color = m.kind === 'wash' ? '#113D6C' : '#BA3D4D';
+      return (
+        <button key={m.id} onClick={() => onPick(m)} data-machine={m.id}
+          className={`relative w-full rounded-xl ${small ? 'py-1' : 'py-1.5'} px-0.5 text-center border-2 active:scale-95 transition ${mk === 'dim' && !sel ? 'opacity-40' : ''}`}
+          style={{ background: sel ? color : '#fff', color: sel ? '#fff' : '#0F172A', borderColor: sel ? color : mk === 'target' ? '#C68B4A' : '#E2E8F0' }}>
+          <span className="block text-[10px] font-extrabold leading-none" style={{ color: sel ? '#fff' : color }}>{tr(config, m.kind === 'wash' ? 'ซัก' : 'อบ')}</span>
+          <span className="block text-base font-extrabold leading-tight">{m.id}</span>
+          <span className="block text-[11px] font-bold leading-none" style={{ opacity: 0.75 }}>{m.kg}kg</span>
+          {mk === 'done' && <span className="absolute -top-1.5 -right-1.5 text-sm">✅</span>}
+          {mk === 'busy' && <span className="absolute -top-1.5 -right-1.5 text-sm">⏳</span>}
+          {problems && problems.has(m.id) && <span className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-black" style={{ lineHeight: '16px' }}>!</span>}
+        </button>
+      );
+    };
+    return (
+      <div className="space-y-2" data-grid-physical>
+        <p className="text-[11px] font-bold text-slate-500 px-1">{tr(config, 'เรียงตามหน้าร้าน ซ้าย → ขวา (เหมือนใน SOL)')}</p>
+        {[cols.slice(0, half), cols.slice(half)].map((row, ri) => (
+          <div key={ri} className="grid grid-cols-5 gap-1.5 items-end">
+            {row.map((c, ci) => <div key={ci} className="space-y-1.5">{c.top ? cell(c.top, true) : null}{cell(c.bottom)}</div>)}
+          </div>
+        ))}
+      </div>
+    );
+  }
   const rows = [['wash', '💧 ' + tr(config, 'เครื่องซัก'), '#113D6C'], ['dry', '🌬️ ' + tr(config, 'เครื่องอบ'), '#BA3D4D']];
   return (
     <div className="space-y-2">
@@ -10576,11 +10663,11 @@ function PulseStarterCard({ config, order: orderProp, isOwner }) {
   return (
     <div className={`rounded-2xl p-4 mb-3 border-2 ${allDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-amber-300 shadow-lg'}`}>
       <div className="flex items-center gap-2">
-        <span className="text-2xl">⚡</span>
+        <span className="text-2xl">{isSol(config) ? '🧺' : '⚡'}</span>
         <div className="flex-1 min-w-0">
-          <p className="font-extrabold text-slate-900">{tr(config, 'เริ่มเครื่อง (ยิงพัลส์)')}</p>
+          <p className="font-extrabold text-slate-900">{tr(config, isSol(config) ? 'เริ่มเครื่อง (กดใน SOL)' : 'เริ่มเครื่อง (ยิงพัลส์)')}</p>
           <p className={`text-xs font-bold ${allDone ? 'text-emerald-700' : 'text-amber-700'}`}>
-            {allDone ? '✅ ' + tr(config, 'เริ่มเครื่องครบแล้ว') : `${tr(config, 'เปิดแล้ว')} ฿${fired} / ฿${need}`}
+            {allDone ? '✅ ' + tr(config, 'เริ่มเครื่องครบแล้ว') : `${tr(config, isSol(config) ? 'เริ่มแล้ว' : 'เปิดแล้ว')} ฿${fired} / ฿${need}`}
           </p>
         </div>
       </div>
@@ -10631,7 +10718,7 @@ function PulseStarterCard({ config, order: orderProp, isOwner }) {
       <button onClick={() => setPicker({ preset: null, retryLog: null })} disabled={!!busy}
         className={`mt-3 w-full rounded-xl font-extrabold active:scale-95 transition disabled:opacity-40 ${allDone ? 'py-2 text-sm bg-white border border-emerald-300 text-emerald-700' : 'py-3.5 text-base text-white shadow'}`}
         style={allDone ? {} : { background: config.gradient }}>
-        {allDone ? `🧺 ${tr(config, 'เปิดเครื่องเพิ่ม / เพิ่มเวลาอบ')}` : `🧺 ${tr(config, 'เลือกเครื่อง')} (${tr(config, 'ขาด')} ฿${need - fired})`}
+        {allDone ? `🧺 ${tr(config, 'เปิดเครื่องเพิ่ม / เพิ่มเวลาอบ')}` : `🧺 ${tr(config, 'เลือกเครื่อง')} (${tr(config, isSol(config) ? 'ยังไม่เริ่ม' : 'ขาด')} ฿${need - fired})`}
       </button>
       {!allDone && <p className="text-[11px] text-slate-500 mt-1.5 text-center">{tr(config, 'ยังไม่ต้องเริ่มตอนนี้ก็ได้ — กดปุ่ม 🧺 เริ่มเครื่อง ที่หน้าแรกทีหลัง')}</p>}
       {/* ✍️ v153: เจ้าของเคลียร์ทั้งใบงาน — เปิดเครื่องด้วยระบบเก่า/นอกแอปไปแล้ว */}
@@ -11592,13 +11679,13 @@ function PulseReconCard({ config, orders, currentStaff, slim }) {
   return (
     <div className={slim && tone !== 'rose' ? 'px-5 mt-2' : 'px-5 mt-3'}>
       {slim && tone !== 'rose' ? (
-        <button onClick={() => setSheetDate(todayKey)} className="w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition">
+        <button onClick={() => setSheetDate(todayKey)} className={`w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition ${config.ui2 && tone === 'amber' ? 'hidden' : ''}`}>
           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: tone === 'emerald' ? '#047857' : '#94A3B8' }}></span>
           <span className="flex-1 min-w-0 text-xs font-bold text-slate-700 truncate">
             {tone === 'emerald' ? tr(config, 'ยอดเปิดเครื่องวันนี้ตรงกัน') : tone === 'amber' ? `${tr(config, 'รอเริ่มเครื่อง')} ${bad} ${tr(config, 'งาน')}` : tr(config, 'กระทบยอดเปิดเครื่อง')}
-            <span className="text-slate-500"> · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)} · {ecName(config)} {ecBusy ? '…' : recon.ecBaht == null ? '…' : '฿' + formatMoney(recon.ecBaht)}
+            {!config.ui2 && <span className="text-slate-500"> · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)} · {ecName(config)} {ecBusy ? '…' : recon.ecBaht == null ? '…' : '฿' + formatMoney(recon.ecBaht)}
               {bad > 0 && unexplained.length === 0 ? ` · 📝 ${tr(config, 'ใส่เหตุผลแล้ว')}` : ''}
-              {recon.issues.some(i => i.key.startsWith('r:')) ? ` · ⏳ ${tr(config, 'รอเจ้าของคืนเครดิต')} ${recon.issues.filter(i => i.key.startsWith('r:')).length}` : ''}</span>
+              {recon.issues.some(i => i.key.startsWith('r:')) ? ` · ⏳ ${tr(config, 'รอเจ้าของคืนเครดิต')} ${recon.issues.filter(i => i.key.startsWith('r:')).length}` : ''}</span>}
           </span>
           <span className="text-slate-400 font-bold">›</span>
         </button>
@@ -11607,12 +11694,14 @@ function PulseReconCard({ config, orders, currentStaff, slim }) {
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${dot}`}>⚡</div>
         <div className="text-left flex-1 min-w-0">
           <p className={`font-bold text-sm ${tone === 'rose' ? 'text-rose-800' : tone === 'amber' ? 'text-amber-900' : 'text-emerald-900'}`}>
-            {onlyPending ? `⏳ ${tr(config, 'รอเริ่มเครื่อง')} ${bad} ${tr(config, 'งาน')} — ${tr(config, 'แตะดู')}` : bad > 0 ? `⚠️ ${tr(config, 'ยอดเปิดเครื่องไม่ตรง')} ${bad} ${tr(config, 'รายการ')} — ${tr(config, 'แตะดู')}` : `✅ ${tr(config, 'ยอดเปิดเครื่องวันนี้ตรงกัน')}`}
+            {config.ui2 && bad > 0 ? `${onlyPending ? '⏳' : '⚠️'} ${tr(config, recon.errors[0].text)}${recon.errors[0].label ? ' · ' + recon.errors[0].label : ''}${bad > 1 ? ` ${tr(config, 'และอีก')} ${bad - 1}` : ''}` : onlyPending ? `⏳ ${tr(config, 'รอเริ่มเครื่อง')} ${bad} ${tr(config, 'งาน')} — ${tr(config, 'แตะดู')}` : bad > 0 ? `⚠️ ${tr(config, 'ยอดเปิดเครื่องไม่ตรง')} ${bad} ${tr(config, 'รายการ')} — ${tr(config, 'แตะดู')}` : `✅ ${tr(config, 'ยอดเปิดเครื่องวันนี้ตรงกัน')}`}
           </p>
           <p className="text-xs text-slate-600">
+            {config.ui2 && bad > 0 ? <span data-recon-plain>{tr(config, onlyPending ? 'แตะเพื่อเริ่มเครื่อง' : 'แตะดูว่าต้องทำอะไร')}</span> : <React.Fragment>
             {tr(config, slim ? 'ค่าเครื่อง' : 'งาน')} ฿{formatMoney(recon.need)} · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)} · {ecName(config)} {ecBusy ? `⏳ ${ecBusy}` : recon.ecBaht == null ? '…' : '฿' + formatMoney(recon.ecBaht)}
             {bad > 0 && unexplained.length === 0 ? ` · 📝 ${tr(config, 'ใส่เหตุผลแล้ว')}` : ''}
             {recon.issues.some(i => i.key.startsWith('r:')) ? ` · ⏳ ${tr(config, 'รอเจ้าของคืนเครดิต')} ${recon.issues.filter(i => i.key.startsWith('r:')).length}` : ''}
+            </React.Fragment>}
           </p>
         </div>
         <Icon name="chevron-right" className="w-5 h-5 text-slate-500" />
@@ -13218,8 +13307,8 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             </button>
           ) : (
             <button key="new" onClick={onNewOrder} className="flex flex-col items-center -mt-5 active:scale-95">
-              <span className="w-14 h-14 rounded-full text-white text-3xl font-extrabold flex items-center justify-center shadow-lg border-4 border-white" style={{ background: T2_PRIMARY }}>+</span>
-              <span className="text-xs font-extrabold mt-0.5" style={{ color: T2_PRIMARY }}>รับงาน</span>
+              <span className="w-14 h-14 rounded-full text-white text-3xl font-extrabold flex items-center justify-center shadow-lg border-4 border-white" style={{ background: config.t2Primary || T2_PRIMARY }}>+</span>
+              <span className="text-xs font-extrabold mt-0.5" style={{ color: config.t2Primary || T2_PRIMARY }}>รับงาน</span>
             </button>
           ))}
         </nav>
@@ -15298,7 +15387,7 @@ function MachineRow({ size, count, price, qty, onAdd, onRemove, color }) {
             <Icon name="minus" className="w-4 h-4" strokeWidth={3} />
           </button>
           <span className={`w-8 text-center font-extrabold text-lg ${isActive ? 'text-slate-900' : 'text-slate-400'}`}>{qty}</span>
-          <button onClick={onAdd} className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition ${bgClass}`}>
+          <button onClick={onAdd} className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition ${bgClass}`} style={window.UI_ACCENT ? { background: window.UI_ACCENT } : undefined}>
             <Icon name="plus" className="w-4 h-4" strokeWidth={3} />
           </button>
         </div>
@@ -15378,7 +15467,7 @@ function CounterRow({ iconEmoji, label, sublabel, unit, qty, onAdd, onRemove, co
             <span className={`text-center font-extrabold text-lg ${isActive ? 'text-slate-900' : 'text-slate-400'}`}>{qty}</span>
             <span className="text-xs text-slate-400 -mt-1">{unit}</span>
           </div>
-          <button onClick={onAdd} className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition ${colorActive}`}>
+          <button onClick={onAdd} className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition ${colorActive}`} style={window.UI_ACCENT ? { background: window.UI_ACCENT } : undefined}>
             <Icon name="plus" className="w-4 h-4" strokeWidth={3} />
           </button>
         </div>

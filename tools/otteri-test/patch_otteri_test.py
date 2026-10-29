@@ -498,6 +498,164 @@ rep("""  'ทำต่อ': 'ဆက်လုပ်',
   'รวมในบิลค้างจ่าย': 'အကြွေးဘေလ်ထဲ ပေါင်းထည့်',
 };""", 'jobs: mm dict')
 
+# ---------- 🎨 ui2: หน้าแอป Otteri อ่านง่ายขึ้น (จากรีวิว 29 ต.ค. · 10 ข้อ) — เปิดด้วย config.ui2 ----------
+rep("""  ownerLaundry: true, // 👔 แม่บ้านลงผ้าเจ้าของเองได้ (ฟรี · งานภายใน)
+""", """  ownerLaundry: true, // 👔 แม่บ้านลงผ้าเจ้าของเองได้ (ฟรี · งานภายใน)
+  ui2: true, // 🎨 หน้าตาแบบใหม่ (แจ้งเตือนภาษาคน · แถบเข้างานเล็ก · ฟอร์มสั้นลง · สีเดียว · ผังเครื่องตามหน้าร้าน)
+  ui2Accent: '#0EA5E9', // ฟ้า Otteri — ปุ่ม + ทุกปุ่ม
+  t2Primary: '#0284C7', // ปุ่มรับงานหน้าเจ้าของ = ฟ้า Otteri (เดิมเขียว Teddy 2)
+""", 'ui2: flags')
+rep("const internalTypesFor = (config) => INTERNAL_TYPES.filter(t => !t.cfg || !!(config && config[t.cfg]));",
+    """const internalTypesFor = (config) => INTERNAL_TYPES.filter(t => !t.cfg || !!(config && config[t.cfg]));
+// ชื่องานภายในในรายการ เช่น "🧼 ล้างเครื่อง · W1" (เดิมขึ้น "(ไม่ระบุชื่อ)")
+const internalTitleOf = (o, config) => { const t = INTERNAL_TYPES.find(x => x.id === o.internalType) || {}; const ms = (o.internalMachines || []).map(m => String(m).replace(/^(ซัก|อบ) /, '')); return `${t.emoji || '🔧'} ${tr(config, t.label || 'งานภายใน')}${ms.length ? ' · ' + ms.join(', ') : ''}`; };""", 'ui2: internal title helper')
+rep("  const [accountMode, setAccountMode] = useState(null); // 🏢 เปิดหน้ารับงานเป็นงานลูกค้าประจำค้างจ่าย",
+    "  const [accountMode, setAccountMode] = useState(null); // 🏢 เปิดหน้ารับงานเป็นงานลูกค้าประจำค้างจ่าย\n  window.UI_ACCENT = config.ui2 ? (config.ui2Accent || config.primaryColor) : null; // 🎨 ui2: ปุ่ม + สีเดียว", 'ui2: accent global')
+
+# (3) รายการงานในหน้าแรก: งานภายในขึ้นชื่อประเภท
+rep('<p className="font-semibold text-slate-900 truncate">{o.customerName}</p>', '<p className="font-semibold text-slate-900 truncate">{isInternalOrder(o) ? internalTitleOf(o, config) : o.customerName}</p>', 'ui2: home list internal name')
+rep("{isInternalOrder(o) ? '🔧' : o.queueNo", "{isInternalOrder(o) ? ((INTERNAL_TYPES.find(t => t.id === o.internalType) || {}).emoji || '🔧') : o.queueNo", 'ui2: home list internal icon')
+
+# (4) การ์ด "วันนี้" อ่านง่ายบนพื้นฟ้าอ่อน
+rep("""              <div className="bg-white bg-opacity-15 rounded-2xl p-3 border border-white border-opacity-25">
+                <p className="text-white text-xs font-bold">{tr(config, "วันนี้")}</p>""", """              <div className={`rounded-2xl p-3 border border-white border-opacity-25 ${config.ui2 ? '' : 'bg-white bg-opacity-15'}`} style={config.ui2 ? { background: 'rgba(3,105,161,0.78)' } : undefined}>
+                <p className="text-white text-xs font-bold">{tr(config, "วันนี้")}</p>""", 'ui2: today card contrast')
+
+# (1) แจ้งเตือนกระทบยอดบนหน้าแรกแม่บ้าน: บอกเป็นภาษาคนว่าต้องทำอะไร
+rep("{onlyPending ? `⏳ ${tr(config, 'รอเริ่มเครื่อง')} ${bad} ${tr(config, 'งาน')} — ${tr(config, 'แตะดู')}` : bad > 0 ?",
+    "{config.ui2 && bad > 0 ? `${onlyPending ? '⏳' : '⚠️'} ${tr(config, recon.errors[0].text)}${recon.errors[0].label ? ' · ' + recon.errors[0].label : ''}${bad > 1 ? ` ${tr(config, 'และอีก')} ${bad - 1}` : ''}` : onlyPending ? `⏳ ${tr(config, 'รอเริ่มเครื่อง')} ${bad} ${tr(config, 'งาน')} — ${tr(config, 'แตะดู')}` : bad > 0 ?", 'ui2: recon title')
+rep("""          <p className="text-xs text-slate-600">
+            {tr(config, slim ? 'ค่าเครื่อง' : 'งาน')}""", """          <p className="text-xs text-slate-600">
+            {config.ui2 && bad > 0 ? <span data-recon-plain>{tr(config, onlyPending ? 'แตะเพื่อเริ่มเครื่อง' : 'แตะดูว่าต้องทำอะไร')}</span> : <React.Fragment>
+            {tr(config, slim ? 'ค่าเครื่อง' : 'งาน')}""", 'ui2: recon sub open')
+rep("""recon.issues.filter(i => i.key.startsWith('r:')).length}` : ''}
+          </p>
+        </div>
+        <Icon name="chevron-right" className="w-5 h-5 text-slate-500" />""", """recon.issues.filter(i => i.key.startsWith('r:')).length}` : ''}
+            </React.Fragment>}
+          </p>
+        </div>
+        <Icon name="chevron-right" className="w-5 h-5 text-slate-500" />""", 'ui2: recon sub close')
+
+# (1 ต่อ) แถบสรุปเล็ก: ไม่ซ้ำกับการ์ด 🧺 เริ่มเครื่อง (ซ่อนตอนแค่รอเริ่ม) · ไม่โชว์ตัวเลขบัญชี
+rep('<button onClick={() => setSheetDate(todayKey)} className="w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition">',
+    '<button onClick={() => setSheetDate(todayKey)} className={`w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition ${config.ui2 && tone === \'amber\' ? \'hidden\' : \'\'}`}>', 'ui2: slim recon hide pending')
+rep("<span className=\"text-slate-500\"> · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)}", "{!config.ui2 && <span className=\"text-slate-500\"> · {tr(config, 'แอป')} ฿{formatMoney(recon.appBaht)}", 'ui2: slim recon numbers open')
+rep(""".length}` : ''}</span>
+          </span>
+          <span className="text-slate-400 font-bold">›</span>""", """.length}` : ''}</span>}
+          </span>
+          <span className="text-slate-400 font-bold">›</span>""", 'ui2: slim recon numbers close')
+# (2) เข้างานแล้ว → แถบเล็ก · งานประจำวัน → แถบเล็ก
+rep("""      {state === 'none' && (
+        <button onClick={() => startCapture('in')}""", """      {config.ui2 && state !== 'none' && (
+        <button onClick={() => { if (state === 'in') startCapture('out'); }} disabled={busy || state === 'out'} data-att-slim
+          className="w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: '#047857' }}></span>
+          <span className="flex-1 min-w-0 text-xs font-bold text-slate-700 truncate">✓ {tr(config, 'เข้างาน')} {fmtTime(rec.inAt)}{state === 'out' ? ` · ${tr(config, 'ออกงานแล้ว')} ${fmtTime(rec.outAt)}` : ''}</span>
+          {state === 'in' && <span className="text-xs font-extrabold whitespace-nowrap" style={{ color: '#0369A1' }}>🚪 {tr(config, 'ออกงาน')} ›</span>}
+        </button>
+      )}
+      {state === 'none' && (
+        <button onClick={() => startCapture('in')}""", 'ui2: attendance slim')
+rep("""      {state === 'in' && (
+        <button onClick={() => startCapture('out')}""", """      {state === 'in' && !config.ui2 && (
+        <button onClick={() => startCapture('out')}""", 'ui2: attendance in old')
+rep("""      {state === 'out' && (
+        <div className="w-full rounded-2xl p-3 border-2 border-emerald-200""", """      {state === 'out' && !config.ui2 && (
+        <div className="w-full rounded-2xl p-3 border-2 border-emerald-200""", 'ui2: attendance out old')
+rep("""      {config.hasChecklist && (
+        <div className="px-5 mt-3">
+          <button onClick={onOpenChecklist}""", """      {config.hasChecklist && config.ui2 && (
+        <div className="px-5 mt-2">
+          <button onClick={onOpenChecklist} data-check-slim className="w-full rounded-xl px-3 py-2.5 bg-white border border-slate-200 flex items-center gap-2 text-left active:scale-95 transition">
+            <span className="text-base leading-none">📋</span>
+            <span className="flex-1 min-w-0 text-xs font-bold text-slate-700 truncate">{tr(config, 'งานประจำวัน')} <span className="text-slate-500">· {tr(config, 'ติ๊กก่อนกลับบ้าน')}</span></span>
+            <span className="text-slate-400 font-bold">›</span>
+          </button>
+        </div>
+      )}
+      {config.hasChecklist && !config.ui2 && (
+        <div className="px-5 mt-3">
+          <button onClick={onOpenChecklist}""", 'ui2: checklist slim')
+
+# (5) ฟอร์มรับงาน: ซ่อนกล่องงานเว็บตอนว่าง · Line เป็นปุ่มเล็กในข้อมูลลูกค้า
+rep("{!isInternal && !isEdit && (", "{!isInternal && !isEdit && (!config.ui2 || pendingWeb.length > 0 || !!webPicked) && (", 'ui2: web box hide')
+rep("""        {!isInternal && <button 
+          onClick={() => !fromKev && setFromLine(!fromLine)}""", """        {!isInternal && !config.ui2 && <button 
+          onClick={() => !fromKev && setFromLine(!fromLine)}""", 'ui2: big line toggle off')
+rep("""          {(config.accounts || []).length > 0 && <div className="flex flex-wrap gap-1.5 mb-3">
+            {(config.accounts || []).map(a => (""", """          {((config.accounts || []).length > 0 || config.ui2) && <div className="flex flex-wrap gap-1.5 mb-3">
+            {config.ui2 && !acct && (
+              <button data-line-chip onClick={() => !fromKev && setFromLine(!fromLine)}
+                className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 transition ${fromLine ? 'text-white border-transparent' : 'bg-white text-green-700 border-green-200'}`} style={fromLine ? { background: '#06C755' } : undefined}>
+                {fromLine ? '✓ ' : '💬 '}{tr(config, 'งานจาก Line')}
+              </button>
+            )}
+            {(config.accounts || []).map(a => (""", 'ui2: line chip')
+
+# (6) ค่าพับ: เริ่ม 0 → ใส่ 1 ตะกร้าให้เองเมื่อเลือกซัก/อบ (แตะ +/− เองแล้วไม่เปลี่ยนให้อีก)
+rep("useState(seed?.foldBaskets ?? (acct && acct.noFold ? 0 : config.freeService ? 0 : 1));",
+    "useState(seed?.foldBaskets ?? (acct && acct.noFold ? 0 : config.freeService || config.ui2 ? 0 : 1));\n  const foldTouched = useRef(!!seed); // 🎨 ui2: แม่บ้านแตะจำนวนพับเองแล้ว", 'ui2: fold init')
+rep("    else if (!a && !config.freeService && foldBaskets === 0) setFoldBaskets(1);",
+    "    else if (!a && !config.freeService && foldBaskets === 0 && (!config.ui2 || washItems.length || dryItems.length)) setFoldBaskets(1);", 'ui2: fold on account off')
+rep("""  const tempOrder = { 
+    washItems, dryItems, detergentQty, softenerQty,""", """  useEffect(() => { // 🎨 ui2: มีซัก/อบ = ฝากพับ 1 ตะกร้า (ยังไม่เลือกอะไร = ยอด 0)
+    if (!config.ui2 || foldTouched.current || config.freeService || internalType || (acct && acct.noFold)) return;
+    setFoldBaskets(washItems.length || dryItems.length ? 1 : 0);
+  }, [washItems.length, dryItems.length]);
+  const tempOrder = { 
+    washItems, dryItems, detergentQty, softenerQty,""", 'ui2: fold auto')
+rep("onAdd={() => setFoldBaskets(q => q + 1)} onRemove={() => setFoldBaskets(q => Math.max(0, q - 1))}",
+    "onAdd={() => { foldTouched.current = true; setFoldBaskets(q => q + 1); }} onRemove={() => { foldTouched.current = true; setFoldBaskets(q => Math.max(0, q - 1)); }}", 'ui2: fold touched')
+
+rep("hint={foldBaskets === 0 ?", "hint={foldBaskets === 0 && (!config.ui2 || washItems.length || dryItems.length) ?", 'ui2: fold hint only with machines')
+rep("  if (isInternalOrder(order)) return '🔧 ' + ((INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).label || 'งานภายใน');",
+    "  if (isInternalOrder(order)) return (config && config.ui2 ? ((INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).emoji || '🔧') : '🔧') + ' ' + ((INTERNAL_TYPES.find(t => t.id === order.internalType) || {}).label || 'งานภายใน');", 'ui2: job label emoji')
+# (7) ปุ่ม + สีเดียว · ไม่ใส่อีโมจิซ้ำกับไอคอน
+rep("""          <button onClick={onAdd} className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition ${bgClass}`}>""",
+    """          <button onClick={onAdd} className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition ${bgClass}`} style={window.UI_ACCENT ? { background: window.UI_ACCENT } : undefined}>""", 'ui2: machine plus color')
+rep("""          <button onClick={onAdd} className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition ${colorActive}`}>""",
+    """          <button onClick={onAdd} className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition ${colorActive}`} style={window.UI_ACCENT ? { background: window.UI_ACCENT } : undefined}>""", 'ui2: counter plus color')
+rep('<span className="text-xs text-sky-700 font-bold">{tr(config, "📷 ถ่ายรูป")}</span>', '<span className="text-xs text-sky-700 font-bold">{tr(config, config.ui2 ? "ถ่ายรูป" : "📷 ถ่ายรูป")}</span>', 'ui2: photo label 1')
+rep('<span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ เลือกจากอัลบั้ม")}</span>', '<span className="text-xs text-slate-600 font-bold">{tr(config, config.ui2 ? "เลือกจากอัลบั้ม" : "🖼️ เลือกจากอัลบั้ม")}</span>', 'ui2: photo label 2')
+rep('<span className="text-xs text-sky-700 font-bold">{tr(config, "📷 ถ่าย")}</span>', '<span className="text-xs text-sky-700 font-bold">{tr(config, config.ui2 ? "ถ่าย" : "📷 ถ่าย")}</span>', 'ui2: photo label 3', count=2)
+rep('<span className="text-xs text-slate-600 font-bold">{tr(config, "🖼️ เลือกอัลบั้ม")}</span>', '<span className="text-xs text-slate-600 font-bold">{tr(config, config.ui2 ? "เลือกอัลบั้ม" : "🖼️ เลือกอัลบั้ม")}</span>', 'ui2: photo label 4', count=2)
+
+# (8) ใบรับงาน: คำของโหมด SOL
+rep("""        <span className="text-2xl">⚡</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-extrabold text-slate-900">{tr(config, 'เริ่มเครื่อง (ยิงพัลส์)')}</p>""", """        <span className="text-2xl">{isSol(config) ? '🧺' : '⚡'}</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-extrabold text-slate-900">{tr(config, isSol(config) ? 'เริ่มเครื่อง (กดใน SOL)' : 'เริ่มเครื่อง (ยิงพัลส์)')}</p>""", 'ui2: receipt starter title')
+rep("{tr(config, 'เปิดแล้ว')} ฿${fired}", "{tr(config, isSol(config) ? 'เริ่มแล้ว' : 'เปิดแล้ว')} ฿${fired}", 'ui2: receipt started word')
+rep("(${tr(config, 'ขาด')} ฿${need - fired})", "(${tr(config, isSol(config) ? 'ยังไม่เริ่ม' : 'ขาด')} ฿${need - fired})", 'ui2: receipt left word')
+
+# (10) หน้าเจ้าของ: ปุ่มรับงานสีของร้าน
+rep("style={{ background: T2_PRIMARY }}>+", "style={{ background: config.t2Primary || T2_PRIMARY }}>+", 'ui2: owner fab')
+rep("style={{ color: T2_PRIMARY }}>รับงาน", "style={{ color: config.t2Primary || T2_PRIMARY }}>รับงาน", 'ui2: owner fab label')
+
+# คำแปลพม่า (รอพนักงานพม่าตรวจ)
+rep("""  'รวมในบิลค้างจ่าย': 'အကြွေးဘေလ်ထဲ ပေါင်းထည့်',
+};""", """  'รวมในบิลค้างจ่าย': 'အကြွေးဘေလ်ထဲ ပေါင်းထည့်',
+  // 🎨 ui2 (หน้าทดสอบ Otteri)
+  'และอีก': 'နှင့် နောက်ထပ်',
+  'แตะเพื่อเริ่มเครื่อง': 'စက်စရန် နှိပ်ပါ',
+  'แตะดูว่าต้องทำอะไร': 'ဘာလုပ်ရမလဲ ကြည့်ရန် နှိပ်ပါ',
+  'เข้างาน': 'အလုပ်ဝင်',
+  'ออกงาน': 'အလုပ်ဆင်း',
+  'ออกงานแล้ว': 'အလုပ်ဆင်းပြီး',
+  'งานประจำวัน': 'နေ့စဉ်အလုပ်',
+  'ติ๊กก่อนกลับบ้าน': 'အိမ်မပြန်ခင် အမှတ်ခြစ်ပါ',
+  'งานจาก Line': 'LINE မှ အလုပ်',
+  'ถ่าย': 'ရိုက်',
+  'เลือกอัลบั้ม': 'အယ်လ်ဘမ်မှ ရွေး',
+  'เริ่มเครื่อง (กดใน SOL)': 'စက်စတင် (SOL တွင်နှိပ်)',
+  'เริ่มแล้ว': 'စပြီး',
+  'ยังไม่เริ่ม': 'မစရသေး',
+  'เรียงตามหน้าร้าน ซ้าย → ขวา (เหมือนใน SOL)': 'ဆိုင်ရှေ့အတိုင်း ဘယ် → ညာ (SOL ကဲ့သို့)',
+};""", 'ui2: mm dict')
+
 FEATURE_ONLY = '--feature-only' in sys.argv
 if FEATURE_ONLY:
     open(OUT, 'w', encoding='utf-8').write(s)

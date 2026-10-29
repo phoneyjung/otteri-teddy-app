@@ -207,6 +207,43 @@ function SolPendingBar({ config }) {
 
 // เครื่องแบบตาราง (ร้านที่ไม่ได้วางเครื่องเป็นแท่นอบบน-ซักล่าง เช่น Otteri)
 function MachineGrid({ config, machines, marks, selected, onPick, problems }) {
+  // 🎨 ui2: เรียงตามหน้าร้านจริง (ผังเดียวกับแถบ SOL) — 2 แถว แถวละ 5 ช่อง · เครื่องอบซ้อนบน-ล่างเหมือนของจริง
+  const map = config.ui2 && config.pulse && config.pulse.solMap;
+  if (map && map.bottom) {
+    const byId = {};
+    machines.forEach(m => { byId[m.id] = m; });
+    const cols = map.bottom.map((b, i) => ({ top: (map.top || [])[i] || '', bottom: b }));
+    const half = Math.ceil(cols.length / 2);
+    const cell = (id, small) => {
+      const m = byId[id];
+      if (!m) return null;
+      const mk = marks[m.id];
+      const sel = selected === m.id;
+      const color = m.kind === 'wash' ? '#113D6C' : '#BA3D4D';
+      return (
+        <button key={m.id} onClick={() => onPick(m)} data-machine={m.id}
+          className={`relative w-full rounded-xl ${small ? 'py-1' : 'py-1.5'} px-0.5 text-center border-2 active:scale-95 transition ${mk === 'dim' && !sel ? 'opacity-40' : ''}`}
+          style={{ background: sel ? color : '#fff', color: sel ? '#fff' : '#0F172A', borderColor: sel ? color : mk === 'target' ? '#C68B4A' : '#E2E8F0' }}>
+          <span className="block text-[10px] font-extrabold leading-none" style={{ color: sel ? '#fff' : color }}>{tr(config, m.kind === 'wash' ? 'ซัก' : 'อบ')}</span>
+          <span className="block text-base font-extrabold leading-tight">{m.id}</span>
+          <span className="block text-[11px] font-bold leading-none" style={{ opacity: 0.75 }}>{m.kg}kg</span>
+          {mk === 'done' && <span className="absolute -top-1.5 -right-1.5 text-sm">✅</span>}
+          {mk === 'busy' && <span className="absolute -top-1.5 -right-1.5 text-sm">⏳</span>}
+          {problems && problems.has(m.id) && <span className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-black" style={{ lineHeight: '16px' }}>!</span>}
+        </button>
+      );
+    };
+    return (
+      <div className="space-y-2" data-grid-physical>
+        <p className="text-[11px] font-bold text-slate-500 px-1">{tr(config, 'เรียงตามหน้าร้าน ซ้าย → ขวา (เหมือนใน SOL)')}</p>
+        {[cols.slice(0, half), cols.slice(half)].map((row, ri) => (
+          <div key={ri} className="grid grid-cols-5 gap-1.5 items-end">
+            {row.map((c, ci) => <div key={ci} className="space-y-1.5">{c.top ? cell(c.top, true) : null}{cell(c.bottom)}</div>)}
+          </div>
+        ))}
+      </div>
+    );
+  }
   const rows = [['wash', '💧 ' + tr(config, 'เครื่องซัก'), '#113D6C'], ['dry', '🌬️ ' + tr(config, 'เครื่องอบ'), '#BA3D4D']];
   return (
     <div className="space-y-2">
