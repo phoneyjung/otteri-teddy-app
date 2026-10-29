@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v169-2026-10-27';
+  window.APP_VERSION = 'v170-2026-10-29';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -404,7 +404,7 @@ const TEDDY_CONFIG = {
   linePromoDiscount: 40,
   hasKev: true,
   deliveryZones: [
-    { id: 'free', label: 'ส่งฟรี 0฿ (ในมหาลัย)', price: 0, riderFee: 20, color: '#14B8A6' },
+    { id: 'free', label: 'ส่งฟรี 0฿ (ในมหาลัย)', price: 0, riderFee: 20, color: '#14B8A6', hidden: true }, // v170: ยังไม่มีโปรส่งฟรี → ไม่ให้เลือกตอนลง/แก้ออเดอร์ (ใบงานเก่ายังหาชื่อโซนนี้เจอ) · เริ่มโปรเมื่อไหร่ ลบ hidden: true ออก
     { id: 'green', label: 'เขียว (ใกล้สุด)', price: 20, color: '#10B981' },
     { id: 'yellow', label: 'เหลือง', price: 30, color: '#F59E0B' },
     { id: 'blue', label: 'ฟ้า', price: 40, color: '#3B82F6' },
@@ -5004,6 +5004,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const [splitTransfer, setSplitTransfer] = useState(seed?.transferAmount != null ? String(seed.transferAmount) : '');
   const [note, setNote] = useState(seed?.note || '');
   const [deliveryZone, setDeliveryZone] = useState(seed?.deliveryZone || null);
+  const seedZone = seed?.deliveryZone || null; // โซนเดิมของใบงานที่เปิดแก้ — ถ้าเป็นโซนที่ซ่อนแล้ว ยังโชว์ปุ่มให้เห็นว่าเลือกอยู่
   const [riderId, setRiderId] = useState(seed?.riderId || null);
   const [fromKev, setFromKev] = useState(seed?.fromKev || false);
   const [fromLine, setFromLine] = useState(seed?.fromLine || false);
@@ -5713,7 +5714,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                   <span className="text-xs text-slate-400">{tr(config, "ไม่คิดค่าส่ง")}</span>
                 </div>
               </button>
-              {config.deliveryZones.map(z => (
+              {config.deliveryZones.filter(z => !z.hidden || z.id === seedZone).map(z => (
                 <button key={z.id} onClick={() => pickDeliveryZone(z.id)} className={`p-3 rounded-xl border-2 transition ${deliveryZone === z.id ? 'border-current' : 'bg-slate-50 border-transparent'}`} style={deliveryZone === z.id ? {backgroundColor: z.color + '20', color: z.color} : {}}>
                   <div className="flex flex-col items-center gap-1">
                     <div className="w-4 h-4 rounded-full" style={{backgroundColor: z.color}}></div>
