@@ -635,6 +635,13 @@ rep("(${tr(config, 'ขาด')} ฿${need - fired})", "(${tr(config, isSol(conf
 rep("style={{ background: T2_PRIMARY }}>+", "style={{ background: config.t2Primary || T2_PRIMARY }}>+", 'ui2: owner fab')
 rep("style={{ color: T2_PRIMARY }}>รับงาน", "style={{ color: config.t2Primary || T2_PRIMARY }}>รับงาน", 'ui2: owner fab label')
 
+# ล้างเครื่องในหน้าเลือกเครื่อง (โหมด SOL): เลือก Hot ใน SOL ไม่ใช่ที่หน้าเครื่อง
+rep("""🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>""",
+    """🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, isSol(config) ? 'ใน SOL เลือก Hot (น้ำร้อน)' : 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>""", 'clean picker SOL wording')
+# เลขใบรับงาน: ใช้เลขคิว (เดิม id ใหม่ "otteri-c…" ทำให้ขึ้น #OTTERI ทุกใบ)
+rep("""<p className="text-slate-900 font-extrabold text-sm">#{order.id.split('-')[0].toUpperCase()}</p>""",
+    """<p className="text-slate-900 font-extrabold text-sm">#{order.queueNo != null ? String(order.queueNo).padStart(2, '0') : order.id.split('-')[0].toUpperCase()}</p>""", 'receipt no = queue no')
+
 # คำแปลพม่า (รอพนักงานพม่าตรวจ)
 rep("""  'รวมในบิลค้างจ่าย': 'အကြွေးဘေလ်ထဲ ပေါင်းထည့်',
 };""", """  'รวมในบิลค้างจ่าย': 'အကြွေးဘေလ်ထဲ ပေါင်းထည့်',
@@ -654,6 +661,7 @@ rep("""  'รวมในบิลค้างจ่าย': 'အကြွေး
   'เริ่มแล้ว': 'စပြီး',
   'ยังไม่เริ่ม': 'မစရသေး',
   'เรียงตามหน้าร้าน ซ้าย → ขวา (เหมือนใน SOL)': 'ဆိုင်ရှေ့အတိုင်း ဘယ် → ညာ (SOL ကဲ့သို့)',
+  'ใน SOL เลือก Hot (น้ำร้อน)': 'SOL တွင် Hot (ရေပူ) ရွေးပါ',
 };""", 'ui2: mm dict')
 
 FEATURE_ONLY = '--feature-only' in sys.argv

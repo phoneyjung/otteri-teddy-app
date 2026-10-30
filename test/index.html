@@ -2330,6 +2330,7 @@ const MM_DICT = {
   'เริ่มแล้ว': 'စပြီး',
   'ยังไม่เริ่ม': 'မစရသေး',
   'เรียงตามหน้าร้าน ซ้าย → ขวา (เหมือนใน SOL)': 'ဆိုင်ရှေ့အတိုင်း ဘယ် → ညာ (SOL ကဲ့သို့)',
+  'ใน SOL เลือก Hot (น้ำร้อน)': 'SOL တွင် Hot (ရေပူ) ရွေးပါ',
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -6533,7 +6534,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
             <div className="bg-white bg-opacity-95 px-6 py-3 flex items-center justify-between border-t border-white border-opacity-30">
               <div>
                 <p className="text-xs font-bold tracking-wider" style={{color: headerColor}}>RECEIPT NO.</p>
-                <p className="text-slate-900 font-extrabold text-sm">#{order.id.split('-')[0].toUpperCase()}</p>
+                <p className="text-slate-900 font-extrabold text-sm">#{order.queueNo != null ? String(order.queueNo).padStart(2, '0') : order.id.split('-')[0].toUpperCase()}</p>
               </div>
               <div className="text-right">
                 <p className="text-xs font-bold tracking-wider" style={{color: headerColor}}>วันที่/เวลา</p>
@@ -10494,7 +10495,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
             {addMsg && <p className="text-sm font-bold text-center text-emerald-700">{addMsg}</p>}
 
             {(fixed || job) && !block && (job && job.order.internalType === 'clean' ? (
-              <p className="text-sm font-extrabold text-rose-700 bg-rose-50 border-2 border-rose-200 rounded-xl px-3 py-2">🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>
+              <p className="text-sm font-extrabold text-rose-700 bg-rose-50 border-2 border-rose-200 rounded-xl px-3 py-2">🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, isSol(config) ? 'ใน SOL เลือก Hot (น้ำร้อน)' : 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>
             ) : (
               <div className="rounded-xl px-3 py-2.5 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
                 <p className="text-sm font-extrabold text-amber-900">⚠️ {tr(config, isSol(config) ? 'เลือกโปรแกรมใน SOL ให้ตรงใบงาน' : 'กดโหมดที่หน้าเครื่องให้ตรงใบงาน')}: {selM.kind === 'wash' ? `💧 ${tr(config, washTempLabel(tempUse))}` : `🌡️ ${tr(config, 'ความร้อนตามใบงาน')}`}</p>
