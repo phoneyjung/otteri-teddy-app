@@ -6063,7 +6063,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           <div className="flex items-center gap-2 mb-2">
             <div className="flex-1">
               <p className="text-xs text-slate-500">
-                {isInternal ? (internalType === 'mine' ? '👔 ' + tr(config, 'ผ้าเจ้าของ · ฟรี') : '🔧 เครดิตที่ใช้ (งานภายใน)') : tr(config, 'ยอดรวม') + ' • ' + (acct ? tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'))}
+                {isInternal ? (internalType === 'mine' ? '👔 ' + tr(config, 'ผ้าเจ้าของ · ฟรี') : '🔧 เครดิตที่ใช้ (งานภายใน)') : tr(config, 'ยอดรวม') + ' • ' + (acct ? tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด'))}
                 {breakdown.totalDiscount > 0 && <span className="ml-1 text-rose-600 font-bold">• {tr(config, 'ลด')} ฿{breakdown.totalDiscount}</span>}
               </p>
               <p className="text-xl font-extrabold text-slate-900">฿{formatMoney(total)}</p>
@@ -6373,7 +6373,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
       // ส่งแค่ใบรับงาน 1 รูป (ไม่ส่งรูปตะกร้าซ้ำ)
       const files = [receiptFile];
       const emoji = config.brand === 'otteri' ? '🦦' : '🐻';
-      const text = `${emoji} ${config.name} - รับงานใหม่\n━━━━━━━━━━━\n👤 ${order.customerName}\n📞 ${order.customerPhone}${order.clothCount ? `\n🧺 ${order.clothCount}` : ''}${order.deliveryZone ? `\n🚚 Delivery (${config.deliveryZones.find(z => z.id === order.deliveryZone)?.label})${order.riderId && config.riders ? ` • ${config.riders.find(r => r.id === order.riderId)?.label || ''}` : ''}` : ''}${order.fromKev ? '\n👨‍💼 จากเคฟ' : ''}\n💵 ${formatMoney(total)} บาท (${order.paymentMethod === 'account' ? accountPayText(order, config) : order.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'})\n⏰ ${formatDate(order.createdAt)}`;
+      const text = `${emoji} ${config.name} - รับงานใหม่\n━━━━━━━━━━━\n👤 ${order.customerName}\n📞 ${order.customerPhone}${order.clothCount ? `\n🧺 ${order.clothCount}` : ''}${order.deliveryZone ? `\n🚚 Delivery (${config.deliveryZones.find(z => z.id === order.deliveryZone)?.label})${order.riderId && config.riders ? ` • ${config.riders.find(r => r.id === order.riderId)?.label || ''}` : ''}` : ''}${order.fromKev ? '\n👨‍💼 จากเคฟ' : ''}\n💵 ${formatMoney(total)} บาท (${order.paymentMethod === 'account' ? accountPayText(order, config) : order.paymentMethod === 'transfer' ? 'โอน' : order.paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด'})\n⏰ ${formatDate(order.createdAt)}`;
       
       if (navigator.share && navigator.canShare?.({ files })) {
         await navigator.share({ files, title: `${config.name} - ${order.customerName}`, text });

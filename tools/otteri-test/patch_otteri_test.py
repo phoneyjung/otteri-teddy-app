@@ -641,6 +641,11 @@ rep("""🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้อ�
 # เลขใบรับงาน: ใช้เลขคิว (เดิม id ใหม่ "otteri-c…" ทำให้ขึ้น #OTTERI ทุกใบ)
 rep("""<p className="text-slate-900 font-extrabold text-sm">#{order.id.split('-')[0].toUpperCase()}</p>""",
     """<p className="text-slate-900 font-extrabold text-sm">#{order.queueNo != null ? String(order.queueNo).padStart(2, '0') : order.id.split('-')[0].toUpperCase()}</p>""", 'receipt no = queue no')
+# สด+โอน: แถบยอดรวมท้ายฟอร์ม + ข้อความ LINE เดิมขึ้น "เงินสด"
+rep("""tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'))}""",
+    """tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด'))}""", 'footer split label')
+rep("""order.paymentMethod === 'account' ? accountPayText(order, config) : order.paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'})\\n⏰""",
+    """order.paymentMethod === 'account' ? accountPayText(order, config) : order.paymentMethod === 'transfer' ? 'โอน' : order.paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด'})\\n⏰""", 'LINE text split label')
 
 # คำแปลพม่า (รอพนักงานพม่าตรวจ)
 rep("""  'รวมในบิลค้างจ่าย': 'အကြွေးဘေလ်ထဲ ပေါင်းထည့်',
