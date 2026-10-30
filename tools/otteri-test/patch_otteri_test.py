@@ -641,6 +641,25 @@ rep("""🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้อ�
 # เลขใบรับงาน: ใช้เลขคิว (เดิม id ใหม่ "otteri-c…" ทำให้ขึ้น #OTTERI ทุกใบ)
 rep("""<p className="text-slate-900 font-extrabold text-sm">#{order.id.split('-')[0].toUpperCase()}</p>""",
     """<p className="text-slate-900 font-extrabold text-sm">#{order.queueNo != null ? String(order.queueNo).padStart(2, '0') : order.id.split('-')[0].toUpperCase()}</p>""", 'receipt no = queue no')
+# 🏢 ใบงานร้านเกอิชา (ค้างจ่าย) — แถบม่วงแทนแถบดำ "ใบรับงานบริการซักผ้า" ให้รู้ว่าไม่ใช่รับงานปกติ
+rep("""            <div className="bg-slate-900 text-white text-center py-2.5">
+              <h2 className="text-base font-bold tracking-widest">ใบรับงานบริการซักผ้า</h2>
+              <p className="text-slate-300 text-xs mt-0.5">LAUNDRY SERVICE RECEIPT</p>
+            </div>
+          )}""",
+    """            accountOf(order, config) ? (
+              <div className="text-white text-center py-3 px-4 border-b-4" data-account-band style={{ background: 'repeating-linear-gradient(135deg, #7C3AED 0 14px, #8B5CF6 14px 28px)', borderColor: '#4C1D95' }}>
+                <p className="text-xs font-bold tracking-widest opacity-90">ไม่ใช่รับงานปกติ · งานจากร้านในเครือ</p>
+                <p className="text-2xl font-extrabold leading-tight">{(config.accounts || []).find(a => a.id === order.accountId)?.emoji || '🏢'} งาน{accountOf(order, config).name}</p>
+                <p className="text-sm font-bold mt-0.5">ค้างจ่าย · รวมบิลสิ้นเดือน{(config.accounts || []).find(a => a.id === order.accountId)?.noFold ? ' · ไม่พับ' : ''}</p>
+              </div>
+            ) : (
+            <div className="bg-slate-900 text-white text-center py-2.5">
+              <h2 className="text-base font-bold tracking-widest">ใบรับงานบริการซักผ้า</h2>
+              <p className="text-slate-300 text-xs mt-0.5">LAUNDRY SERVICE RECEIPT</p>
+            </div>
+            )
+          )}""", 'geisha receipt band')
 # สด+โอน: แถบยอดรวมท้ายฟอร์ม + ข้อความ LINE เดิมขึ้น "เงินสด"
 rep("""tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : 'เงินสด'))}""",
     """tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด'))}""", 'footer split label')
@@ -699,7 +718,7 @@ rep("<title>PLP Laundromat - ร้านสะดวกซักผ้า</titl
 
 rep_between("  firebase.initializeApp(firebaseConfig);\n  window.db = firebase.firestore();", "  })();\n</script>", lambda c: """  firebase.initializeApp(firebaseConfig);
   window.db = firebase.firestore();
-  window.APP_VERSION = 'otteri-test-2026-10-29';
+  window.APP_VERSION = 'otteri-test-2026-10-30';
   // 🧪 ทุกคอลเลกชันขึ้นต้น test_ — ไม่แตะใบงาน/เงินของร้านจริง
   (function () {
     var d = window.db, orig = d.collection.bind(d);
