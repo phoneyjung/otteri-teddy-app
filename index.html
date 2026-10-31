@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v173-2026-10-31';
+  window.APP_VERSION = 'v174-2026-10-31';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -9164,11 +9164,24 @@ async function checkCoinLog(config, log, final) {
   const e = ec.byMachine[log.machine];
   if (!e) return { ok: false, error: ec.errors[0] || 'อ่านประวัติเครื่องไม่ได้' };
   const snap = await window.db.collection('pulseLogs').where('dateKey', '==', log.dateKey).get();
-  const appCoin = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    .filter(l => l.brand === config.brand && l.machine === log.machine && pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l)) && ((l.createdAt || 0) <= (log.createdAt || 0) || l.id === log.id))
-    .reduce((a, l) => a + (l.baht || 0), 0);
-  const seen = (e.coinBaht || 0) >= appCoin;
-  if (seen || final) await pulseLogRef(log.id).set({ coinSeen: seen, coinCheckAt: Date.now(), ecCoinBaht: e.coinBaht || 0, appCoinBaht: appCoin }, { merge: true });
+  const coins = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .filter(l => l.brand === config.brand && pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l)) && ((l.createdAt || 0) <= (log.createdAt || 0) || l.id === log.id));
+  const appCoin = coins.filter(l => l.machine === log.machine).reduce((a, l) => a + (l.baht || 0), 0);
+  let seen = (e.coinBaht || 0) >= appCoin;
+  let group = null;
+  // 💵 v174: เครื่องนี้ไม่เห็นเหรียญ → ครั้งสุดท้าย/กดเช็กเอง นับรวมทุกเครื่องขนาดเดียวกัน (หยอดผิดเบอร์แต่ขนาดเดียวกัน = ไม่เป็นไร)
+  if (!seen && final) {
+    const me = pulseMachines(config).find(x => x.id === log.machine);
+    const sib = me ? pulseMachines(config).filter(x => x.kind === me.kind && x.kg === me.kg).map(x => x.id) : [];
+    if (sib.length > 1) {
+      const ecG = await fetchEcDay(config, log.dateKey, sib);
+      if (sib.every(id => ecG.byMachine[id])) {
+        group = { ec: sib.reduce((a, id) => a + (ecG.byMachine[id].coinBaht || 0), 0), app: coins.filter(l => sib.includes(l.machine)).reduce((a, l) => a + (l.baht || 0), 0) };
+        seen = group.ec >= group.app;
+      }
+    }
+  }
+  if (seen || final) await pulseLogRef(log.id).set({ coinSeen: seen, coinCheckAt: Date.now(), ecCoinBaht: e.coinBaht || 0, appCoinBaht: appCoin, coinGroup: group }, { merge: true });
   return { ok: true, seen };
 }
 // หลังกดบันทึก: เช็กซ้ำทุก 20 วิ ประมาณ 2 นาทีครึ่ง (ครั้งสุดท้ายยังไม่เห็น = ⚠️)
@@ -9405,8 +9418,11 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
   // แอป ↔ เครื่องจริง — จับคู่ทีละครั้ง: เครื่องเดียวกัน จำนวนพัลส์เท่ากัน เวลาห่างไม่เกิน 2 นาที
   const machineRows = [];
   if (ec && ec.byMachine) {
+    const coinGroups = {}; // 💵 v174 เหรียญรวมตามขนาดเครื่อง (ซัก/อบ × กก.)
     pulseMachines(config).forEach(m => {
       const e = ec.byMachine[m.id];
+      const cg = (coinGroups[m.kind + m.kg] = coinGroups[m.kind + m.kg] || { kind: m.kind, kg: m.kg, app: 0, ec: 0, missing: false });
+      if (!e) cg.missing = true;
       const appList = dayPulse.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
       const refList = dayRefundedPulse.filter(l => l.machine === m.id).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
       const appCoin = sumBaht(dayCoins.filter(l => l.machine === m.id));
@@ -9431,11 +9447,17 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
       const noSignal = (e.forcedNoSignal || []).filter(t => pulseBkkMs(t) >= sinceMs);
       machineRows.push({ id: m.id, label: m.label, appBaht, ecBaht, ok: !outside.length && !missing.length, appCoin, ecCoin: e.coinBaht || 0 });
       // 💵 บันทึกว่าหยอดเหรียญ แต่เครื่องนับเหรียญทั้งวันได้น้อยกว่า (รวมลูกค้าหน้าร้านแล้ว) → เตือนเจ้าของ
-      const coinOld = sumBaht(dayCoins.filter(l => l.machine === m.id && ec.at - (l.createdAt || 0) > 120000));
-      if (coinOld > (e.coinBaht || 0)) add(`k:${m.id}:${coinOld}`, 'warn', 'บันทึกหยอดเหรียญ มากกว่าที่เครื่องนับได้', { label: m.label, amount: coinOld - (e.coinBaht || 0) });
+      // v174: ลงผิดเบอร์ได้ ถ้าขนาดเดียวกัน → รวมเป็นกลุ่ม แล้วเทียบหลังวนครบทุกเครื่อง
+      cg.app += sumBaht(dayCoins.filter(l => l.machine === m.id && ec.at - (l.createdAt || 0) > 120000));
+      cg.ec += e.coinBaht || 0;
       if (outside.length) add(`e:${m.id}:out:${outside.map(f => f.time.slice(11, 19)).join(',')}`, 'error', 'มีการยิงนอกแอป', { label: m.label, amount: outside.reduce((s, f) => s + f.pulses, 0) * PULSE_BAHT, times: outside.map(f => f.time.slice(11, 16)), machine: m.id, ecOut: outside.map(f => ({ time: f.time, pulses: f.pulses })) });
       if (missing.length) add(`e:${m.id}:miss:${missing.map(l => l.id).join(',')}`, 'error', 'แอปสั่งแต่เครื่องไม่ได้รับ', { label: m.label, amount: sumBaht(missing), times: missing.map(l => new Date(l.createdAt).toTimeString().slice(0, 5)) });
       noSignal.forEach(t => add(`n:${m.id}:${t}`, 'warn', 'สั่งแล้วเครื่องไม่ตอบ', { label: m.label, times: [t.slice(11, 16)] }));
+    });
+    Object.values(coinGroups).forEach(g => {
+      if (g.missing || g.app <= g.ec) return;
+      add(`k:${g.kind}${g.kg}:${g.app}`, 'warn', 'บันทึกหยอดเหรียญ มากกว่าที่เครื่องนับได้',
+        { label: `${g.kind === 'wash' ? 'ซัก' : 'อบ'} ${g.kg}kg ทุกเครื่อง · ลง ฿${formatMoney(g.app)} · เครื่องนับได้ ฿${formatMoney(g.ec)}`, amount: g.app - g.ec });
     });
   } else {
     dayLogs.filter(l => ['sent', 'unknown', 'sending'].includes(l.status) && Date.now() - (l.createdAt || 0) > 180000)
