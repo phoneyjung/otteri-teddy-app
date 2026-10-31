@@ -9576,7 +9576,7 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
       // 💵 บันทึกว่าหยอดเหรียญ แต่เครื่องนับเหรียญทั้งวันได้น้อยกว่า (รวมลูกค้าหน้าร้านแล้ว) → เตือนเจ้าของ
       const coinOld = sumBaht(dayCoins.filter(l => l.machine === m.id && ec.at - (l.createdAt || 0) > 120000));
       if (coinOld > (e.coinBaht || 0)) add(`k:${m.id}:${coinOld}`, 'warn', 'บันทึกหยอดเหรียญ มากกว่าที่เครื่องนับได้', { label: m.label, amount: coinOld - (e.coinBaht || 0) });
-      if (outside.length) add(`e:${m.id}:out:${outside.map(f => f.time.slice(11, 19)).join(',')}`, 'error', 'มีการยิงนอกแอป', { label: m.label, amount: outside.reduce((s, f) => s + f.pulses, 0) * PULSE_BAHT, times: outside.map(f => f.time.slice(11, 16)) });
+      if (outside.length) add(`e:${m.id}:out:${outside.map(f => f.time.slice(11, 19)).join(',')}`, 'error', 'มีการยิงนอกแอป', { label: m.label, amount: outside.reduce((s, f) => s + f.pulses, 0) * PULSE_BAHT, times: outside.map(f => f.time.slice(11, 16)), machine: m.id, ecOut: outside.map(f => ({ time: f.time, pulses: f.pulses })) });
       if (missing.length) add(`e:${m.id}:miss:${missing.map(l => l.id).join(',')}`, 'error', 'แอปสั่งแต่เครื่องไม่ได้รับ', { label: m.label, amount: sumBaht(missing), times: missing.map(l => new Date(l.createdAt).toTimeString().slice(0, 5)) });
       noSignal.forEach(t => add(`n:${m.id}:${t}`, 'warn', 'สั่งแล้วเครื่องไม่ตอบ', { label: m.label, times: [t.slice(11, 16)] }));
     });
@@ -11610,12 +11610,67 @@ function PulseRefundInbox({ config }) {
 }
 
 // ---------- ⚡ กระทบยอด: เนื้อหา (ใช้ทั้งหน้าแม่บ้านและหน้าเจ้าของ) ----------
+// 🔧 v173 เจ้าของยิงทดสอบจากเว็บ EC → เปลี่ยนเป็นงานภายใน 'ซ่อม/ทดสอบเครื่อง' ย้อนหลัง
+// ใบงาน 1 ใบต่อเครื่อง (ยอด = พัลส์ที่ยิงนอกแอปของเครื่องนั้นในวันนั้น) + pulseLogs เวลาเดียวกับ EC → จับคู่ได้ ยอดตรง
+// id ตายตัวจากเครื่อง+เวลา → กดซ้ำเขียนทับของเดิม ไม่เกิดซ้ำ
+async function claimOutsideAsTest(config, issue) {
+  const m = pulseMachines(config).find(x => x.id === issue.machine);
+  const list = (issue.ecOut || []).map(f => ({ ...f, ms: pulseBkkMs(f.time) })).filter(f => f.ms > 0 && f.pulses > 0).sort((a, b) => a.ms - b.ms);
+  if (!m || !list.length) throw new Error('ไม่พบข้อมูลการยิงของเครื่องนี้');
+  const baht = list.reduce((s, f) => s + f.pulses, 0) * PULSE_BAHT;
+  const now = Date.now();
+  const orderId = `${config.brand}-ectest-${m.id}-${list[0].ms}`;
+  const order = {
+    brand: config.brand, createdAt: list[0].ms, backdated: true, enteredAt: now,
+    customerName: '', customerPhone: '', clothCount: '', pickupTime: '', note: '',
+    washItems: [], dryItems: [], detergentQty: 0, softenerQty: 0, foldBaskets: 0, noFold: false,
+    paymentMethod: 'internal', internalType: 'test', internalMachines: [m.label], internalCustom: baht,
+    internalReason: `เจ้าของยิงทดสอบจากเว็บ EC (${list.map(f => f.time.slice(11, 16)).join(', ')}) · เปลี่ยนเป็นงานภายในย้อนหลัง`,
+    staffName: 'เจ้าของ', collected: false, ecClaim: true, ecClaimAt: now,
+  };
+  const refLabel = pulseRefLabel({ ...order, id: orderId }, config);
+  const b = window.db.batch();
+  b.set(window.db.collection('orders').doc(orderId), order, { merge: true });
+  list.forEach(f => {
+    b.set(pulseLogRef(`${orderId}-${f.ms}`), {
+      brand: config.brand, dateKey: dateKeyOf(new Date(f.ms)), machine: m.id, machineLabel: m.label,
+      pulses: f.pulses, baht: f.pulses * PULSE_BAHT, refType: 'internal', refId: orderId, slotKey: null, refLabel,
+      staffId: 'owner', staffName: 'เจ้าของ', createdAt: f.ms, sentAt: f.ms, ecTime: f.time, status: 'confirmed', method: 'ec-claim',
+      kind: m.kind, kg: m.kg || null, retryOf: null, claimNote: 'เจ้าของยิงจากเว็บ EC · เปลี่ยนเป็นงานซ่อม/ทดสอบ', claimedAt: now,
+    }, { merge: true });
+  });
+  await b.commit();
+  return { orderId, baht };
+}
+async function askClaimOutside(config, issues) {
+  const list = (issues || []).filter(i => i.ecOut && i.ecOut.length);
+  if (!list.length) return 0;
+  const sum = list.reduce((s, i) => s + (i.amount || 0), 0);
+  if (!confirm(`🔧 เปลี่ยนเป็นงานซ่อม/ทดสอบเครื่อง?\n\n${list.map(i => `${i.label} ฿${formatMoney(i.amount || 0)} · ${(i.times || []).join(', ')}`).join('\n')}\n\nแอปจะลงงานภายใน "ซ่อม/ทดสอบเครื่อง" ย้อนหลังตามเวลาที่ยิง (ไม่นับรายได้) แล้วนับว่าเปิดผ่านแอป → ยอดแอปตรงกับเครื่อง\n\nใช้เฉพาะที่เจ้าของยิงทดสอบเอง · รวม ฿${formatMoney(sum)}`)) return 0;
+  let n = 0;
+  for (const i of list) { await claimOutsideAsTest(config, i); n++; }
+  return n;
+}
+
 function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc, compact }) {
   const { recon, ecBusy, refreshEc, note, unexplained } = usePulseRecon(config, orders, dateKey);
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [openKind, setOpenKind] = useState(null); // v162 โหมดย่อ
+  const [claiming, setClaiming] = useState(false); // 🔧 v173
+  const doClaim = async (issues) => {
+    setClaiming(true);
+    try { const n = await askClaimOutside(config, issues); if (n) refreshEc(); }
+    catch (e) { alert('เปลี่ยนไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
+    finally { setClaiming(false); }
+  };
+  const claimBtn = (issues, label) => (
+    <button onClick={() => doClaim(issues)} disabled={claiming}
+      className="mt-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-extrabold text-slate-800 active:scale-95 disabled:opacity-50">
+      {claiming ? '…' : label}
+    </button>
+  );
   useEffect(() => {
     if (!autoEc) return;
     const c = PULSE_EC_CACHE[config.brand + '|' + dateKey];
@@ -11712,6 +11767,7 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc,
                     {openKind === g.text && (
                       <div className="px-3 pb-2 space-y-1">
                         {g.list.map(i => <p key={i.key} className="text-xs text-slate-600 pl-4">• {i.label}{i.amount ? ` ฿${formatMoney(i.amount)}` : ''}{i.times && i.times.length ? ` · ${i.times.join(', ')}` : ''}</p>)}
+                        {isOwner && g.list.some(i => i.ecOut) && <div className="pl-4">{claimBtn(g.list.filter(i => i.ecOut), `🔧 เจ้าของยิงทดสอบ → เปลี่ยนเป็นงานซ่อม/ทดสอบ${g.list.filter(i => i.ecOut).length > 1 ? ' ทั้งหมด' : ''}`)}</div>}
                       </div>
                     )}
                   </div>
@@ -11726,6 +11782,7 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc,
                   <div key={i.key} className="bg-white rounded-xl px-3 py-2 border border-rose-200">
                     <p className="text-sm font-bold text-rose-700">{issueText(i)}{note && (note.issueKeys || []).includes(i.key) ? ' · 📝' : ''}</p>
                     <p className="text-xs text-slate-600">{i.label}{i.times && i.times.length ? ` · 🕐 ${i.times.join(', ')}` : ''}</p>
+                    {isOwner && i.ecOut && claimBtn([i], '🔧 เจ้าของยิงทดสอบ → เปลี่ยนเป็นงานซ่อม/ทดสอบ')}
                   </div>
                 ))}
               </div>
