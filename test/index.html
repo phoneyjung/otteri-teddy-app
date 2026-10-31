@@ -47,7 +47,7 @@
   };
   firebase.initializeApp(firebaseConfig);
   window.db = firebase.firestore();
-  window.APP_VERSION = 'otteri-test-2026-10-30';
+  window.APP_VERSION = 'otteri-test-2026-10-31';
   // 🧪 ทุกคอลเลกชันขึ้นต้น test_ — ไม่แตะใบงาน/เงินของร้านจริง
   (function () {
     var d = window.db, orig = d.collection.bind(d);
@@ -3643,8 +3643,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone }) 
       {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} collections={collections} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {isSol(config) && <SolPendingBar config={config} />}
-      {view === 'ownerDashboard' && config.t2Sys && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setOrderDraft(null); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
-      {view === 'ownerDashboard' && !config.t2Sys && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setOrderDraft(null); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && t2OwnerOn(config) && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onDeleteToken={handleDeleteTokenExchange} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setOrderDraft(null); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
+      {view === 'ownerDashboard' && !t2OwnerOn(config) && <OwnerDashboardView config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onDeleteToken={handleDeleteTokenExchange} onNewOrder={() => { setOrderDraft(null); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
       {view === 'orderDetail' && selectedOrder && <OrderDetailView config={config} order={selectedOrder} onBack={() => setView('ownerDashboard')} onEdit={() => setView('editOrder')} onDelete={() => handleDeleteOrder(selectedOrder.id)} onViewReceipt={() => setView('receipt')} />}
       {view === 'editOrder' && selectedOrder && <NewOrderView config={config} orders={orders} editingOrder={selectedOrder} onCancel={() => setView('orderDetail')} onSubmit={handleUpdateOrder} isOwner={isOwner} />}
     </div>
@@ -12351,6 +12351,8 @@ const T2C = {
   coins: { c: T2_NEUTRAL, soft: '#F1F5F9', ic: '💰', name: 'นับเหรียญ' },
   stats: { c: T2_NEUTRAL, soft: '#F1F5F9', ic: '📊', name: 'สถิติ' },
   settings: { c: T2_NEUTRAL, soft: '#F1F5F9', ic: '⚙️', name: 'ตั้งค่า' },
+  token: { c: T2_NEUTRAL, soft: '#F1F5F9', ic: '🪙', name: 'Token' }, // v172 Teddy 1 (แลก Token)
+  kev: { c: T2_NEUTRAL, soft: '#F1F5F9', ic: '👨‍💼', name: 'เคฟ' }, // v172 Teddy 1
 };
 // เมนูล่าง 4 กลุ่ม + ปุ่มรับงานตรงกลาง · แถบย่อยด้านบนเลือกหน้าในกลุ่ม (ไม่ต้องปัดหา)
 const T2_GROUPS = [
@@ -12359,6 +12361,18 @@ const T2_GROUPS = [
   { id: 'machine', ic: '⚡', label: 'เครื่อง', tabs: ['pulse', 'coins', 'stats'] },
   { id: 'settings', ic: '⚙️', label: 'ตั้งค่า', tabs: ['settings'] },
 ];
+// 🏠 v172: หน้าเจ้าของแบบนี้ใช้กับ Teddy 2 + Teddy 1 (+ ร้านที่เปิด t2Sys) · ร้านอื่นยังใช้หน้าเก่า
+const t2OwnerOn = (config) => !!config && (config.brand === 'teddy2' || config.brand === 'teddy' || !!config.t2Sys);
+// แท็บเดิมที่บางร้านยังใช้ (Teddy 2 ตัดไปแล้ว) · Teddy 1: แลกโทเค็น (เงิน) + เคฟ (งาน)
+const T2_EXTRA_TABS = { teddy: { money: ['token'], work: ['kev'] } };
+// สีปุ่ม + รับงาน ตามร้าน (Teddy 2 เขียวเดิม · Teddy 1 น้ำเงิน — เข้มพอให้ตัวหนังสือบนพื้นขาวอ่านชัด)
+const T2_BRAND_PRIMARY = { teddy: '#2563EB' };
+const t2PrimaryOf = (config) => config.t2Primary || T2_BRAND_PRIMARY[config.brand] || T2_PRIMARY;
+// ร้านที่ไม่มีระบบยิงพัลส์ (ไม่มี config.pulse) ไม่มีแท็บพัลส์
+function t2Groups(config) {
+  const extra = T2_EXTRA_TABS[config.brand] || {};
+  return T2_GROUPS.map(g => ({ ...g, tabs: g.tabs.filter(k => k !== 'pulse' || !!config.pulse).concat(extra[g.id] || []) }));
+}
 // วันที่แบบไทย (พ.ศ.) ให้เหมือนส่วนอื่นของหน้า
 // ไอคอนเส้นของเมนูล่าง (ไม่พึ่งไลบรารี)
 const T2_ICON = {
@@ -12827,8 +12841,12 @@ function T2DetList({ config, items, title, k }) {
 
 // จำแท็บ/ช่วงเวลาไว้ระหว่างเปิดใบงานแล้วกดกลับ (ในรอบการใช้งานนี้)
 const T2_DASH_MEM = { tab: 'overview', mode: 'day', anchor: null };
-function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffList, onLogout, onSelectOrder, onCollect, onPayFees, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
-  const [tab, setTab] = useState(T2_DASH_MEM.tab);
+function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffList, onLogout, onSelectOrder, onCollect, onPayFees, onDeleteToken, onNewOrder, onChangeBrand, onResetAll, onDeleteSelected }) {
+  const G = useMemo(() => t2Groups(config), [config]); // v172 เมนูต่อร้าน
+  const hasTab = (k) => G.some(g => g.tabs.includes(k));
+  const [tab, setTab] = useState(() => (hasTab(T2_DASH_MEM.tab) ? T2_DASH_MEM.tab : 'overview'));
+  useEffect(() => { if (!hasTab(tab)) setTab('overview'); }, [G]); // สลับร้านแล้วแท็บเดิมไม่มี → กลับภาพรวม
+  const machineSys = !!config.pulse; // ร้านที่เปิดเครื่องผ่านแอป/SOL
   const [mode, setMode] = useState(T2_DASH_MEM.mode);
   const [anchor, setAnchor] = useState(() => T2_DASH_MEM.anchor || Date.now());
   useEffect(() => { T2_DASH_MEM.tab = tab; T2_DASH_MEM.mode = mode; T2_DASH_MEM.anchor = anchor; }, [tab, mode, anchor]);
@@ -12860,11 +12878,11 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   };
   const openPicker = (e) => { try { if (e.currentTarget.showPicker) e.currentTarget.showPicker(); } catch (x) {} };
   useEffect(() => {
-    if (!window.db) return;
+    if (!window.db || !machineSys) { setLogs([]); return; } // v172: ร้านไม่มีระบบยิงพัลส์ ไม่ต้องโหลด (และไม่เอาของร้านอื่นมาปน)
     const u = window.db.collection('pulseLogs').where('dateKey', '>=', R.fromKey).where('dateKey', '<=', R.toKey).onSnapshot(
       sn => setLogs(sn.docs.map(x => ({ id: x.id, ...x.data() }))), e => console.error('t2 logs error:', e));
     return () => { if (u) u(); };
-  }, [R.fromKey, R.toKey]);
+  }, [R.fromKey, R.toKey, machineSys]);
   useEffect(() => { setSelecting(false); setSel(new Set()); setAskPwd(false); }, [tab, mode, anchor]);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const detAll = useMemo(() => (tokenExchanges || []).filter(t => t.kind === 'detergent'), [tokenExchanges]); // 🧴 v166
@@ -12922,7 +12940,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
     if (dir > 0 && atLatest) return;
     setAnchor(Math.min(d.getTime(), Date.now()));
   };
-  const openTab = (k) => { if (!T2_GROUPS.find(g => g.tabs.includes(k)).tabs.includes(tab)) setToast(null); setTab(k); setTimeout(() => { try { if (tabsRef.current) tabsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }, 30); };
+  const openTab = (k) => { if (!(G.find(g => g.tabs.includes(k)) || G[0]).tabs.includes(tab)) setToast(null); setTab(k); setTimeout(() => { try { if (tabsRef.current) tabsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }, 30); };
   const goDay = (t) => { setMode('day'); setAnchor(t); setTab('overview'); };
   const goMonth = (t) => { setMode('month'); setAnchor(t); setTab('overview'); };
 
@@ -13062,9 +13080,9 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
       <span className="text-slate-400 text-lg">›</span>
     </button>
   );
-  const group = T2_GROUPS.find(g => g.tabs.includes(tab)) || T2_GROUPS[0];
+  const group = G.find(g => g.tabs.includes(tab)) || G[0];
   const todo = [];
-  if (cashPend + tokenCashSum > 0) todo.push({ k: 'cash', title: 'เงินสดที่แม่บ้านถือ', sub: `${cashPendList.length} ใบ · ค่าน้ำยา/ยังไม่หยอดเครื่อง${coinCashSum > 0 ? ` · แลกเหรียญ ฿${formatMoney(coinCashSum)}` : ''}${detCashSum > 0 ? ` · ขายน้ำยา ฿${formatMoney(detCashSum)}` : ''}`, act: `เก็บ ฿${formatMoney(cashPend + tokenCashSum)}`, onAct: () => doCollect('cash'), go: 'cash' });
+  if (cashPend + tokenCashSum > 0) todo.push({ k: 'cash', title: 'เงินสดที่แม่บ้านถือ', sub: `${cashPendList.length} ใบ${machineSys ? ' · ค่าน้ำยา/ยังไม่หยอดเครื่อง' : ''}${coinCashSum > 0 ? ` · ${exchangeName(config)} ฿${formatMoney(coinCashSum)}` : ''}${detCashSum > 0 ? ` · ขายน้ำยา ฿${formatMoney(detCashSum)}` : ''}`, act: `เก็บ ฿${formatMoney(cashPend + tokenCashSum)}`, onAct: () => doCollect('cash'), go: 'cash' });
   // 💵 v163: แม่บ้านนับเงินสดขาด → แจ้งต่อจากรายการเก็บเงินสด
   if (shortCount) todo.push({ k: 'warn', title: `แม่บ้านนับเงินสดขาด ฿${formatMoney(Math.abs(shortCount.diff))}`, sub: `${shortCount.staffName || '-'} · ${t2When(shortCount.collectedAt)} · ควรมี ฿${formatMoney(shortCount.expected || 0)} นับได้ ฿${formatMoney(shortCount.counted || 0)}`, nav: 'ดู', go: 'cash' });
   if (trPend > 0) todo.push({ k: 'transfer', title: 'โอนที่ยังไม่เคลียร์ยอด', sub: `${formatMoney(trPendList.length)} ใบ${detTrList.length ? ` · ขายน้ำยา ${detTrList.length} ครั้ง` : ''} · เช็กยอดธนาคารก่อน`, act: `เคลียร์ ฿${formatMoney(trPend)}`, onAct: () => doCollect('transfer'), go: 'transfer' });
@@ -13135,7 +13153,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             {A.account > 0 && <div style={{ width: pct(A.account) + '%', background: T2C.account.c }}></div>}
           </div>
           <div className="mt-1 divide-y divide-slate-100">
-            {moneyRow('cash', A.cash, `เข้าเครื่อง ฿${formatMoney(A.coin)} · แม่บ้านรับ ฿${formatMoney(A.held)}`, cashPct)}
+            {moneyRow('cash', A.cash, machineSys ? `เข้าเครื่อง ฿${formatMoney(A.coin)} · แม่บ้านรับ ฿${formatMoney(A.held)}` : `${formatMoney(A.cashN)} ใบ`, cashPct)}
             {moneyRow('transfer', A.transfer, `${formatMoney(A.transferN)} ใบ`, A.sales > 0 ? 100 - cashPct - pct(A.account) : 0)}
             {A.account > 0 && moneyRow('account', A.account, `${formatMoney(A.accountN)} ใบ · ${A.accountPending > 0 ? 'ยังไม่ได้รับ ฿' + formatMoney(A.accountPending) : 'รับเงินครบแล้ว'}`, pct(A.account))}
           </div>
@@ -13242,16 +13260,16 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
         {tab === 'cash' && (
           <div className="space-y-2.5">
             <T2Box k="cash" title={`เงินสด · ${R.label}`}>
-              <div className="grid grid-cols-3 gap-2">
+              <div className={machineSys ? 'grid grid-cols-3 gap-2' : 'grid grid-cols-2 gap-2'}>
                 <T2Stat label="เงินสดรวม" value={'฿' + formatMoney(A.cash)} sub={`${A.cashN} ใบ`} color={T2C.cash.c} />
-                <T2Stat label="เข้าเครื่อง" value={'฿' + formatMoney(A.coin)} sub="ไม่ต้องเก็บ" />
+                {machineSys && <T2Stat label="เข้าเครื่อง" value={'฿' + formatMoney(A.coin)} sub="ไม่ต้องเก็บ" />}
                 <T2Stat label="แม่บ้านรับ" value={'฿' + formatMoney(A.held)} sub={A.heldPending > 0 ? `ยังไม่เก็บ ฿${formatMoney(A.heldPending)}` : 'เก็บครบ'} />
               </div>
             </T2Box>
             <T2Box k="cash" title={cashPend + tokenCashSum > 0 ? `รอเก็บจากแม่บ้าน ฿${formatMoney(cashPend + tokenCashSum)}` : 'รอเก็บจากแม่บ้าน'} right={<span className="text-xs font-bold text-slate-500">ค้างทั้งหมด · {cashPendList.length} ใบ</span>}>
               {cashPendList.length > 0 || tokenCashSum > 0
                 ? <div className="space-y-2">{actBtn('cash', `เก็บเงินสดแล้ว ฿${formatMoney(cashPend + tokenCashSum)}`, () => doCollect('cash'))}{list(cashPendList)}
-                    {(detCashSum > 0 || coinCashSum > 0) && <p className="text-xs font-bold text-slate-500 px-1">{[detCashSum > 0 && `🧴 ขายน้ำยา ${detCashList.length} ครั้ง ฿${formatMoney(detCashSum)}`, coinCashSum > 0 && `🪙 แลกเหรียญ ฿${formatMoney(coinCashSum)}`].filter(Boolean).join(' · ')}</p>}</div>
+                    {(detCashSum > 0 || coinCashSum > 0) && <p className="text-xs font-bold text-slate-500 px-1">{[detCashSum > 0 && `🧴 ขายน้ำยา ${detCashList.length} ครั้ง ฿${formatMoney(detCashSum)}`, coinCashSum > 0 && `🪙 ${exchangeName(config)} ฿${formatMoney(coinCashSum)}`].filter(Boolean).join(' · ')}</p>}</div>
                 : <p className="text-sm font-bold text-emerald-700">✓ ไม่มีเงินสดค้างที่แม่บ้าน</p>}
             </T2Box>
             {cashCounts.length > 0 && (
@@ -13279,9 +13297,9 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
         {tab === 'transfer' && (
           <div className="space-y-2.5">
             <T2Box k="transfer" title={`โอน · ${R.label}`}>
-              <div className="grid grid-cols-2 gap-2">
+              <div className={machineSys ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
                 <T2Stat label="โอนทั้งหมด" value={'฿' + formatMoney(A.transfer)} sub={`${A.transferN} ใบ`} color={T2C.transfer.c} />
-                <T2Stat label="ยิงจากแอป (ส่วนโอน)" value={'฿' + formatMoney(PB.transfer)} sub={PB.manual ? `รวมเจ้าของบันทึก ฿${formatMoney(PB.manual)}` : 'ค่าเครื่องที่เปิด'} />
+                {machineSys && <T2Stat label="ยิงจากแอป (ส่วนโอน)" value={'฿' + formatMoney(PB.transfer)} sub={PB.manual ? `รวมเจ้าของบันทึก ฿${formatMoney(PB.manual)}` : 'ค่าเครื่องที่เปิด'} />}
               </div>
             </T2Box>
             <T2Box k="transfer" title={trPend > 0 ? `ยังไม่เคลียร์ยอด ฿${formatMoney(trPend)}` : 'ยังไม่เคลียร์ยอด'} right={<span className="text-xs font-bold text-slate-500">ค้างทั้งหมด · {formatMoney(trPendList.length)} ใบ</span>}>
@@ -13332,7 +13350,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
                 <T2Stat label="ส่วนลดรวม" value={'฿' + formatMoney(A.discount)} sub={`${A.discN} ใบ`} color={T2C.discount.c} />
                 <T2Stat label="คูปองแอดไลน์" value={'฿' + formatMoney(A.lineDisc)} sub={`ใบละ ฿${config.linePromoDiscount || 0}`} />
                 <T2Stat label="โปรประจำวัน" value={'฿' + formatMoney(A.promoDisc)} />
-                <T2Stat label="ยิงแอปให้ส่วนลด" value={'฿' + formatMoney(PB.discount)} sub={PB.promo ? `รวมโปรซักเอง ฿${formatMoney(PB.promo)}` : 'เฉพาะเครื่องซัก'} />
+                {machineSys && <T2Stat label="ยิงแอปให้ส่วนลด" value={'฿' + formatMoney(PB.discount)} sub={PB.promo ? `รวมโปรซักเอง ฿${formatMoney(PB.promo)}` : 'เฉพาะเครื่องซัก'} />}
               </div>
             </T2Box>
             {listHead(`ใบงานที่มีส่วนลด · ${R.label}`, A.discN)}
@@ -13451,6 +13469,8 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
         )}
 
         {tab === 'coins' && <CoinCountView config={config} />}
+        {tab === 'token' && <TokenExchangeReportView config={config} tokenExchanges={tokenExchanges || []} onDelete={onDeleteToken} />}
+        {tab === 'kev' && <KevReportView orders={orders} config={config} />}
         {tab === 'stats' && <StatsView stats={stats} config={config} orders={orders} onResetAll={onResetAll} />}
         {tab === 'settings' && (
           <div className="space-y-2.5">
@@ -13467,7 +13487,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
       {/* ---------- เมนูล่าง: เงิน · งาน · [+ รับงาน] · เครื่อง · ตั้งค่า ---------- */}
       {!selecting && (
         <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 grid grid-cols-5 items-end px-1 pt-1.5" style={{ paddingBottom: 'max(6px, env(safe-area-inset-bottom))' }}>
-          {[T2_GROUPS[0], T2_GROUPS[1], null, T2_GROUPS[2], T2_GROUPS[3]].map((g, i) => g ? (
+          {[G[0], G[1], null, G[2], G[3]].map((g, i) => g ? (
             <button key={g.id} onClick={() => openTab(g.tabs[0])} className="relative flex flex-col items-center py-1 active:scale-95">
               <T2Svg id={g.id} color={group.id === g.id ? '#0F172A' : '#64748B'} />
               <span className={`text-xs font-extrabold mt-1 ${group.id === g.id ? 'text-slate-900' : 'text-slate-500'}`}>{g.label}</span>
@@ -13476,8 +13496,8 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             </button>
           ) : (
             <button key="new" onClick={onNewOrder} className="flex flex-col items-center -mt-5 active:scale-95">
-              <span className="w-14 h-14 rounded-full text-white text-3xl font-extrabold flex items-center justify-center shadow-lg border-4 border-white" style={{ background: config.t2Primary || T2_PRIMARY }}>+</span>
-              <span className="text-xs font-extrabold mt-0.5" style={{ color: config.t2Primary || T2_PRIMARY }}>รับงาน</span>
+              <span className="w-14 h-14 rounded-full text-white text-3xl font-extrabold flex items-center justify-center shadow-lg border-4 border-white" style={{ background: t2PrimaryOf(config) }}>+</span>
+              <span className="text-xs font-extrabold mt-0.5" style={{ color: t2PrimaryOf(config) }}>รับงาน</span>
             </button>
           ))}
         </nav>

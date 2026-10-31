@@ -49,10 +49,9 @@ rep("""  brand: 'teddy2',
 """, 'teddy2 t2Sys')
 
 # gates: brand === 'teddy2' → config.t2Sys
-rep("{view === 'ownerDashboard' && config.brand === 'teddy2' && <OwnerDashboardT2",
-    "{isSol(config) && <SolPendingBar config={config} />}\n      {view === 'ownerDashboard' && config.t2Sys && <OwnerDashboardT2", 'gate owner T2')
-rep("{view === 'ownerDashboard' && config.brand !== 'teddy2' && <OwnerDashboardView",
-    "{view === 'ownerDashboard' && !config.t2Sys && <OwnerDashboardView", 'gate owner old')
+# v172: ตัวจริงเลือกหน้าเจ้าของด้วย t2OwnerOn(config) (teddy2 · teddy · t2Sys) แล้ว — ทดสอบแค่เพิ่มแถบ SOL
+rep("{view === 'ownerDashboard' && t2OwnerOn(config) && <OwnerDashboardT2",
+    "{isSol(config) && <SolPendingBar config={config} />}\n      {view === 'ownerDashboard' && t2OwnerOn(config) && <OwnerDashboardT2", 'gate owner T2')
 rep("  const T2H = config.brand === 'teddy2';", "  const T2H = !!config.t2Sys;", 'gate home')
 rep("{config.brand === 'teddy2' && order.id && <CashCollectedNote", "{config.t2Sys && order.id && <CashCollectedNote", 'gate cash note')
 
@@ -632,8 +631,8 @@ rep("{tr(config, 'เปิดแล้ว')} ฿${fired}", "{tr(config, isSol(c
 rep("(${tr(config, 'ขาด')} ฿${need - fired})", "(${tr(config, isSol(config) ? 'ยังไม่เริ่ม' : 'ขาด')} ฿${need - fired})", 'ui2: receipt left word')
 
 # (10) หน้าเจ้าของ: ปุ่มรับงานสีของร้าน
-rep("style={{ background: T2_PRIMARY }}>+", "style={{ background: config.t2Primary || T2_PRIMARY }}>+", 'ui2: owner fab')
-rep("style={{ color: T2_PRIMARY }}>รับงาน", "style={{ color: config.t2Primary || T2_PRIMARY }}>รับงาน", 'ui2: owner fab label')
+# v172: ตัวจริงใช้ t2PrimaryOf(config) (อ่าน config.t2Primary ก่อน) แล้ว — แค่ตรวจว่ายังอยู่
+assert s.count("style={{ background: t2PrimaryOf(config) }}>+") == 1, 'ui2: owner fab'
 
 # ล้างเครื่องในหน้าเลือกเครื่อง (โหมด SOL): เลือก Hot ใน SOL ไม่ใช่ที่หน้าเครื่อง
 rep("""🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>""",
@@ -718,7 +717,7 @@ rep("<title>PLP Laundromat - ร้านสะดวกซักผ้า</titl
 
 rep_between("  firebase.initializeApp(firebaseConfig);\n  window.db = firebase.firestore();", "  })();\n</script>", lambda c: """  firebase.initializeApp(firebaseConfig);
   window.db = firebase.firestore();
-  window.APP_VERSION = 'otteri-test-2026-10-30';
+  window.APP_VERSION = 'otteri-test-2026-10-31';
   // 🧪 ทุกคอลเลกชันขึ้นต้น test_ — ไม่แตะใบงาน/เงินของร้านจริง
   (function () {
     var d = window.db, orig = d.collection.bind(d);
