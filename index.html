@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v184-2026-11-02';
+  window.APP_VERSION = 'v185-2026-11-02';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -384,6 +384,8 @@ Object.assign(OTTERI_CONFIG, {
   ui2Accent: '#0EA5E9', // ฟ้า Otteri — ปุ่ม + ทุกปุ่ม
   t2Primary: '#0284C7', // ปุ่มรับงานหน้าเจ้าของ = ฟ้า Otteri (เดิมเขียว Teddy 2)
   accounts: [{ id: 'geisha', name: 'ร้านเกอิชา', emoji: '🏢', noFold: true, noRevenue: true }], // 🏢 v181 งานร้านเกอิชา = ไม่คิดเงิน ไม่นับรายได้ (เดิมค้างจ่ายรวมบิล) · ไม่พับ · ราคาปกติ (ไว้ดูมูลค่า)
+  simpleInternal: ['clean', 'test', 'other', 'mine'], // 🧾 v185 งานภายในที่ลงได้ (แอดมิน/เจ้าของ ฟอร์มสั้น)
+  internalLabels: { other: 'ปัญหาอื่นๆ / ซักซ้ำ' },
   maidNoFree: true, // 🔒 v181 แม่บ้านทำงานฟรีเองไม่ได้ (ล้างเครื่อง ซ่อม ผ้าเจ้าของ เกอิชา) — แอดมิน/เจ้าของลงและเริ่มเครื่อง
   t2Sys: true,
   defaultPay: 'transfer', // ให้แม่บ้านถือเงินสดน้อยที่สุด
@@ -1711,7 +1713,9 @@ const isInternalOrder = (o) => !!(o && o.internalType);
 const payLabelOf = (o, config) => (o.paymentMethod === 'account' ? '🏢 ' + accountPayText(o, config) : o.paymentMethod === 'transfer' ? '💳 โอน' : o.paymentMethod === 'split' ? `💵 สด ฿${formatMoney(o.cashAmount || 0)} + 💳 โอน ฿${formatMoney(o.transferAmount || 0)}` : '💵 เงินสด');
 const internalTypesFor = (config) => INTERNAL_TYPES.filter(t => !t.cfg || !!(config && config[t.cfg]));
 // ชื่องานภายในในรายการ เช่น "🧼 ล้างเครื่อง · W1" (เดิมขึ้น "(ไม่ระบุชื่อ)")
-const internalTitleOf = (o, config, noEmoji) => { const t = INTERNAL_TYPES.find(x => x.id === o.internalType) || {}; const ms = (o.internalMachines || []).map(m => String(m).replace(/^(ซัก|อบ) /, '')); return `${noEmoji ? '' : (t.emoji || '🔧') + ' '}${tr(config, t.label || 'งานภายใน')}${ms.length ? ' · ' + ms.join(', ') : ''}`; };
+// 🧾 v185 ชื่องานภายในต่อร้าน (Otteri: อื่นๆ = 'ปัญหาอื่นๆ / ซักซ้ำ')
+const internalLabelOf = (config, id) => (config && config.internalLabels && config.internalLabels[id]) || (INTERNAL_TYPES.find(t => t.id === id) || {}).label || id || '';
+const internalTitleOf = (o, config, noEmoji) => { const t = INTERNAL_TYPES.find(x => x.id === o.internalType) || {}; const ms = (o.internalMachines || []).map(m => String(m).replace(/^(ซัก|อบ) /, '')); return `${noEmoji ? '' : (t.emoji || '🔧') + ' '}${tr(config, (o.internalType && internalLabelOf(config, o.internalType)) || 'งานภายใน')}${ms.length ? ' · ' + ms.join(', ') : ''}`; };
 // 🏢 ลูกค้าประจำแบบค้างจ่าย (paymentMethod 'account' + accountId) — ไม่ใช่เงินสด/โอน · เจ้าของกดรับเงินทีหลัง
 const accountOf = (o, config) => (o && o.paymentMethod === 'account' ? (((config && config.accounts) || []).find(a => a.id === o.accountId) || { id: o.accountId || '', name: o.customerName || '' }) : null);
 const accountPayText = (o, config) => { const a = accountOf(o, config); return a ? (a.noRevenue ? `${a.name} · ไม่คิดเงิน` : `ค้างจ่าย · ${a.name}`) : ''; };
@@ -2445,6 +2449,14 @@ const MM_DICT = {
   'เข้าร้าน': 'ဆိုင်ထဲဝင်ရန်',
   'คู่มือช่วยงาน': 'အလုပ်လမ်းညွှန်',
   'จัดการรายชื่อ': 'ဝန်ထမ်းစာရင်း စီမံရန်',
+  // v185 ฟอร์มงานภายในแบบสั้น
+  'ปัญหาอื่นๆ / ซักซ้ำ': 'အခြားပြဿနာ / ပြန်လျှော်',
+  'เครื่องมีปัญหา / ซักให้ลูกค้าใหม่': 'စက်ပြဿနာ / ဖောက်သည်အတွက် ပြန်လျှော်',
+  'เวลา: ตอนนี้': 'အချိန်: ယခု',
+  'ลงย้อนหลัง แตะเปลี่ยนเวลา': 'နောက်ကြောင်းပြန်ထည့်ရန် အချိန်ပြောင်းပါ',
+  'แตะเครื่องที่ทำด้านบน': 'အပေါ်ရှိ စက်ကို နှိပ်ပါ',
+  'แตะเครื่อง แล้วกดบันทึก — แอปติ๊กเริ่มเครื่องให้เอง': 'စက်ကိုနှိပ်ပြီး သိမ်းပါ — အက်ပ်က စက်စတင်ကြောင်း အလိုအလျောက် မှတ်ပေးမည်',
+  'เช่น เครื่องหยุดกลางคัน ซักให้ลูกค้าใหม่': 'ဥပမာ စက်လမ်းခုလတ်ရပ် ဖောက်သည်အတွက် ပြန်လျှော်',
   'ยังไม่มีบัญชีแม่บ้าน': 'ဝန်ထမ်းအကောင့် မရှိသေး',
   'ร้านที่ดูแล': 'တာဝန်ယူသည့် ဆိုင်',
   'ต้องดูแลอย่างน้อย 1 ร้าน': 'အနည်းဆုံး ဆိုင် ၁ ဆိုင် ရွေးရမည်',
@@ -5304,6 +5316,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
 
 function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdmin, internalMode, backdateDay, orders, draft, accountMode }) {
   const freeOk = isOwner || !!isAdmin; // 🔧 v181 แอดมิน = ลงงานภายใน/งานไม่คิดเงินได้ (เดิมใช้ isOwner ทั้งฟอร์ม)
+  const [showTime, setShowTime] = useState(false); // 🧾 v185 ฟอร์มสั้น: กล่องเวลาเปิดเมื่อแตะ
   const [webOrders, setWebOrders] = useState([]);
   const [showWeb, setShowWeb] = useState(false);
   const [webPicked, setWebPicked] = useState(null); // { id, code }
@@ -5469,15 +5482,18 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
   const fixType = internalType === 'fix'; // 🪙 v177 ไม่ต้องเลือกเครื่อง · บังคับยอด + เหตุผล
   // 🧼 v156: แม่บ้านล้างเครื่อง → แอปใส่รายการให้เอง = เครื่องซักที่เลือก × น้ำร้อน 1 ครั้ง (ไม่ต้องเลือกซัก/อบเอง)
   const maidClean = !!internalType && internalType === 'clean' && !isOwner; // v181 แอดมินใช้ฟอร์มล้างเครื่องแบบง่าย (แตะเครื่องซัก = ใส่รายการให้) เหมือนแม่บ้าน
+  // 🧾 v185 ฟอร์มสั้น (แอดมิน/เจ้าของ ร้าน simpleInternal): แตะเครื่อง = แอปใส่รายการ+ราคาให้ (ซัก/อบ)
+  const simpleFree = !!internalType && freeOk && !!config.simpleInternal && internalType !== 'fix';
+  const autoItems = maidClean || simpleFree;
   useEffect(() => {
-    if (!maidClean) return;
+    if (!autoItems) return;
     const allM = (COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || [];
-    const bySize = {};
-    allM.filter(m => /^w/i.test(m.id) && internalMachines.includes(m.label)).forEach(m => { const kg = parseInt(m.size, 10) || 0; bySize[kg] = (bySize[kg] || 0) + 1; });
-    const items = Object.keys(bySize).map(kg => ({ size: Number(kg), temp: 'hot', qty: bySize[kg] })).filter(i => config.washMachines.some(w => w.size === i.size));
-    setWashItems(items);
-    setDryItems([]);
-  }, [maidClean, internalMachines.join('|')]);
+    const wBy = {}, dBy = {};
+    allM.filter(m => internalMachines.includes(m.label)).forEach(m => { const kg = parseInt(m.size, 10) || 0; if (/^w/i.test(m.id)) wBy[kg] = (wBy[kg] || 0) + 1; else if (/^d/i.test(m.id)) dBy[kg] = (dBy[kg] || 0) + 1; });
+    const temp = internalType === 'clean' ? 'hot' : 'cold';
+    setWashItems(Object.keys(wBy).map(kg => ({ size: Number(kg), temp, qty: wBy[kg] })).filter(i => config.washMachines.some(w => w.size === i.size)));
+    setDryItems(internalType === 'clean' ? [] : Object.keys(dBy).map(kg => ({ size: Number(kg), qty: dBy[kg] })).filter(i => config.dryMachines.some(d => d.size === i.size)));
+  }, [autoItems, internalType, internalMachines.join('|')]);
 
   useEffect(() => { // 🎨 ui2: มีซัก/อบ = ฝากพับ 1 ตะกร้า (ยังไม่เลือกอะไร = ยอด 0)
     if (!config.ui2 || foldTouched.current || config.freeService || internalType || (acct && acct.noFold)) return;
@@ -5487,7 +5503,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
     washItems, dryItems, detergentQty, softenerQty, foldBaskets: internalType ? 0 : foldBaskets, // งานภายในไม่มีค่าพับ (ร้านที่คิดค่าพับ เช่น Otteri)
     deliveryZone, useLinePromo,
     createdAt: orderTime,
-    noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false || !!acct), // 🏢 ค้างจ่าย = ราคาปกติ
+    noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false || !!acct || (!!internalType && !!config.simpleInternal)), // 🏢 ค้างจ่าย = ราคาปกติ · v185 งานภายใน = ราคาเครื่อง
     internalType: internalType || null,
     internalCustom: internalType && customAmt > 0 ? customAmt : null,
   };
@@ -5528,8 +5544,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
-  if (isInternal && internalType !== 'mine' && !fixType && internalMachines.length === 0) missingList.push(tr(config, 'เลือกเครื่องที่ทำ (บังคับ)'));
-  if (internalType === 'mine' && !washItems.length && !dryItems.length) missingList.push(tr(config, 'เลือกซักหรืออบอย่างน้อย 1 อย่าง'));
+  if (isInternal && (internalType !== 'mine' || simpleFree) && !fixType && internalMachines.length === 0) missingList.push(tr(config, 'เลือกเครื่องที่ทำ (บังคับ)'));
+  if (internalType === 'mine' && !simpleFree && !washItems.length && !dryItems.length) missingList.push(tr(config, 'เลือกซักหรืออบอย่างน้อย 1 อย่าง'));
   internalMaidIssues.forEach(t => missingList.push(t));
   if (freeLocked) missingList.push(tr(config, 'งานไม่คิดเงิน — แอดมินหรือเจ้าของเป็นคนลง'));
   if (isInternal && needInternalDetail) {
@@ -5692,7 +5708,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
       fromKev: fromKev || false,
       fromLine: fromLine || false,
       useLinePromo: useLinePromo || false,
-      noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false || !!acct), // 🏢 ค้างจ่าย = ราคาปกติ
+      noDayPromo: editingOrder ? (editingOrder.noDayPromo || false) : (config.dayPromoEnabled === false || !!acct || (!!internalType && !!config.simpleInternal)), // 🏢 ค้างจ่าย = ราคาปกติ · v185 งานภายใน = ราคาเครื่อง
       webCode: webPicked ? webPicked.code : (editingOrder && editingOrder.webCode) || null,
       internalType: internalType || null,
       internalReason: internalType ? internalReason.trim() : '',
@@ -5754,7 +5770,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
         )}
 
         {/* Section "วันเวลารับงาน" — แสดงเฉพาะเจ้าของ (สำหรับบันทึกย้อนหลัง) */}
-        {freeOk && (
+        {simpleFree && !showTime && (
+          <button data-time-toggle onClick={() => setShowTime(true)} className="w-full text-left text-xs font-bold text-slate-500 px-1">
+            🕐 {tr(config, 'เวลา: ตอนนี้')} · <span className="underline">{tr(config, 'ลงย้อนหลัง แตะเปลี่ยนเวลา')}</span>
+          </button>
+        )}
+        {freeOk && (!simpleFree || showTime) && (
           <div className="rounded-2xl p-4 shadow-lg border-2 border-amber-300" style={{background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'}}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">🔐</span>
@@ -5802,7 +5823,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </div>
         )}
 
-        {breakdown.promo.active && (
+        {breakdown.promo.active && !isInternal && (
           <div className="rounded-2xl p-4 shadow-lg" style={{background: breakdown.promo.type === 'wednesday_midnight' ? 'linear-gradient(135deg, #8B5CF6, #EC4899)' : breakdown.promo.type === 'wednesday' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #6366F1, #8B5CF6)'}}>
             <div className="flex items-center gap-3">
               <div className="text-3xl">{breakdown.promo.type === 'wednesday' ? '🐻' : breakdown.promo.type === 'midnight' ? '🌙' : '🎉'}</div>
@@ -5817,30 +5838,30 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
         {isInternal && (
           <div className="rounded-2xl p-4 border-2 border-amber-400" style={{background: 'repeating-linear-gradient(45deg, #FEF3C7, #FEF3C7 12px, #FDE68A 12px, #FDE68A 24px)'}}>
             <div className="flex items-center justify-between mb-3">
-              <p className="font-extrabold text-slate-900">{freeOk ? '🔧 งานภายในร้าน' : (() => { const it = INTERNAL_TYPES.find(x => x.id === internalType) || INTERNAL_TYPES[0]; return it.emoji + ' ' + tr(config, it.label); })()}</p>
-              <button onClick={() => { setInternalType(''); setInternalReason(''); setInternalCustom(''); }}
-                className="text-[11px] font-bold text-slate-600 bg-white rounded-lg px-2 py-1">เปลี่ยนเป็นงานลูกค้า</button>
+              <p className="font-extrabold text-slate-900" data-itype-title>{freeOk && !simpleFree ? '🔧 งานภายในร้าน' : (() => { const it = INTERNAL_TYPES.find(x => x.id === internalType) || INTERNAL_TYPES[0]; return it.emoji + ' ' + tr(config, internalLabelOf(config, it.id)); })()}</p>
+              {!simpleFree && <button onClick={() => { setInternalType(''); setInternalReason(''); setInternalCustom(''); }}
+                className="text-[11px] font-bold text-slate-600 bg-white rounded-lg px-2 py-1">เปลี่ยนเป็นงานลูกค้า</button>}
             </div>
             {freeOk && <p className="text-xs font-bold text-slate-700 mb-1.5">ประเภทงาน</p>}
             {(freeOk || maidInternalTypes(config).length > 1) && <div className="flex flex-wrap gap-1.5 mb-3">
-              {internalTypesFor(config).filter(t => freeOk || !internalOwnerOnly(config).includes(t.id)).map(t => {
+              {(simpleFree ? config.simpleInternal.map(id => INTERNAL_TYPES.find(t => t.id === id)).filter(Boolean) : internalTypesFor(config)).filter(t => freeOk || !internalOwnerOnly(config).includes(t.id)).map(t => {
                 const locked = !freeOk && internalOwnerOnly(config).includes(t.id);
                 return (
                   <button key={t.id} data-itype={t.id} onClick={() => { if (locked) { alert('🔒 ' + t.label + ' — เฉพาะเจ้าของ'); return; } if (t.id !== internalType && (t.id === 'mine' || internalType === 'mine' || (!freeOk && (t.id === 'clean' || internalType === 'clean')))) { setInternalMachines([]); if (!freeOk) { setWashItems([]); setDryItems([]); } } setInternalType(t.id); }}
                     className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${internalType === t.id ? 'bg-slate-900 text-white border-slate-900' : locked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
-                    {locked ? '🔒' : t.emoji} {freeOk ? t.label : tr(config, t.label)}
+                    {locked ? '🔒' : t.emoji} {freeOk ? internalLabelOf(config, t.id) : tr(config, internalLabelOf(config, t.id))}
                   </button>
                 );
               })}
             </div>}
             {!freeOk && internalType === 'clean' && <p className="text-[11px] font-bold text-slate-700 mb-3">{tr(config, 'ล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ 7 วัน')}</p>}
-            {internalType === 'mine' && <p className="text-[11px] font-bold text-slate-700 mb-1">{tr(config, 'ฟรี · ไม่นับเป็นรายได้ · เลือกซัก/อบด้านล่าง แล้วเริ่มเครื่องเหมือนงานลูกค้า')}</p>}
-            {internalType !== 'mine' && <React.Fragment>
+            {internalType === 'mine' && !simpleFree && <p className="text-[11px] font-bold text-slate-700 mb-1">{tr(config, 'ฟรี · ไม่นับเป็นรายได้ · เลือกซัก/อบด้านล่าง แล้วเริ่มเครื่องเหมือนงานลูกค้า')}</p>}
+            {(internalType !== 'mine' || simpleFree) && <React.Fragment>
             <p className="text-xs font-bold text-slate-700 mb-1.5">{freeOk ? 'เครื่องที่ทำ' : internalType === 'clean' ? tr(config, 'เครื่องซักที่จะล้าง') : tr(config, 'เครื่องที่ทำ')} {fixType ? <span className="text-slate-500">({tr(config, 'ถ้ามี')})</span> : <span className="text-rose-600">*{tr(config, 'บังคับ')}</span>} ({tr(config, 'เลือกได้หลายเครื่อง')})</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
                 const on = internalMachines.includes(m.label);
-                const dryNo = internalType === 'clean' && !isOwner && /^d/i.test(m.id); // v151: แม่บ้านล้างเฉพาะเครื่องซัก
+                const dryNo = internalType === 'clean' && (!isOwner || simpleFree) && /^d/i.test(m.id); // v151: แม่บ้านล้างเฉพาะเครื่องซัก
                 if (dryNo && !on) return null; // v155: แม่บ้านไม่เห็นเครื่องอบเลย
                 const lock = internalType === 'clean' ? (cleanLocks[m.label] || (dryNo ? { at: 0, until: 0, dry: true } : null)) : null;
                 const until = lock && !lock.dry ? new Date(lock.until).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '';
@@ -5854,6 +5875,13 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
             </div>
             </React.Fragment>}
 
+            {simpleFree && internalType !== 'clean' && (
+              <div className="rounded-xl bg-white border-2 border-slate-200 px-3 py-2 mb-2" data-simple-items>
+                {washItems.length || dryItems.length
+                  ? <p className="text-xs font-bold text-slate-700">{[...washItems.map(i => `${tr(config, 'ซัก')} ${i.size}kg × ${i.qty}`), ...dryItems.map(i => `${tr(config, 'อบ')} ${i.size}kg × ${i.qty}`)].join(' · ')} · ฿{formatMoney(total)}</p>
+                  : <p className="text-xs text-slate-500">{tr(config, 'แตะเครื่องที่ทำด้านบน')}</p>}
+              </div>
+            )}
             {maidClean && (
               <div className="rounded-xl bg-white border-2 border-rose-200 px-3 py-2 mb-2">
                 <p className="text-sm font-extrabold text-rose-700">🔥 {tr(config, 'ล้างเครื่องใช้น้ำร้อนเสมอ')}</p>
@@ -5867,15 +5895,17 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
                 <p className="text-xs font-bold text-slate-700 mb-1">{tr(config, 'เหตุผล')} <span className="text-rose-600">*{tr(config, 'บังคับ')}</span></p>
                 <input type="text" value={internalReason} onChange={e => setInternalReason(e.target.value)} data-ireason
                   className={`w-full px-3 py-2.5 rounded-xl border-2 text-sm ${internalReason.trim() ? 'bg-white border-slate-300' : 'bg-rose-50 border-rose-300'}`}
-                  placeholder={tr(config, fixType ? 'เช่น เครื่องกินโทเคน ให้ลูกค้าใหม่ 4 อัน' : 'เช่น ทดสอบหลังช่างซ่อม')} />
+                  placeholder={tr(config, fixType ? 'เช่น เครื่องกินโทเคน ให้ลูกค้าใหม่ 4 อัน' : internalType === 'other' && simpleFree ? 'เช่น เครื่องหยุดกลางคัน ซักให้ลูกค้าใหม่' : 'เช่น ทดสอบหลังช่างซ่อม')} />
+                {!simpleFree && <React.Fragment>
                 <p className="text-xs font-bold text-slate-700 mb-1 mt-3">{tokenShop(config) ? tr(config, fixType ? 'จำนวนโทเคนที่ให้ (บาท)' : 'ยอดโทเคนที่หยอด (ถ้าไม่เลือกเครื่องด้านล่าง)') : 'กำหนดยอดเครดิตเอง (ถ้าไม่เลือกเครื่องด้านล่าง)'}</p>
                 <input type="number" inputMode="numeric" value={internalCustom} onChange={e => setInternalCustom(e.target.value)} onFocus={e => e.target.select()} data-icustom
                   className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-lg font-bold text-right" placeholder="0" />
                 {tokenShop(config) && customAmt > 0 && <p className="text-xs font-extrabold text-slate-800 mt-1">🪙 = {Math.round(customAmt / ((COIN_POINTS[config.brand] || {}).tokenValue || 10) * 10) / 10} {tr(config, 'โทเคน')}</p>}
                 <p className="text-[11px] text-slate-600 mt-1">{tr(config, 'เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้')}</p>
+                </React.Fragment>}
               </React.Fragment>
             ) : (
-              <p className="text-[11px] text-slate-700">{maidClean ? tr(config, 'กดบันทึกด้านล่าง แล้วกดเริ่มเครื่องได้เลย') : internalType === 'mine' ? '' : 'เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา'}</p>
+              <p className="text-[11px] text-slate-700">{simpleFree ? tr(config, 'แตะเครื่อง แล้วกดบันทึก — แอปติ๊กเริ่มเครื่องให้เอง') : maidClean ? tr(config, 'กดบันทึกด้านล่าง แล้วกดเริ่มเครื่องได้เลย') : internalType === 'mine' ? '' : 'เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา'}</p>
             )}
           </div>
         )}
@@ -6038,7 +6068,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </Field>
         </Section>}
 
-        {!maidClean && <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
+        {!autoItems && <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
           <div className="space-y-3">
             {config.washMachines.map(m => (
               <WashMachineRow key={m.size} machine={m} hasMultipleTemps={hasMultipleTemps} getQty={getQty} washItems={washItems} onUpdate={(temp, delta) => updateItem(washItems, setWashItems, m.size, delta, temp)} />
@@ -6046,7 +6076,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </div>
         </Section>}
 
-        {!maidClean && <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
+        {!autoItems && <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
           <div className="space-y-2">
             {config.dryMachines.map(m => {
               const qty = getQty(dryItems, m.size, 'cold');
@@ -6745,7 +6775,7 @@ function internalSlipOf(config, order, total) {
   if (total > 0) rows.push([tokenShop(config) ? 'โทเคนที่ใช้' : 'เครดิตที่ใช้', `฿${formatMoney(total)}`]);
   if (order.internalReason) rows.push(['หมายเหตุ', order.internalReason]);
   return {
-    kind, emoji: kind === 'internal' ? it.emoji : null, title: kind === 'internal' ? (it.label || order.internalType) : null,
+    kind, emoji: kind === 'internal' ? it.emoji : null, title: kind === 'internal' ? internalLabelOf(config, order.internalType) : null,
     rows, foot: kind === 'mine' ? '👔 ผ้าเจ้าของ · ฟรี · ไม่ใช่รายได้' : '🔧 งานภายใน · ไม่ใช่รายได้',
     at: order.createdAt, staff: order.staffName || order.createdByName || '', no: order.queueNo != null ? '#' + String(order.queueNo).padStart(2, '0') : '',
   };
@@ -11311,14 +11341,16 @@ function PulseStarterCard({ config, order: orderProp, isOwner }) {
 // 🔧 v181 โหมดแอดมิน — ช่องทางพิเศษสำหรับงานภายในโดยเฉพาะ (ล้างเครื่อง · ซ่อม/ทดสอบ · ซักซ้ำ · ผ้าเจ้าของ · งานไม่คิดเงิน เช่น ร้านเกอิชา)
 // แอดมินหลายคนช่วยกดได้ (เจ้าของตั้งใน ⚙️ จัดการรายชื่อ) · เห็นแค่งานภายใน ไม่เห็นงานลูกค้า/เงิน · ไม่นับรายได้
 const ADMIN_BTN_SUB = { clean: 'ล้างถังเครื่องซัก', test: 'ตอนช่างมา/เช็กเครื่อง', redo: 'เครื่องมีปัญหา ซักให้ใหม่', mine: 'ไม่นับรายได้', other: 'ใส่เหตุผล' };
+const ADMIN_BTN_SUB2 = { other: 'เครื่องมีปัญหา / ซักให้ลูกค้าใหม่' }; // v185 ร้านที่รวม อื่นๆ + ซักซ้ำ
 function AdminHomeView({ config, orders, currentStaff, onSwitchStaff, onToggleLang, onInternalOrder, onAccountOrder, onSelectOrder }) {
   const [dayOff, setDayOff] = useState(0);
   const freeOrders = useMemo(() => (orders || []).filter(o => isFreeJob(o, config)), [orders, config]);
   const from = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - dayOff); return d.getTime(); })();
   const list = freeOrders.filter(o => (o.createdAt || 0) >= from && (o.createdAt || 0) < from + 86400000).sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
   const btns = [
-    ...internalTypesFor(config).filter(t => t.id !== 'fix').map(t => ({ k: t.id, icon: t.emoji, title: tr(config, (BILL_BTN[t.id] || [t.label])[0]), sub: tr(config, ADMIN_BTN_SUB[t.id] || 'ไม่นับรายได้'), click: () => onInternalOrder(t.id) })),
-    ...(config.accounts || []).filter(a => a.noRevenue).map(a => ({ k: 'acct-' + a.id, icon: a.emoji || '🏢', title: tr(config, a.name), sub: tr(config, a.noFold ? 'ไม่คิดเงิน · ไม่พับ' : 'ไม่คิดเงิน'), click: () => onAccountOrder(a.id) })),
+    ...(config.simpleInternal ? config.simpleInternal.map(id => INTERNAL_TYPES.find(t => t.id === id)).filter(Boolean).map(t => ({ k: t.id, icon: t.emoji, title: tr(config, t.id === 'clean' || t.id === 'test' ? BILL_BTN[t.id][0] : internalLabelOf(config, t.id)), sub: tr(config, ADMIN_BTN_SUB2[t.id] || ADMIN_BTN_SUB[t.id] || 'ไม่นับรายได้'), click: () => onInternalOrder(t.id) }))
+      : internalTypesFor(config).filter(t => t.id !== 'fix').map(t => ({ k: t.id, icon: t.emoji, title: tr(config, (BILL_BTN[t.id] || [t.label])[0]), sub: tr(config, ADMIN_BTN_SUB[t.id] || 'ไม่นับรายได้'), click: () => onInternalOrder(t.id) }))),
+    ...(config.simpleInternal ? [] : config.accounts || []).filter(a => a.noRevenue).map(a => ({ k: 'acct-' + a.id, icon: a.emoji || '🏢', title: tr(config, a.name), sub: tr(config, a.noFold ? 'ไม่คิดเงิน · ไม่พับ' : 'ไม่คิดเงิน'), click: () => onAccountOrder(a.id) })),
   ];
   const titleOf = (o) => (isInternalOrder(o) ? internalTitleOf(o, config) : `${(accountOf(o, config) || {}).emoji || '🏢'} ${tr(config, o.customerName || '')}`);
   const days = [tr(config, 'วันนี้'), tr(config, 'เมื่อวาน'), tr(config, '2 วันก่อน')];
@@ -13952,7 +13984,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             <T2Box k="internal" title={`งานภายใน · ${R.label}`} right={<span className="text-xs font-bold text-slate-500">ไม่นับเป็นรายได้</span>}>
               <div className="grid grid-cols-2 gap-2">
                 {internalTypesFor(config).map(t => (
-                  <T2Stat key={t.id} label={`${t.emoji} ${t.label}`} value={'฿' + formatMoney((A.intType[t.id] || {}).v || 0)} sub={`${(A.intType[t.id] || {}).n || 0} งาน`} />
+                  <T2Stat key={t.id} label={`${t.emoji} ${internalLabelOf(config, t.id)}`} value={'฿' + formatMoney((A.intType[t.id] || {}).v || 0)} sub={`${(A.intType[t.id] || {}).n || 0} งาน`} />
                 ))}
                 {(config.accounts || []).filter(a => a.noRevenue).map(a => (
                   <T2Stat key={'acct_' + a.id} label={`${a.emoji || '🏢'} ${a.name}`} value={'฿' + formatMoney((A.intType['acct_' + a.id] || {}).v || 0)} sub={`${(A.intType['acct_' + a.id] || {}).n || 0} งาน`} />
