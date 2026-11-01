@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v178-2026-11-01';
+  window.APP_VERSION = 'v179-2026-11-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -1665,6 +1665,8 @@ const INTERNAL_TYPES = [
   { id: 'other', label: 'อื่นๆ', emoji: '📝' },
 ];
 const isInternalOrder = (o) => !!(o && o.internalType);
+// 💵 v179 ป้ายวิธีจ่ายบนใบรับงาน — สด+โอน บอกยอดแยก (เดิมขึ้น 'เงินสด' ทั้งใบ)
+const payLabelOf = (o, config) => (o.paymentMethod === 'account' ? '🏢 ' + accountPayText(o, config) : o.paymentMethod === 'transfer' ? '💳 โอน' : o.paymentMethod === 'split' ? `💵 สด ฿${formatMoney(o.cashAmount || 0)} + 💳 โอน ฿${formatMoney(o.transferAmount || 0)}` : '💵 เงินสด');
 const internalTypesFor = (config) => INTERNAL_TYPES.filter(t => !t.cfg || !!(config && config[t.cfg]));
 // ชื่องานภายในในรายการ เช่น "🧼 ล้างเครื่อง · W1" (เดิมขึ้น "(ไม่ระบุชื่อ)")
 const internalTitleOf = (o, config, noEmoji) => { const t = INTERNAL_TYPES.find(x => x.id === o.internalType) || {}; const ms = (o.internalMachines || []).map(m => String(m).replace(/^(ซัก|อบ) /, '')); return `${noEmoji ? '' : (t.emoji || '🔧') + ' '}${tr(config, t.label || 'งานภายใน')}${ms.length ? ' · ' + ms.join(', ') : ''}`; };
@@ -6842,7 +6844,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
               <div>
                 <p className="text-xs text-slate-500">{internal ? 'ประเภท' : 'วิธีชำระ'}</p>
                 <p className={`font-bold text-sm ${internal ? 'text-amber-700' : 'text-slate-900'}`}>
-                  {internal ? '🔧 งานภายใน (ไม่ใช่รายได้)' : order.paymentMethod === 'account' ? '🏢 ' + accountPayText(order, config) : (order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด')}
+                  {internal ? '🔧 งานภายใน (ไม่ใช่รายได้)' : <span data-pay-label>{payLabelOf(order, config)}</span>}
                 </p>
               </div>
               {order.tip > 0 && (
@@ -7432,7 +7434,7 @@ function OrderDetailView({ config, order, onBack, onEdit, onDelete, onViewReceip
         <div className="bg-white rounded-2xl p-4">
           <p className="text-xs text-slate-500 uppercase tracking-wide font-bold mb-2">การชำระเงิน</p>
           <div className="flex items-center justify-between text-sm">
-            <span>{order.paymentMethod === 'account' ? '🏢 ' + accountPayText(order, config) : order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด'}</span>
+            <span data-pay-label>{payLabelOf(order, config)}</span>
             <span className="font-bold text-slate-900">฿{formatMoney(total)}</span>
           </div>
           {photos.moneyPhoto && (<img src={photos.moneyPhoto} className="w-full rounded-xl mt-3" />)}
