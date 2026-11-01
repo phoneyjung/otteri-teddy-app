@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v176-2026-11-01';
+  window.APP_VERSION = 'v177-2026-11-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -415,6 +415,8 @@ const TEDDY_CONFIG = {
   hasLinePromo: true,
   linePromoDiscount: 40,
   hasKev: true,
+  tokenFix: true, // 🪙 v177 บิล 'โทเคนแก้ปัญหา' (แม่บ้านให้โทเคนแก้ปัญหาลูกค้า · บังคับเหตุผล)
+  maidInternal: ['test'], // 🔧 v177 แม่บ้านทำบิลซ่อม/ทดสอบเครื่องเองได้ (เจ้าของไม่ได้อยู่ร้าน)
   deliveryZones: [
     { id: 'free', label: 'ส่งฟรี 0฿ (ในมหาลัย)', price: 0, riderFee: 20, color: '#14B8A6', hidden: true }, // v170: ยังไม่มีโปรส่งฟรี → ไม่ให้เลือกตอนลง/แก้ออเดอร์ (ใบงานเก่ายังหาชื่อโซนนี้เจอ) · เริ่มโปรเมื่อไหร่ ลบ hidden: true ออก
     { id: 'green', label: 'เขียว (ใกล้สุด)', price: 20, color: '#10B981' },
@@ -446,6 +448,7 @@ const TEDDY2_CONFIG = {
   primaryColor: '#00A19A', // เขียวเวอร์ริเดียน — สีประจำ ม.ศิลปากร
   gradient: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)',
   linePromoDiscount: 50, // Teddy 2 ลดแอดไลน์ 50 (มากกว่า Teddy 1)
+  tokenFix: false, maidInternal: [], // v177: บิลโทเคนแก้ปัญหา/ซ่อมโดยแม่บ้าน = เฉพาะ Teddy 1
   pulse: { workerUrl: 'https://teddy-pulse.phoneyjung.workers.dev', maxPerShot: 12, stacks: 8, dryMinPer10: { 12: 7, 17: 6 }, washBusyMin: 45 }, // ⚡ ยิงพัลส์ผ่านระบบ EC (เปิด/ปิดที่ ตั้งค่า)
   washMachines: [
     { size: 12, count: 3, prices: { cold: 50, warm: 60, hot: 70 } },
@@ -1658,6 +1661,7 @@ const INTERNAL_TYPES = [
   { id: 'test', label: 'ซ่อม/ทดสอบเครื่อง', emoji: '🔧' },
   { id: 'redo', label: 'ซักซ้ำให้ลูกค้า', emoji: '🔁' },
   { id: 'mine', label: 'ผ้าเจ้าของ', emoji: '👔', cfg: 'ownerLaundry' }, // แม่บ้านลงได้ · ฟรี · ไม่ต้องระบุเครื่อง
+  { id: 'fix', label: 'โทเคนแก้ปัญหา', emoji: '🪙', cfg: 'tokenFix' }, // v177 Teddy 1: ให้โทเคนแก้ปัญหาลูกค้า (เครื่องกินโทเคน ฯลฯ) · บังคับเหตุผล
   { id: 'other', label: 'อื่นๆ', emoji: '📝' },
 ];
 const isInternalOrder = (o) => !!(o && o.internalType);
@@ -1669,6 +1673,12 @@ const accountOf = (o, config) => (o && o.paymentMethod === 'account' ? (((config
 const accountPayText = (o, config) => { const a = accountOf(o, config); return a ? `ค้างจ่าย · ${a.name}` : ''; };
 // 🔧 สิทธิ์งานภายใน (v154): แม่บ้าน = ล้างเครื่องเท่านั้น (เฉพาะซัก เครื่องละ 1 ครั้งต่อ 7 วัน) · ซ่อม/ทดสอบ + ซักซ้ำ + อื่นๆ = เจ้าของ
 const INTERNAL_OWNER_ONLY = ['test', 'redo', 'other'];
+// 🔧 v177: ร้านที่ให้แม่บ้านทำบิลงานภายในเพิ่มเอง (config.maidInternal) — Teddy 1: ซ่อม/ทดสอบเครื่อง
+const internalOwnerOnly = (config) => INTERNAL_OWNER_ONLY.filter(t => !((config && config.maidInternal) || []).includes(t));
+const maidInternalTypes = (config) => internalTypesFor(config).filter(t => !internalOwnerOnly(config).includes(t.id));
+const maidBillTypes = (config) => maidInternalTypes(config).filter(t => t.id !== 'mine');
+// 🪙 ร้านที่ใช้โทเคนของร้าน (Teddy 1) — ไม่มีสแกนเครดิต · แม่บ้าน 'ให้โทเคน'
+const tokenShop = (config) => !!(config && COIN_POINTS[config.brand] && COIN_POINTS[config.brand].tokenMode);
 const CLEAN_EVERY_DAYS = 7;
 // เครื่องที่ล้างไปแล้วภายใน 7 วัน → { label: { at, until } }
 function cleanLocksOf(orders, exceptId) {
@@ -2355,6 +2365,30 @@ const MM_DICT = {
   'ยังไม่เริ่ม': 'မစရသေး',
   'เรียงตามหน้าร้าน ซ้าย → ขวา (เหมือนใน SOL)': 'ဆိုင်ရှေ့အတိုင်း ဘယ် → ညာ (SOL ကဲ့သို့)',
   'ใน SOL เลือก Hot (น้ำร้อน)': 'SOL တွင် Hot (ရေပူ) ရွေးပါ',
+  'โทเคนแก้ปัญหา': 'ပြဿနာဖြေရှင်း တိုကင်', // v177
+  'ซ่อม/ทดสอบเครื่อง': 'စက်ပြင်/စမ်းသပ်', // v177
+  'บิลงานร้าน (ไม่ใช่ลูกค้า)': 'ဆိုင်အလုပ် ဘောက်ချာ (ဖောက်သည် မဟုတ်)', // v177
+  'ไม่นับเป็นรายได้': 'ဝင်ငွေအဖြစ် မရေတွက်', // v177
+  'เครื่องที่ทำ': 'လုပ်ဆောင်သည့်စက်', // v177
+  'ถ้ามี': 'ရှိလျှင်', // v177
+  'เลือกได้หลายเครื่อง': 'စက်အများ ရွေးနိုင်', // v177
+  'เหตุผล': 'အကြောင်းပြချက်', // v177
+  'เช่น ทดสอบหลังช่างซ่อม': 'ဥပမာ - ပြင်ပြီးနောက် စမ်းသပ်', // v177
+  'เช่น เครื่องกินโทเคน ให้ลูกค้าใหม่ 4 อัน': 'ဥပမာ - စက်က တိုကင်စား၍ ဖောက်သည်ကို ၄ ခု ပြန်ပေး', // v177
+  'จำนวนโทเคนที่ให้ (บาท)': 'ပေးသော တိုကင် (ဘတ်)', // v177
+  'ยอดโทเคนที่หยอด (ถ้าไม่เลือกเครื่องด้านล่าง)': 'ထည့်သော တိုကင် (အောက်တွင် စက်မရွေးလျှင်)', // v177
+  'เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้': 'အောက်တွင် စက်+အပူချိန် ရွေးလျှင် ဈေးတွက်ပေးမည် · သို့မဟုတ် ဤနေရာတွင် ဖြည့်ပါ', // v177
+  'โทเคน': 'တိုကင်', // v177
+  'ใส่เหตุผล (บังคับ)': 'အကြောင်းပြချက် ဖြည့်ပါ (မဖြစ်မနေ)', // v177
+  'เลือกเครื่องที่ทำ (บังคับ)': 'လုပ်ဆောင်သည့်စက် ရွေးပါ (မဖြစ်မနေ)', // v177
+  'เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง': 'စက် (လျှော်/အခြောက်ခံ) ရွေးပါ သို့မဟုတ် ပမာဏ ဖြည့်ပါ', // v177
+  'กรอกจำนวนโทเคนที่ให้': 'ပေးသော တိုကင် ပမာဏ ဖြည့်ပါ', // v177
+  'ลูกค้าใช้คูปองแอดไลน์ (ซักเอง ไม่ฝาก)': 'ဖောက်သည် LINE ကူပွန်သုံး (ကိုယ်တိုင်လျှော် မအပ်)', // v177
+  'ให้โทเคนลูกค้า → ถ่ายรูป → ส่งกลุ่ม': 'ဖောက်သည်ကို တိုကင်ပေး → ဓာတ်ပုံရိုက် → Group ပို့', // v177
+  'ยอดโทเคนที่ให้ลูกค้า (บาท)': 'ဖောက်သည်ကို ပေးသော တိုကင် (ဘတ်)', // v177
+  'ใส่ยอดโทเคนที่ให้ลูกค้า': 'ဖောက်သည်ကို ပေးသော တိုကင် ဖြည့်ပါ', // v177
+  'บันทึกให้โทเคนแล้ว': 'တိုကင်ပေးမှု သိမ်းပြီး', // v177
+  'โทเคนที่ใช้ (งานภายใน)': 'သုံးသော တိုကင် (ဆိုင်တွင်းအလုပ်)', // v177
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -4041,7 +4075,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
 
   const handleSubmitPromo = async () => {
     const amount = parseInt(promoAmount, 10) || 0;
-    if (amount <= 0) { alert('ใส่ยอดเครดิตที่สแกนให้ลูกค้า'); return; }
+    if (amount <= 0) { alert(tr(config, tokenShop(config) ? 'ใส่ยอดโทเคนที่ให้ลูกค้า' : 'ใส่ยอดเครดิตที่สแกนให้ลูกค้า')); return; }
     // ⚡ ยิงพัลส์จากแอป: ยอดต้องหาร 10 ลงตัว + ต้องเลือกเครื่อง 1 เครื่อง
     const usePulse = pulseOn(config);
     const pulseMachine = usePulse ? pulseMachines(config).find(m => m.label === promoMachine) : null;
@@ -4095,7 +4129,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
       const lines = [
         '🎟️ ลูกค้าใช้โปร (ซักเอง)',
         `🏪 ${config.name}${p.machine ? ` · 🧺 ${p.machine}` : ''}`,
-        p.pulseLogId ? `🎁 ${p.promoName} · ⚡ ยิงพัลส์ ${p.amount}฿` : `🎁 ${p.promoName} · เครดิต ${p.amount}฿`,
+        p.pulseLogId ? `🎁 ${p.promoName} · ⚡ ยิงพัลส์ ${p.amount}฿` : `🎁 ${p.promoName} · ${tokenShop(config) ? '🪙 โทเคน' : 'เครดิต'} ${p.amount}฿`,
         `🧕 ${p.staffName} · 🕐 ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`,
       ];
       if (p.note) lines.push(`📝 ${p.note}`);
@@ -4128,7 +4162,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
       `🏪 ${config.name}`,
       savedPromo.machine ? `🧺 เครื่อง: ${savedPromo.machine}` : '',
       `🎁 ${savedPromo.promoName}`,
-      savedPromo.pulseLogId ? `⚡ ยิงพัลส์: ${savedPromo.amount}฿ (${savedPromo.pulseStatus === 'confirmed' ? 'เครื่องรับแล้ว' : 'ส่งคำสั่งแล้ว'})` : `💳 เครดิตที่สแกน: ${savedPromo.amount}฿`,
+      savedPromo.pulseLogId ? `⚡ ยิงพัลส์: ${savedPromo.amount}฿ (${savedPromo.pulseStatus === 'confirmed' ? 'เครื่องรับแล้ว' : 'ส่งคำสั่งแล้ว'})` : tokenShop(config) ? `🪙 โทเคนที่ให้: ${savedPromo.amount}฿` : `💳 เครดิตที่สแกน: ${savedPromo.amount}฿`,
       `🧕 แม่บ้าน: ${savedPromo.staffName}`,
       `🕐 ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`,
       savedPromo.note ? `📝 ${savedPromo.note}` : '',
@@ -4544,10 +4578,10 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
         <button onClick={onInternalOrder}
           className="w-full rounded-2xl p-3 border-2 border-amber-400 bg-amber-50 active:scale-95 transition flex items-center gap-3">
           {/* v155: แม่บ้านเห็นแค่ล้างเครื่อง · เจ้าของเห็นงานภายในครบ */}
-          <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-xl flex-shrink-0">{currentStaff && currentStaff.isOwnerLogin ? '🔧' : '🧼'}</div>
-          <div className="text-left flex-1 min-w-0">
-            <p className="font-bold text-slate-900 text-sm">{currentStaff && currentStaff.isOwnerLogin ? tr(config, 'งานภายในร้าน (ล้าง/ทดสอบเครื่อง)') : tr(config, 'ล้างเครื่อง')}</p>
-            <p className="text-xs text-amber-800">{currentStaff && currentStaff.isOwnerLogin ? tr(config, 'ไม่นับเป็นรายได้ · บังคับใส่เหตุผล') : tr(config, 'เฉพาะเครื่องซัก · เครื่องละ 1 ครั้งต่อ 7 วัน · ไม่นับเป็นรายได้')}</p>
+          <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-xl flex-shrink-0">{currentStaff && currentStaff.isOwnerLogin ? '🔧' : maidBillTypes(config).length > 1 ? '🔧' : '🧼'}</div>
+          <div className="text-left flex-1 min-w-0" data-maid-bill>
+            <p className="font-bold text-slate-900 text-sm">{currentStaff && currentStaff.isOwnerLogin ? tr(config, 'งานภายในร้าน (ล้าง/ทดสอบเครื่อง)') : maidBillTypes(config).length > 1 ? tr(config, 'บิลงานร้าน (ไม่ใช่ลูกค้า)') : tr(config, 'ล้างเครื่อง')}</p>
+            <p className="text-xs text-amber-800">{currentStaff && currentStaff.isOwnerLogin ? tr(config, 'ไม่นับเป็นรายได้ · บังคับใส่เหตุผล') : maidBillTypes(config).length > 1 ? maidBillTypes(config).map(t => t.emoji + ' ' + tr(config, t.label)).join(' · ') + ' · ' + tr(config, 'ไม่นับเป็นรายได้') : tr(config, 'เฉพาะเครื่องซัก · เครื่องละ 1 ครั้งต่อ 7 วัน · ไม่นับเป็นรายได้')}</p>
           </div>
           <Icon name="chevron-right" className="w-5 h-5 text-amber-700" />
         </button>
@@ -4556,12 +4590,12 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
       {/* 🎟️ ลูกค้าใช้โปร (ซักเอง ไม่ฝาก) — ตัดเครดิตแม่บ้าน */}
       {menuOn(config, 'promoCredit') && (!T2H || showPromoForm) && <div className="px-5 mt-3">
         {!showPromoForm ? (
-          <button onClick={() => setShowPromoForm(true)}
+          <button onClick={() => { setShowPromoForm(true); if (tokenShop(config) && config.hasLinePromo && !promoName) { setPromoName(`LINE ลด ${config.linePromoDiscount}฿`); setPromoAmount(String(config.linePromoDiscount)); } }} data-promo-open
             className="w-full bg-rose-50 rounded-2xl p-3 border-2 border-rose-200 active:scale-95 transition flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-400 to-rose-600 flex items-center justify-center text-xl shadow">🎟️</div>
             <div className="text-left flex-1">
-              <p className="font-bold text-rose-900 text-sm">{tr(config, "ลูกค้าใช้โปร (ซักเอง ไม่ฝาก)")}</p>
-              <p className="text-xs text-rose-700">{tr(config, pulseOn(config) ? 'เลือกเครื่อง → ถ่ายรูป → กดเริ่มเครื่อง' : "สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม")}</p>
+              <p className="font-bold text-rose-900 text-sm">{tr(config, tokenShop(config) ? 'ลูกค้าใช้คูปองแอดไลน์ (ซักเอง ไม่ฝาก)' : "ลูกค้าใช้โปร (ซักเอง ไม่ฝาก)")}</p>
+              <p className="text-xs text-rose-700">{tr(config, pulseOn(config) ? 'เลือกเครื่อง → ถ่ายรูป → กดเริ่มเครื่อง' : tokenShop(config) ? 'ให้โทเคนลูกค้า → ถ่ายรูป → ส่งกลุ่ม' : "สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม")}</p>
             </div>
             <Icon name="chevron-right" className="w-5 h-5 text-rose-600" />
           </button>
@@ -4572,7 +4606,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
               <p className="font-extrabold text-slate-900 flex-1">{tr(config, "บันทึกลูกค้าใช้โปร")}</p>
               <button onClick={() => setShowPromoForm(false)} className="text-slate-400 text-xl leading-none px-2">✕</button>
             </div>
-            {T2H && <p className="text-xs font-bold text-slate-500 -mt-1">{tr(config, pulseOn(config) ? 'เลือกเครื่อง → ถ่ายรูป → กดเริ่มเครื่อง' : "สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม")}</p>}
+            {T2H && <p className="text-xs font-bold text-slate-500 -mt-1">{tr(config, pulseOn(config) ? 'เลือกเครื่อง → ถ่ายรูป → กดเริ่มเครื่อง' : tokenShop(config) ? 'ให้โทเคนลูกค้า → ถ่ายรูป → ส่งกลุ่ม' : "สแกนเครดิตให้ลูกค้า → ถ่ายรูป → ส่งกลุ่ม")}</p>}
 
             <div>
               <p className="text-xs font-bold text-slate-600 mb-1.5">{tr(config, "โปรที่ใช้")}</p>
@@ -4597,7 +4631,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-600 mb-1">{tr(config, pulseOn(config) ? 'ยอดโปรที่ร้านจ่ายให้ (บาท)' : "ยอดเครดิตที่สแกนให้ลูกค้า (บาท)")}</p>
+              <p className="text-xs font-bold text-slate-600 mb-1">{tr(config, pulseOn(config) ? 'ยอดโปรที่ร้านจ่ายให้ (บาท)' : tokenShop(config) ? 'ยอดโทเคนที่ให้ลูกค้า (บาท)' : "ยอดเครดิตที่สแกนให้ลูกค้า (บาท)")}</p>
               <input type="number" inputMode="numeric" value={promoAmount} onChange={e => setPromoAmount(e.target.value)} onFocus={e => e.target.select()}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-lg font-bold text-right" placeholder="0" />
               {promoNow.active && promoName === promoNow.label && (
@@ -4668,7 +4702,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6" onClick={() => setSavedPromo(null)}>
           <div className="bg-white rounded-3xl w-full max-w-xs p-5 text-center max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <p className="text-4xl mb-1">✅</p>
-            <p className="text-lg font-extrabold text-slate-800">{savedPromo.pulseLogId ? tr(config, 'เริ่มเครื่องแล้ว') : tr(config, "บันทึกตัดเครดิตแล้ว")}</p>
+            <p className="text-lg font-extrabold text-slate-800">{savedPromo.pulseLogId ? tr(config, 'เริ่มเครื่องแล้ว') : tokenShop(config) ? tr(config, 'บันทึกให้โทเคนแล้ว') : tr(config, "บันทึกตัดเครดิตแล้ว")}</p>
             {savedPromo.pulseLogId && (
               <p className={`text-sm font-bold mt-1 ${savedPromo.pulseStatus === 'confirmed' ? 'text-emerald-600' : 'text-amber-600'}`}>
                 {savedPromo.pulseStatus === 'confirmed' ? '✅ ' + tr(config, 'เครื่องรับแล้ว') : '⏳ ' + tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}
@@ -4678,7 +4712,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
               <ReportSlipCard config={config} name="ลูกค้าใช้โปร" slipKey={String(savedPromo.createdAt || '') + ':' + (savedPromo.pulseStatus || '')}
                 slip={{ kind: 'promo', photo: savedPromo.photo, at: savedPromo.createdAt, staff: savedPromo.staffName,
                   rows: [['โปร', savedPromo.promoName], ['เครื่อง', savedPromo.machine || ''],
-                    savedPromo.pulseLogId ? ['เริ่มเครื่อง', savedPromo.pulseStatus === 'confirmed' ? '⚡ เครื่องรับแล้ว' : '⚡ ส่งคำสั่งแล้ว'] : ['ตัดเครดิต', `${savedPromo.amount}฿`],
+                    savedPromo.pulseLogId ? ['เริ่มเครื่อง', savedPromo.pulseStatus === 'confirmed' ? '⚡ เครื่องรับแล้ว' : '⚡ ส่งคำสั่งแล้ว'] : [tokenShop(config) ? 'ให้โทเคน' : 'ตัดเครดิต', `${savedPromo.amount}฿`],
                     ['หมายเหตุ', savedPromo.note || '']],
                   foot: `ยอดโปร ${savedPromo.amount}฿` }} />
             </div>
@@ -5199,7 +5233,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const isInternal = !!internalType;
   const customAmt = parseInt(internalCustom, 10) || 0;
   // ล้างเครื่อง / ซักซ้ำ = งานประจำ ไม่ต้องกรอกเหตุผล-ราคา · ทดสอบ / อื่นๆ = บังคับทั้งคู่
-  const needInternalDetail = internalType === 'test' || internalType === 'other';
+  const needInternalDetail = internalType === 'test' || internalType === 'other' || internalType === 'fix';
+  const fixType = internalType === 'fix'; // 🪙 v177 ไม่ต้องเลือกเครื่อง · บังคับยอด + เหตุผล
   // 🧼 v156: แม่บ้านล้างเครื่อง → แอปใส่รายการให้เอง = เครื่องซักที่เลือก × น้ำร้อน 1 ครั้ง (ไม่ต้องเลือกซัก/อบเอง)
   const maidClean = !!internalType && internalType === 'clean' && !isOwner;
   useEffect(() => {
@@ -5235,12 +5270,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const needPhone = needCustomerInfo;
   const phoneOk = !needPhone || phone.trim().length >= 9;
   const nameOk = !needCustomerInfo || name.trim().length > 0;
-  const internalOk = !isInternal || (internalType === 'mine' ? (washItems.length > 0 || dryItems.length > 0) : (internalMachines.length > 0 && (!needInternalDetail || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0)))));
+  const internalOk = !isInternal || (internalType === 'mine' ? (washItems.length > 0 || dryItems.length > 0) : ((fixType || internalMachines.length > 0) && (!needInternalDetail || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0)))));
   // 🔧 กติกางานภายในสำหรับแม่บ้าน (v150) — เจ้าของไม่ติด
   const cleanLocks = !isOwner && isInternal ? cleanLocksOf(orders, editingOrder && editingOrder.id) : {};
   const internalMaidIssues = [];
   if (isInternal && !isOwner) {
-    if (INTERNAL_OWNER_ONLY.includes(internalType)) internalMaidIssues.push('ซ่อม/ทดสอบ ซักซ้ำ และอื่นๆ — เฉพาะเจ้าของ');
+    if (internalOwnerOnly(config).includes(internalType)) internalMaidIssues.push('ซ่อม/ทดสอบ ซักซ้ำ และอื่นๆ — เฉพาะเจ้าของ');
     if (internalType === 'clean') {
       const lockedSel = internalMachines.filter(lb => cleanLocks[lb]);
       if (lockedSel.length) internalMaidIssues.push(`ล้างไปแล้วใน ${CLEAN_EVERY_DAYS} วัน: ${lockedSel.join(', ')}`);
@@ -5260,12 +5295,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
 
   // รายการสิ่งที่ยังขาด — แสดงให้ชัดว่าทำไมกดบันทึกไม่ได้
   const missingList = [];
-  if (isInternal && internalType !== 'mine' && internalMachines.length === 0) missingList.push('เลือกเครื่องที่ทำ (บังคับ)');
+  if (isInternal && internalType !== 'mine' && !fixType && internalMachines.length === 0) missingList.push(tr(config, 'เลือกเครื่องที่ทำ (บังคับ)'));
   if (internalType === 'mine' && !washItems.length && !dryItems.length) missingList.push(tr(config, 'เลือกซักหรืออบอย่างน้อย 1 อย่าง'));
   internalMaidIssues.forEach(t => missingList.push(t));
   if (isInternal && needInternalDetail) {
-    if (!hasAnyItem && customAmt <= 0) missingList.push('เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง');
-    if (!internalReason.trim()) missingList.push('ใส่เหตุผล (บังคับ)');
+    if (!hasAnyItem && customAmt <= 0) missingList.push(tr(config, fixType ? 'กรอกจำนวนโทเคนที่ให้' : 'เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง'));
+    if (!internalReason.trim()) missingList.push(tr(config, 'ใส่เหตุผล (บังคับ)'));
   }
   if (!isInternal && !hasAnyItem) missingList.push(tr(config, 'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)'));
   if (!isInternal && needCustomerInfo && !name.trim()) missingList.push(tr(config, 'ใส่ชื่อลูกค้า'));
@@ -5329,7 +5364,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   }, [fromKev]);
 
   const handleSubmit = () => {
-    if (!hasAnyItem) {
+    if (!hasAnyItem && !(isInternal && customAmt > 0)) {
       alert('เลือกบริการอย่างน้อย 1 รายการ\n(เครื่องซัก / เครื่องอบ / น้ำยาซัก / น้ำยานุ่ม / ค่าพับ)');
       return;
     }
@@ -5369,7 +5404,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     let splitCashNum = 0, splitTransferNum = 0;
     if (isInternal) {
       const tLabel = (INTERNAL_TYPES.find(t => t.id === internalType) || {}).label || '';
-      if (!confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}${internalMachines.length ? '\nเครื่อง: ' + internalMachines.join(', ') : ''}${internalReason.trim() ? "\nเหตุผล: " + internalReason.trim() : ""}\nเครดิตที่ใช้: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
+      if (!confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}${internalMachines.length ? '\nเครื่อง: ' + internalMachines.join(', ') : ''}${internalReason.trim() ? "\nเหตุผล: " + internalReason.trim() : ""}\n${tokenShop(config) ? 'โทเคนที่ใช้' : 'เครดิตที่ใช้'}: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
     } else if (acct) { // 🏢 ค้างจ่าย — ไม่รับเงิน
       if (!confirm(`✅ ${tr(config, 'ยืนยันการรับงาน')}\n\n${acct.emoji || '🏢'} ${tr(config, acct.name)}\n${tr(config, 'วิธีจ่าย')}: ${tr(config, 'ค้างจ่าย รวมบิลสิ้นเดือน · ไม่ต้องรับเงิน')}\n${tr(config, 'ยอด')}: ${formatMoney(total)} ${tr(config, 'บาท')}${acct.noFold ? '\n🚫 ' + tr(config, 'ไม่พับ · ซักอบอย่างเดียว') : ''}`)) return;
     } else if (paymentMethod === 'split') {
@@ -5548,16 +5583,16 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
         {isInternal && (
           <div className="rounded-2xl p-4 border-2 border-amber-400" style={{background: 'repeating-linear-gradient(45deg, #FEF3C7, #FEF3C7 12px, #FDE68A 12px, #FDE68A 24px)'}}>
             <div className="flex items-center justify-between mb-3">
-              <p className="font-extrabold text-slate-900">{isOwner ? '🔧 งานภายในร้าน' : internalType === 'mine' ? '👔 ' + tr(config, 'ผ้าเจ้าของ') : '🧼 ' + tr(config, 'ล้างเครื่อง')}</p>
+              <p className="font-extrabold text-slate-900">{isOwner ? '🔧 งานภายในร้าน' : (() => { const it = INTERNAL_TYPES.find(x => x.id === internalType) || INTERNAL_TYPES[0]; return it.emoji + ' ' + tr(config, it.label); })()}</p>
               <button onClick={() => { setInternalType(''); setInternalReason(''); setInternalCustom(''); }}
                 className="text-[11px] font-bold text-slate-600 bg-white rounded-lg px-2 py-1">เปลี่ยนเป็นงานลูกค้า</button>
             </div>
             {isOwner && <p className="text-xs font-bold text-slate-700 mb-1.5">ประเภทงาน</p>}
-            {(isOwner || config.ownerLaundry) && <div className="flex flex-wrap gap-1.5 mb-3">
-              {internalTypesFor(config).filter(t => isOwner || !INTERNAL_OWNER_ONLY.includes(t.id)).map(t => {
-                const locked = !isOwner && INTERNAL_OWNER_ONLY.includes(t.id);
+            {(isOwner || maidInternalTypes(config).length > 1) && <div className="flex flex-wrap gap-1.5 mb-3">
+              {internalTypesFor(config).filter(t => isOwner || !internalOwnerOnly(config).includes(t.id)).map(t => {
+                const locked = !isOwner && internalOwnerOnly(config).includes(t.id);
                 return (
-                  <button key={t.id} data-itype={t.id} onClick={() => { if (locked) { alert('🔒 ' + t.label + ' — เฉพาะเจ้าของ'); return; } if (t.id !== internalType && (t.id === 'mine' || internalType === 'mine')) { setInternalMachines([]); if (!isOwner) { setWashItems([]); setDryItems([]); } } setInternalType(t.id); }}
+                  <button key={t.id} data-itype={t.id} onClick={() => { if (locked) { alert('🔒 ' + t.label + ' — เฉพาะเจ้าของ'); return; } if (t.id !== internalType && (t.id === 'mine' || internalType === 'mine' || (!isOwner && (t.id === 'clean' || internalType === 'clean')))) { setInternalMachines([]); if (!isOwner) { setWashItems([]); setDryItems([]); } } setInternalType(t.id); }}
                     className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${internalType === t.id ? 'bg-slate-900 text-white border-slate-900' : locked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
                     {locked ? '🔒' : t.emoji} {isOwner ? t.label : tr(config, t.label)}
                   </button>
@@ -5567,7 +5602,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
             {!isOwner && internalType === 'clean' && <p className="text-[11px] font-bold text-slate-700 mb-3">{tr(config, 'ล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ 7 วัน')}</p>}
             {internalType === 'mine' && <p className="text-[11px] font-bold text-slate-700 mb-1">{tr(config, 'ฟรี · ไม่นับเป็นรายได้ · เลือกซัก/อบด้านล่าง แล้วเริ่มเครื่องเหมือนงานลูกค้า')}</p>}
             {internalType !== 'mine' && <React.Fragment>
-            <p className="text-xs font-bold text-slate-700 mb-1.5">{isOwner ? 'เครื่องที่ทำ' : tr(config, 'เครื่องซักที่จะล้าง')} <span className="text-rose-600">*บังคับ</span> (เลือกได้หลายเครื่อง)</p>
+            <p className="text-xs font-bold text-slate-700 mb-1.5">{isOwner ? 'เครื่องที่ทำ' : internalType === 'clean' ? tr(config, 'เครื่องซักที่จะล้าง') : tr(config, 'เครื่องที่ทำ')} {fixType ? <span className="text-slate-500">({tr(config, 'ถ้ามี')})</span> : <span className="text-rose-600">*{tr(config, 'บังคับ')}</span>} ({tr(config, 'เลือกได้หลายเครื่อง')})</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
                 const on = internalMachines.includes(m.label);
@@ -5595,14 +5630,15 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
             )}
             {needInternalDetail ? (
               <React.Fragment>
-                <p className="text-xs font-bold text-slate-700 mb-1">เหตุผล <span className="text-rose-600">*บังคับ</span></p>
-                <input type="text" value={internalReason} onChange={e => setInternalReason(e.target.value)}
+                <p className="text-xs font-bold text-slate-700 mb-1">{tr(config, 'เหตุผล')} <span className="text-rose-600">*{tr(config, 'บังคับ')}</span></p>
+                <input type="text" value={internalReason} onChange={e => setInternalReason(e.target.value)} data-ireason
                   className={`w-full px-3 py-2.5 rounded-xl border-2 text-sm ${internalReason.trim() ? 'bg-white border-slate-300' : 'bg-rose-50 border-rose-300'}`}
-                  placeholder="เช่น ทดสอบหลังช่างซ่อม" />
-                <p className="text-xs font-bold text-slate-700 mb-1 mt-3">กำหนดยอดเครดิตเอง (ถ้าไม่เลือกเครื่องด้านล่าง)</p>
-                <input type="number" inputMode="numeric" value={internalCustom} onChange={e => setInternalCustom(e.target.value)} onFocus={e => e.target.select()}
+                  placeholder={tr(config, fixType ? 'เช่น เครื่องกินโทเคน ให้ลูกค้าใหม่ 4 อัน' : 'เช่น ทดสอบหลังช่างซ่อม')} />
+                <p className="text-xs font-bold text-slate-700 mb-1 mt-3">{tokenShop(config) ? tr(config, fixType ? 'จำนวนโทเคนที่ให้ (บาท)' : 'ยอดโทเคนที่หยอด (ถ้าไม่เลือกเครื่องด้านล่าง)') : 'กำหนดยอดเครดิตเอง (ถ้าไม่เลือกเครื่องด้านล่าง)'}</p>
+                <input type="number" inputMode="numeric" value={internalCustom} onChange={e => setInternalCustom(e.target.value)} onFocus={e => e.target.select()} data-icustom
                   className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-lg font-bold text-right" placeholder="0" />
-                <p className="text-[11px] text-slate-600 mt-1">เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้</p>
+                {tokenShop(config) && customAmt > 0 && <p className="text-xs font-extrabold text-slate-800 mt-1">🪙 = {Math.round(customAmt / ((COIN_POINTS[config.brand] || {}).tokenValue || 10) * 10) / 10} {tr(config, 'โทเคน')}</p>}
+                <p className="text-[11px] text-slate-600 mt-1">{tr(config, 'เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้')}</p>
               </React.Fragment>
             ) : (
               <p className="text-[11px] text-slate-700">{maidClean ? tr(config, 'กดบันทึกด้านล่าง แล้วกดเริ่มเครื่องได้เลย') : internalType === 'mine' ? '' : 'เลือกเครื่องด้านล่างได้เลย — ไม่ต้องกรอกเหตุผล/ราคา'}</p>
@@ -6109,7 +6145,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
           <div className="flex items-center gap-2 mb-2">
             <div className="flex-1">
               <p className="text-xs text-slate-500">
-                {isInternal ? (internalType === 'mine' ? '👔 ' + tr(config, 'ผ้าเจ้าของ · ฟรี') : '🔧 เครดิตที่ใช้ (งานภายใน)') : tr(config, 'ยอดรวม') + ' • ' + (acct ? tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด'))}
+                {isInternal ? (internalType === 'mine' ? '👔 ' + tr(config, 'ผ้าเจ้าของ · ฟรี') : (tokenShop(config) ? '🔧 ' + tr(config, 'โทเคนที่ใช้ (งานภายใน)') : '🔧 เครดิตที่ใช้ (งานภายใน)')) : tr(config, 'ยอดรวม') + ' • ' + (acct ? tr(config, 'ค้างจ่าย') + ' · ' + tr(config, acct.name) : tr(config, paymentMethod === 'transfer' ? 'โอน' : paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด'))}
                 {breakdown.totalDiscount > 0 && <span className="ml-1 text-rose-600 font-bold">• {tr(config, 'ลด')} ฿{breakdown.totalDiscount}</span>}
               </p>
               <p className="text-xl font-extrabold text-slate-900">฿{formatMoney(total)}</p>
@@ -6472,7 +6508,7 @@ function internalSlipOf(config, order, total) {
   if (order.internalMachines && order.internalMachines.length) rows.push(['เครื่อง', order.internalMachines.join(' · ')]);
   (order.washItems || []).forEach(w => rows.push([`ซัก ${w.size} kg`, `${tl[w.temp || 'cold'] || ''} × ${w.qty}`]));
   (order.dryItems || []).forEach(d => rows.push([`อบ ${d.size} kg`, `× ${d.qty}`]));
-  if (total > 0) rows.push(['เครดิตที่ใช้', `฿${formatMoney(total)}`]);
+  if (total > 0) rows.push([tokenShop(config) ? 'โทเคนที่ใช้' : 'เครดิตที่ใช้', `฿${formatMoney(total)}`]);
   if (order.internalReason) rows.push(['หมายเหตุ', order.internalReason]);
   return {
     kind, emoji: kind === 'internal' ? it.emoji : null, title: kind === 'internal' ? (it.label || order.internalType) : null,
@@ -6932,7 +6968,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
 
           {internal && (
             <div className="px-6 py-2.5 border-y-4 border-amber-400 text-center" style={{background: '#FEF3C7'}}>
-              <p className="text-sm font-bold text-slate-800">⚠️ ไม่นับเป็นรายได้ · เครดิตที่ใช้ ฿{formatMoney(total)}</p>
+              <p className="text-sm font-bold text-slate-800">⚠️ ไม่นับเป็นรายได้ · {tokenShop(config) ? 'โทเคนที่ใช้' : 'เครดิตที่ใช้'} ฿{formatMoney(total)}</p>
             </div>
           )}
 
@@ -10487,7 +10523,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
     }
   }
   // 🔧 งานภายใน (v150): แม่บ้านเปิดได้เฉพาะเครื่องที่ระบุในใบงาน · เจ้าของเปิดได้ (มีเตือน)
-  if (selM && job && INTERNAL_OWNER_ONLY.includes(job.order.internalType) && !owner && !block) block = tr(config, 'งานภายในนี้ เจ้าของเป็นคนเริ่มเครื่อง'); // v151/v154: ซ่อม/ทดสอบ ซักซ้ำ อื่นๆ
+  if (selM && job && internalOwnerOnly(config).includes(job.order.internalType) && !owner && !block) block = tr(config, 'งานภายในนี้ เจ้าของเป็นคนเริ่มเครื่อง'); // v151/v154: ซ่อม/ทดสอบ ซักซ้ำ อื่นๆ
   if (selM && job && isInternalOrder(job.order) && !block) {
     const ids = (job.order.internalMachines || []).map(lb => (ms.find(m => m.label === lb) || {}).id).filter(Boolean);
     if (ids.length && !ids.includes(selM.id)) {
@@ -12641,6 +12677,7 @@ function T2OrderRow({ config, o, onClick, selecting, checked, timeOnly }) {
       <span className="flex-1 min-w-0">
         <span className="block font-bold text-slate-900 truncate">{internal ? `${it.label || 'งานภายใน'}${o.internalMachines && o.internalMachines.length ? ' · ' + o.internalMachines.join(', ') : ''}` : (o.customerName || '-')}</span>
         <span className="block text-xs text-slate-500">{!internal && o.queueNo != null ? <b className="text-slate-700">#{o.queueNo} · </b> : null}{timeOnly ? new Date(t2Ts(o.createdAt)).toTimeString().slice(0, 5) + ' น.' : t2When(o.createdAt)}{o.staffName ? ` · ${o.staffName}` : ''}</span>
+        {internal && o.internalReason ? <span data-ireason-row className="block text-xs text-slate-600 truncate">📝 {o.internalReason}</span> : null}
         <span className="flex flex-wrap gap-1 mt-1">
           {internal ? pay('ภายใน · ไม่ใช่รายได้', 'internal')
             : pm === 'split' ? [pay(`สด ฿${formatMoney(o.cashAmount || 0)}`, 'cash'), pay(`โอน ฿${formatMoney(o.transferAmount || 0)}`, 'transfer')]
@@ -13008,6 +13045,13 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   }, [R.fromKey, R.toKey, machineSys]);
   useEffect(() => { setSelecting(false); setSel(new Set()); setAskPwd(false); }, [tab, mode, anchor]);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+  // 🎟️ v177: ร้านไม่มีระบบยิงพัลส์ (Teddy 1) — บิลลูกค้าใช้คูปอง/โปรซักเอง อยู่ใน creditLedger
+  const [selfPromo, setSelfPromo] = useState([]);
+  useEffect(() => {
+    if (!window.db || machineSys || !menuOn(config, 'promoCredit')) { setSelfPromo([]); return; }
+    const u = subscribeToCreditLedger(config.brand, l => setSelfPromo(l.filter(e => e.type === 'promo')));
+    return () => { if (u) u(); };
+  }, [config.brand, machineSys]);
   const detAll = useMemo(() => (tokenExchanges || []).filter(t => t.kind === 'detergent'), [tokenExchanges]); // 🧴 v166
   const A = useMemo(() => t2Agg(config, orders, R.from, R.to, detAll), [config, orders, R.from, R.to, detAll]);
   const PB = useMemo(() => pulseBucketsFor(config, orders, logs, R.from, R.to), [config, orders, logs, R.from, R.to]);
@@ -13503,6 +13547,29 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
                 {machineSys && <T2Stat label="ยิงแอปให้ส่วนลด" value={'฿' + formatMoney(PB.discount)} sub={PB.promo ? `รวมโปรซักเอง ฿${formatMoney(PB.promo)}` : 'เฉพาะเครื่องซัก'} />}
               </div>
             </T2Box>
+            {!machineSys && menuOn(config, 'promoCredit') && (() => {
+              const sp = selfPromo.filter(e => { const x = t2Ts(e.createdAt); return x >= R.from && x < R.to; }).sort((a, b) => t2Ts(b.createdAt) - t2Ts(a.createdAt));
+              const spSum = sp.reduce((a2, e) => a2 + (e.amount || 0), 0);
+              return (
+                <T2Box k="discount" title={`🎟️ ลูกค้าซักเอง ใช้คูปอง/โปร · ${R.label}`} right={<span className="text-xs font-bold text-slate-500 tabular-nums">฿{formatMoney(spSum)} · {sp.length} ใบ</span>}>
+                  <div data-self-promo className="divide-y divide-slate-100">
+                    {sp.map(e => (
+                      <div key={e.id} className="flex items-center gap-2 py-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-extrabold text-slate-900 truncate">{e.promoName || 'โปร'}{e.machine ? ' · ' + e.machine : ''}</p>
+                          <p className="text-xs text-slate-500 truncate">{t2When(e.createdAt)} · {e.staffName || '-'}{e.note ? ' · ' + e.note : ''}</p>
+                        </div>
+                        <span className="text-sm font-extrabold tabular-nums">฿{formatMoney(e.amount || 0)}</span>
+                        <button onClick={async () => { if (!confirm(`ลบรายการนี้?\n🎟️ ${e.promoName || 'โปร'} ฿${formatMoney(e.amount || 0)} · ${e.staffName || '-'}`)) return; await deleteCreditEntry(e.id); }}
+                          className="px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-500 active:scale-95">ลบ</button>
+                      </div>
+                    ))}
+                    {sp.length === 0 && <p className="text-sm text-slate-500 py-1">ยังไม่มี · แม่บ้านกด 🎟️ ลูกค้าใช้คูปองแอดไลน์ ที่หน้าแรก</p>}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1.5">ให้โทเคนลูกค้าซักเอง (ไม่ใช่งานฝาก) · ลงบัญชีเป็นรายจ่ายส่วนลดแอดไลน์</p>
+                </T2Box>
+              );
+            })()}
             {listHead(`ใบงานที่มีส่วนลด · ${R.label}`, A.discN)}
             {list(A.list.filter(o => calculateBreakdown(o, config).totalDiscount > 0))}
           </div>
