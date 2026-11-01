@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v177-2026-11-01';
+  window.APP_VERSION = 'v178-2026-11-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -1677,6 +1677,8 @@ const INTERNAL_OWNER_ONLY = ['test', 'redo', 'other'];
 const internalOwnerOnly = (config) => INTERNAL_OWNER_ONLY.filter(t => !((config && config.maidInternal) || []).includes(t));
 const maidInternalTypes = (config) => internalTypesFor(config).filter(t => !internalOwnerOnly(config).includes(t.id));
 const maidBillTypes = (config) => maidInternalTypes(config).filter(t => t.id !== 'mine');
+// 🔘 v178 ปุ่มเล็กหน้าแรก: ชื่อสั้น + บรรทัดช่วยจำ
+const BILL_BTN = { clean: ['ล้างเครื่อง', 'ทุก 7 วัน'], test: ['ซ่อม/ทดสอบ', 'ตอนช่างมา'], fix: ['โทเคนแก้ปัญหา', 'ใส่เหตุผล'] };
 // 🪙 ร้านที่ใช้โทเคนของร้าน (Teddy 1) — ไม่มีสแกนเครดิต · แม่บ้าน 'ให้โทเคน'
 const tokenShop = (config) => !!(config && COIN_POINTS[config.brand] && COIN_POINTS[config.brand].tokenMode);
 const CLEAN_EVERY_DAYS = 7;
@@ -2389,6 +2391,11 @@ const MM_DICT = {
   'ใส่ยอดโทเคนที่ให้ลูกค้า': 'ဖောက်သည်ကို ပေးသော တိုကင် ဖြည့်ပါ', // v177
   'บันทึกให้โทเคนแล้ว': 'တိုကင်ပေးမှု သိမ်းပြီး', // v177
   'โทเคนที่ใช้ (งานภายใน)': 'သုံးသော တိုကင် (ဆိုင်တွင်းအလုပ်)', // v177
+  'บิลงานร้าน': 'ဆိုင်အလုပ် ဘောက်ချာ', // v178
+  'ไม่ใช่ลูกค้า · ไม่นับเป็นรายได้': 'ဖောက်သည် မဟုတ် · ဝင်ငွေ မရေတွက်', // v178
+  'ซ่อม/ทดสอบ': 'ပြင်/စမ်းသပ်', // v178
+  'ตอนช่างมา': 'စက်ပြင်ဆရာ လာချိန်', // v178
+  'ใส่เหตุผล': 'အကြောင်းပြချက် ထည့်', // v178
 };
 function tr(config, th) {
   return config && config.lang === 'mm' && MM_DICT[th] ? MM_DICT[th] : th;
@@ -4574,7 +4581,24 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
         );
       })()}
       {detSheet && <T2DetergentSheet config={config} tokenExchanges={tokenExchanges} currentStaff={currentStaff} onClose={() => setDetSheet(false)} />}
-      {menuOn(config, 'internal') && !T2H && <div className="px-5 mt-3">
+      {menuOn(config, 'internal') && !T2H && maidBillTypes(config).length > 1 && !(currentStaff && currentStaff.isOwnerLogin) && (
+        <div className="px-5 mt-3">
+          <div data-maid-bills className="rounded-2xl p-3 border-2 border-amber-400 bg-amber-50">
+            <p className="text-sm font-extrabold text-slate-900 mb-2">🔧 {tr(config, 'บิลงานร้าน')} <span className="text-xs font-bold text-amber-800">· {tr(config, 'ไม่ใช่ลูกค้า · ไม่นับเป็นรายได้')}</span></p>
+            <div className={`grid gap-2 ${maidBillTypes(config).length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {maidBillTypes(config).map(t => (
+                <button key={t.id} data-bill={t.id} onClick={() => onInternalOrder(t.id)}
+                  className="rounded-xl bg-white border border-amber-300 px-1.5 py-2.5 flex flex-col items-center gap-0.5 active:scale-95 transition min-w-0">
+                  <span className="text-2xl leading-none">{t.emoji}</span>
+                  <span className="text-xs font-extrabold text-slate-900 text-center leading-tight mt-1">{tr(config, (BILL_BTN[t.id] || [t.label])[0])}</span>
+                  {BILL_BTN[t.id] && <span className="text-[10px] font-bold text-amber-700 text-center leading-tight">{tr(config, BILL_BTN[t.id][1])}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {menuOn(config, 'internal') && !T2H && !(maidBillTypes(config).length > 1 && !(currentStaff && currentStaff.isOwnerLogin)) && <div className="px-5 mt-3">
         <button onClick={onInternalOrder}
           className="w-full rounded-2xl p-3 border-2 border-amber-400 bg-amber-50 active:scale-95 transition flex items-center gap-3">
           {/* v155: แม่บ้านเห็นแค่ล้างเครื่อง · เจ้าของเห็นงานภายในครบ */}
