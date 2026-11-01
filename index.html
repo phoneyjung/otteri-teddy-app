@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v182-2026-11-01';
+  window.APP_VERSION = 'v183-2026-11-02';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -3457,6 +3457,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone, on
   const [accountMode, setAccountMode] = useState(null); // 🏢 เปิดหน้ารับงานเป็นงานลูกค้าประจำค้างจ่าย
   window.UI_ACCENT = config.ui2 ? (config.ui2Accent || config.primaryColor) : null; // 🎨 ui2: ปุ่ม + สีเดียว
   const [autoOpenTicket, setAutoOpenTicket] = useState(false); // เปิดใบงานอัตโนมัติหลังรับงานใหม่
+  const [autoShareSlip, setAutoShareSlip] = useState(false); // 🔧 v183 แอดมิน/เจ้าของ: บันทึกงานภายในแล้วเด้งส่ง LINE
 
   // Real-time subscription to Firestore
   useEffect(() => {
@@ -3620,6 +3621,9 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone, on
       if (!isInternalOrder(orderWithoutId)) clearOrderDraft(config.brand); // 📝 v167
       setOrderDraft(null);
       const savedOrder = { ...orderWithoutId, id: newId };
+      const fastFree = (isOwner || isAdminUser) && isFreeJob(savedOrder, config); // 🔧 v183 แอดมิน/เจ้าของ ไม่ต้องกดเริ่มเครื่อง/ส่งเอง
+      if (fastFree) autoSolStartFree(config, savedOrder);
+      if (fastFree && isInternalOrder(savedOrder)) setAutoShareSlip(true);
       playSuccessSound();
       setSelectedOrder(savedOrder);
       if (config.hasPrinter) setAutoOpenTicket(true); // เปิดใบงานให้เลย (เฉพาะสาขาที่มีเครื่องพิมพ์)
@@ -3903,7 +3907,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone, on
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} draft={internalMode ? null : orderDraft} accountMode={internalMode ? null : accountMode} onCancel={() => { if (!internalMode) clearOrderDraft(config.brand); setOrderDraft(null); setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} isAdmin={isAdminUser} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
-      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} collections={collections} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
+      {view === 'receipt' && selectedOrder && <ReceiptView config={config} order={selectedOrder} isOwner={isOwner} collections={collections} autoOpenTicket={autoOpenTicket} onTicketOpened={() => setAutoOpenTicket(false)} autoShareSlip={autoShareSlip} onSlipShared={() => setAutoShareSlip(false)} onBack={() => setView(isOwner && baseViewRef.current === 'ownerDashboard' ? 'ownerDashboard' : 'home')} />}
       {view === 'ownerLogin' && <OwnerLoginView config={config} onBack={() => setView('home')} onSuccess={() => { setIsOwner(true); setView('ownerDashboard'); }} />}
       {isSol(config) && <SolPendingBar config={config} />}
       {view === 'ownerDashboard' && t2OwnerOn(config) && <OwnerDashboardT2 config={config} orders={orders} collections={collections} tokenExchanges={tokenExchanges} staffList={staffList} onDeleteToken={handleDeleteTokenExchange} onLogout={() => { setIsOwner(false); setView('home'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('orderDetail'); }} onCollect={handleCollectMoney} onPayFees={handlePayFees} onNewOrder={() => { setOrderDraft(null); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onChangeBrand={onChangeBrand} onResetAll={handleResetAll} onDeleteSelected={handleDeleteSelected} />}
@@ -5634,9 +5638,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
     let splitCashNum = 0, splitTransferNum = 0;
     if (isInternal) {
       const tLabel = (INTERNAL_TYPES.find(t => t.id === internalType) || {}).label || '';
-      if (!confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}${internalMachines.length ? '\nเครื่อง: ' + internalMachines.join(', ') : ''}${internalReason.trim() ? "\nเหตุผล: " + internalReason.trim() : ""}\n${tokenShop(config) ? 'โทเคนที่ใช้' : 'เครดิตที่ใช้'}: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
+      if (!freeOk && !confirm(`🔧 งานภายในร้าน\n\nประเภท: ${tLabel}${internalMachines.length ? '\nเครื่อง: ' + internalMachines.join(', ') : ''}${internalReason.trim() ? "\nเหตุผล: " + internalReason.trim() : ""}\n${tokenShop(config) ? 'โทเคนที่ใช้' : 'เครดิตที่ใช้'}: ฿${formatMoney(total)}\n\n⚠️ ไม่นับเป็นรายได้ — ยืนยันไหม?`)) return;
     } else if (acct) { // 🏢 ค้างจ่าย — ไม่รับเงิน
-      if (!confirm(`✅ ${tr(config, 'ยืนยันการรับงาน')}\n\n${acct.emoji || '🏢'} ${tr(config, acct.name)}\n${tr(config, 'วิธีจ่าย')}: ${acctPayLong}\n${tr(config, 'ยอด')}: ${formatMoney(total)} ${tr(config, 'บาท')}${acct.noFold ? '\n🚫 ' + tr(config, 'ไม่พับ · ซักอบอย่างเดียว') : ''}`)) return;
+      if (!(freeOk && acct.noRevenue) && !confirm(`✅ ${tr(config, 'ยืนยันการรับงาน')}\n\n${acct.emoji || '🏢'} ${tr(config, acct.name)}\n${tr(config, 'วิธีจ่าย')}: ${acctPayLong}\n${tr(config, 'ยอด')}: ${formatMoney(total)} ${tr(config, 'บาท')}${acct.noFold ? '\n🚫 ' + tr(config, 'ไม่พับ · ซักอบอย่างเดียว') : ''}`)) return;
     } else if (paymentMethod === 'split') {
       splitCashNum = parseFloat(splitCash) || 0;
       splitTransferNum = parseFloat(splitTransfer) || 0;
@@ -6747,13 +6751,20 @@ function internalSlipOf(config, order, total) {
   };
 }
 
-function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, isOwner, collections }) {
+function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, isOwner, collections, autoShareSlip, onSlipShared }) {
   const receiptRef = useRef(null);
   const payQr = PAYMENT_QRS[config.brand]; // QR static สำรอง (กรณีไลบรารีโหลดไม่ทัน)
   const jobTicketRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const internal = isInternalOrder(order); // 🔧 งานภายใน — ต้องประกาศบนสุด (useEffect ด้านล่างใช้)
   const [slipUrl, setSlipUrl] = useState(null); // 🧾 v171 ใบรายงานงานภายใน
+  const slipSharedRef = useRef(false);
+  useEffect(() => { // 🔧 v183 แอดมิน/เจ้าของ: ใบรายงานพร้อม → เด้งหน้าแชร์ (LINE) ให้เลย · ไม่เด้ง = ปุ่ม 📤 ยังอยู่
+    if (!autoShareSlip || !internal || !slipUrl || slipSharedRef.current) return;
+    slipSharedRef.current = true;
+    if (onSlipShared) onSlipShared();
+    shareReportSlip(config, slipUrl, 'งานภายใน', 'internal-' + (order.internalType || ''));
+  }, [autoShareSlip, slipUrl, internal]);
   const orderPhotos = useOrderPhotos(order); // รูปตะกร้า (โหลดไว้ก่อน — iOS ต้องแชร์ทันทีที่กด)
   const [showJobTicket, setShowJobTicket] = useState(false);
   const [ticketPreview, setTicketPreview] = useState(''); // ภาพจริงที่จะพิมพ์ (ใช้แสดงพรีวิว)
@@ -10301,6 +10312,31 @@ async function addDryTime(config, order, { kg, baht, pay, machine }) {
 // ---------- 🟦 Otteri: เริ่มเครื่องผ่าน SOL (แม่บ้านกด Start ในบัญชีของตัวเอง แล้วกลับมาติ๊กในแอป) ----------
 // แอปไม่สั่งเครื่องเอง — จำว่า "รอกดใน SOL" ไว้ในเครื่อง (ปิดแอปก็ไม่หาย) · กด ✅ แล้วค่อยบันทึก pulseLogs method 'sol'
 const solCodeOf = (order) => '#' + (order && order.queueNo != null ? order.queueNo : ((order && order.id) || '').slice(-4));
+// 🔧 v183 แอดมิน/เจ้าของลงงานไม่คิดเงินในร้าน SOL → ติ๊ก 'เริ่มใน SOL แล้ว' ให้ทุกช่องทันที (ไม่ต้องกดเริ่มเครื่องเอง)
+function autoSolStartFree(config, order) {
+  if (!isSol(config) || !order || !order.id) return [];
+  const staff = currentStaffLS(config);
+  const at = order.createdAt || Date.now(), now = Date.now();
+  const ms = pulseMachines(config);
+  const internalIds = (order.internalMachines || []).map(lb => (ms.find(m => m.label === lb) || {}).id).filter(Boolean);
+  const used = new Set();
+  return pulseSlotsForOrder(order, config).map((sl, i) => {
+    const allowed = sl.allowed || [];
+    const machine = allowed.length === 1 ? allowed[0] : (internalIds.length ? (allowed.find(x => !used.has(x)) || allowed[0] || null) : null);
+    if (machine) used.add(machine);
+    const id = `${config.brand}-sol-${at + i}-${Math.random().toString(36).slice(2, 8)}`;
+    const log = cleanUndefined({
+      brand: config.brand, dateKey: dateKeyOf(new Date(at)), machine: machine || null, machineLabel: machine ? pulseMachineLabel(config, machine) : 'SOL · ไม่ระบุเครื่อง',
+      pulses: Math.round((sl.baht || 0) / PULSE_BAHT), baht: sl.baht || 0, method: 'sol', status: 'confirmed',
+      refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: sl.key, refLabel: pulseRefLabel(order, config),
+      staffId: staff && staff.id ? staff.id : null, staffName: staff && staff.name ? staff.name : '',
+      createdAt: at + i, doneAt: now, kind: sl.kind === 'topup' ? 'dry' : sl.kind === 'custom' ? null : sl.kind, kg: sl.kg || null, temp: sl.temp || null,
+      heat: null, dryMin: null, mismatch: null, solCode: solCodeOf(order), autoFree: true,
+    });
+    pulseLogRef(id).set(log).catch(e => console.error('auto sol log error:', e));
+    return { id, ...log };
+  });
+}
 const SOL_PROG = { cold: 'Cold', warm: 'Warm', hot: 'Hot', high: 'High', med: 'Mid', low: 'Low' };
 const solPendingKey = (config) => 'sol-pending-' + config.brand;
 function solPendingList(config) {
