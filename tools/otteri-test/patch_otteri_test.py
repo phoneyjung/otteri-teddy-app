@@ -12,6 +12,7 @@ import sys
 SRC, OUT = sys.argv[1], sys.argv[2]
 FRAG = sys.argv[3] if len(sys.argv) > 3 else 'sol_core.jsx'
 s = open(SRC, encoding='utf-8').read()
+assert '// 🟢 v175' not in s, 'index.html เป็น v175+ แล้ว (มีฟีเจอร์ Otteri ในตัวจริง) — ใช้ tools/otteri-test/make_test.py แทน'
 
 
 def rep(old, new, label, count=1):

@@ -47,7 +47,7 @@
   };
   firebase.initializeApp(firebaseConfig);
   window.db = firebase.firestore();
-  window.APP_VERSION = 'otteri-test-2026-10-31';
+  window.APP_VERSION = 'otteri-test-2026-11-01';
   // 🧪 ทุกคอลเลกชันขึ้นต้น test_ — ไม่แตะใบงาน/เงินของร้านจริง
   (function () {
     var d = window.db, orig = d.collection.bind(d);
@@ -370,8 +370,8 @@ const OTTERI_CONFIG = {
   hasKev: false,
   hasToken: false, // Otteri ใช้แค่เหรียญ 10 ไม่มี token ของร้าน
 };
-// 🧪 Otteri ใช้ระบบแบบเท็ดดี้ 2 (เงินสดในมือ · เริ่มเครื่องผ่าน SOL · กระทบยอด WDF) — เปิดเฉพาะหน้าทดสอบก่อน
-if (window.TEST_MODE) Object.assign(OTTERI_CONFIG, {
+// 🟢 v175 (1 พ.ย. 69): Otteri ตัวจริงใช้ระบบแบบเท็ดดี้ 2 (เงินสดในมือ · เริ่มเครื่องผ่าน SOL · กระทบยอด WDF · ui2 · ผ้าเจ้าของ · ร้านเกอิชาค้างจ่าย)
+Object.assign(OTTERI_CONFIG, {
   ownerLaundry: true, // 👔 แม่บ้านลงผ้าเจ้าของเองได้ (ฟรี · งานภายใน)
   ui2: true, // 🎨 หน้าตาแบบใหม่ (แจ้งเตือนภาษาคน · แถบเข้างานเล็ก · ฟอร์มสั้นลง · สีเดียว · ผังเครื่องตามหน้าร้าน)
   ui2Accent: '#0EA5E9', // ฟ้า Otteri — ปุ่ม + ทุกปุ่ม
@@ -594,7 +594,7 @@ const APP_SHARE_QR = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAXIAAAFyCAIA
 
 // เมนูพิเศษหน้าแม่บ้าน (งานภายใน / ลูกค้าใช้โปร / แลกเหรียญ) — Otteri ยังไม่เปิดใช้
 const SHOP_MENUS = { otteri: { internal: false, promoCredit: false, exchange: false } };
-if (window.TEST_MODE) SHOP_MENUS.otteri.internal = true; // 🧪 Otteri: แม่บ้านล้างเครื่อง (ทุก 7 วัน) + ผ้าเจ้าของ
+SHOP_MENUS.otteri.internal = true; // 🟢 v175 Otteri: แม่บ้านล้างเครื่อง (ทุก 7 วัน) + ผ้าเจ้าของ
 const menuOn = (config, key) => {
   const m = SHOP_MENUS[config.brand];
   return !m || m[key] !== false;
@@ -1648,7 +1648,7 @@ const INTERNAL_TYPES = [
 const isInternalOrder = (o) => !!(o && o.internalType);
 const internalTypesFor = (config) => INTERNAL_TYPES.filter(t => !t.cfg || !!(config && config[t.cfg]));
 // ชื่องานภายในในรายการ เช่น "🧼 ล้างเครื่อง · W1" (เดิมขึ้น "(ไม่ระบุชื่อ)")
-const internalTitleOf = (o, config) => { const t = INTERNAL_TYPES.find(x => x.id === o.internalType) || {}; const ms = (o.internalMachines || []).map(m => String(m).replace(/^(ซัก|อบ) /, '')); return `${t.emoji || '🔧'} ${tr(config, t.label || 'งานภายใน')}${ms.length ? ' · ' + ms.join(', ') : ''}`; };
+const internalTitleOf = (o, config, noEmoji) => { const t = INTERNAL_TYPES.find(x => x.id === o.internalType) || {}; const ms = (o.internalMachines || []).map(m => String(m).replace(/^(ซัก|อบ) /, '')); return `${noEmoji ? '' : (t.emoji || '🔧') + ' '}${tr(config, t.label || 'งานภายใน')}${ms.length ? ' · ' + ms.join(', ') : ''}`; };
 // 🏢 ลูกค้าประจำแบบค้างจ่าย (paymentMethod 'account' + accountId) — ไม่ใช่เงินสด/โอน · เจ้าของกดรับเงินทีหลัง
 const accountOf = (o, config) => (o && o.paymentMethod === 'account' ? (((config && config.accounts) || []).find(a => a.id === o.accountId) || { id: o.accountId || '', name: o.customerName || '' }) : null);
 const accountPayText = (o, config) => { const a = accountOf(o, config); return a ? `ค้างจ่าย · ${a.name}` : ''; };
@@ -4979,7 +4979,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="font-semibold text-slate-900 truncate">{isInternalOrder(o) ? internalTitleOf(o, config) : o.customerName}</p>
+                    <p className="font-semibold text-slate-900 truncate">{isInternalOrder(o) ? internalTitleOf(o, config, T2H) : o.customerName}</p>
                     {o.deliveryZone && <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🚚</span>}
                     {o.fromKev && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">{tr(config, "เคฟ")}</span>}
                     {o.fromLine && <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">💬</span>}
