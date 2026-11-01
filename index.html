@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v179-2026-11-01';
+  window.APP_VERSION = 'v180-2026-11-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -13117,6 +13117,10 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   const trPend = trPendList.reduce((s, o) => s + (o.paymentMethod === 'split' ? (o.transferAmount || 0) : calculateTotal(o, config)), 0) + detTrSum;
   const riderUnpaidList = cust.filter(o => o.deliveryZone && !o.deliveryFeePaid);
   const riderUnpaid = riderUnpaidList.reduce((s, o) => s + riderFeeFor(o, config), 0);
+  // 🧺 v180 ค่าพับส่วนของแม่บ้าน (ร้านที่คิดค่าพับ เช่น Otteri) — จ่ายด้วย handlePayFees('service') เดิม
+  const foldRate = config.foldPricePerBasket || 0;
+  const foldUnpaidList = foldRate > 0 ? cust.filter(o => (o.foldBaskets || 0) > 0 && !o.serviceFeePaid) : [];
+  const foldUnpaid = foldUnpaidList.reduce((s, o) => s + (o.foldBaskets || 0) * foldRate, 0);
   const rounds = (collections || []).slice().sort((a, b) => (b.collectedAt || 0) - (a.collectedAt || 0));
   const cashCounts = rounds.filter(r => r.method === 'cashcount'); // 💵 v163 แม่บ้านนับเงินสด
   const lastCashRound = rounds.find(r => r.method === 'cash' && !r.undone);
@@ -13173,6 +13177,14 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
       showToast(`✓ รับเงิน ${a.name} ฿${formatMoney(sum)} (${items.length} ใบ)`, () => undoRound({ ...round, id }, false));
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
     finally { setBusy(false); }
+  };
+  const isFoldJob = (o) => !o.noFold && (!!config.freeService || (o.foldBaskets || 0) > 0);
+  const doPayFold = async () => { // 🧺 v180
+    setBusy(true);
+    try {
+      const r = await onPayFees('service', null, { silent: true });
+      if (r && r.id) showToast(`✓ ${t2RoundLabel('service')} ฿${formatMoney(r.total)} (${r.count} ใบ)`, () => undoRound({ ...r.round, id: r.id }, false));
+    } finally { setBusy(false); }
   };
   const doPayRider = async (riderId) => {
     setBusy(true);
@@ -13281,6 +13293,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
   if (trPend > 0) todo.push({ k: 'transfer', title: 'โอนที่ยังไม่เคลียร์ยอด', sub: `${formatMoney(trPendList.length)} ใบ${detTrList.length ? ` · ขายน้ำยา ${detTrList.length} ครั้ง` : ''} · เช็กยอดธนาคารก่อน`, act: `เคลียร์ ฿${formatMoney(trPend)}`, onAct: () => doCollect('transfer'), go: 'transfer' });
   const accPendList = cust.filter(o => o.paymentMethod === 'account' && !o.collected); // 🏢
   if (accPendList.length) todo.push({ k: 'account', title: `🏢 ค้างจ่าย ฿${formatMoney(accPendList.reduce((s, o) => s + calculateTotal(o, config), 0))}`, sub: `${accPendList.length} ใบ · ${[...new Set(accPendList.map(o => (accountOf(o, config) || {}).name))].join(', ')} · รวมบิลสิ้นเดือน`, nav: 'ดูบิล', go: 'account' });
+  if (foldUnpaid > 0) todo.push({ k: 'fold', title: `ค่าพับค้างจ่ายแม่บ้าน ฿${formatMoney(foldUnpaid)}`, sub: `${foldUnpaidList.reduce((s, o) => s + (o.foldBaskets || 0), 0)} ตะกร้า × ฿${foldRate} · ${foldUnpaidList.length} ใบ`, nav: 'ดู', go: 'fold' });
   if (riderUnpaid > 0) todo.push({ k: 'delivery', title: `ค่าไรเดอร์ค้างจ่าย ฿${formatMoney(riderUnpaid)}`, sub: `${riderUnpaidList.length} งานส่ง · จ่ายแยกตามคน`, nav: 'ดูรายคน', go: 'delivery' });
   if (refundPendingN > 0) todo.push({ k: 'warn', title: `แม่บ้านขอคืนเครดิต ${refundPendingN} รายการ`, sub: 'เครื่องมีปัญหา · อนุมัติแล้วใบงานเปิดเครื่องใหม่ได้', nav: 'ดู', go: 'pulse' });
 
@@ -13688,13 +13701,37 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
               <div className="grid grid-cols-3 gap-2">
                 <T2Stat label="งานพับ" value={A.foldN} />
                 <T2Stat label="ไม่ให้พับ" value={A.noFoldN} />
-                <T2Stat label="มีส่งด้วย" value={A.list.filter(o => !o.noFold && o.deliveryZone).length} />
+                <T2Stat label="มีส่งด้วย" value={A.list.filter(o => isFoldJob(o) && o.deliveryZone).length} />
               </div>
             </T2Box>
+            {foldRate > 0 && (
+              <T2Box k="fold" title={foldUnpaid > 0 ? `ค่าพับค้างจ่ายแม่บ้าน ฿${formatMoney(foldUnpaid)}` : 'ค่าพับค้างจ่ายแม่บ้าน'} right={<span className="text-xs font-bold text-slate-500">ค้างทั้งหมด</span>}>
+                <div data-fold-pay className="divide-y divide-slate-100">
+                  {(() => {
+                    const m = {};
+                    foldUnpaidList.forEach(o => { const k = o.staffName || 'ไม่ระบุ'; m[k] = m[k] || { n: 0, b: 0 }; m[k].n++; m[k].b += (o.foldBaskets || 0); });
+                    return Object.entries(m).sort((a, b) => b[1].b - a[1].b).map(([n, v]) => (
+                      <div key={n} className="flex items-center gap-3 py-2">
+                        <span className="text-2xl">🧹</span>
+                        <div className="flex-1">
+                          <p className="text-sm font-extrabold text-slate-900">{n}</p>
+                          <p className="text-xs text-slate-500 tabular-nums">{v.b} ตะกร้า × ฿{foldRate} · {v.n} ใบ</p>
+                        </div>
+                        <span className="text-sm font-extrabold text-slate-900 tabular-nums">฿{formatMoney(v.b * foldRate)}</span>
+                      </div>
+                    ));
+                  })()}
+                  {foldUnpaidList.length === 0 && <p className="text-sm font-bold text-emerald-700 py-1">✓ ไม่มีค่าพับค้างจ่าย</p>}
+                </div>
+                {foldUnpaid > 0 && <div className="mt-2">{actBtn('fold', `จ่ายค่าพับ ฿${formatMoney(foldUnpaid)}`, doPayFold)}</div>}
+                <p className="text-[11px] text-slate-500 mt-1.5">฿{foldRate} ต่อตะกร้าที่ลงค่าพับในใบงาน · จ่ายแล้วกด ↶ ยกเลิกได้</p>
+              </T2Box>
+            )}
+            {foldRate > 0 && history(m => m === 'service', 'fold')}
             <T2Box k="fold" title="แยกตามแม่บ้านที่รับงาน">
               {(() => {
                 const m = {};
-                A.list.filter(o => !o.noFold).forEach(o => { const k = o.staffName || 'ไม่ระบุ'; m[k] = (m[k] || 0) + 1; });
+                A.list.filter(isFoldJob).forEach(o => { const k = o.staffName || 'ไม่ระบุ'; m[k] = (m[k] || 0) + 1; });
                 const rows = Object.entries(m).sort((a, b) => b[1] - a[1]);
                 const mx = rows.length ? rows[0][1] : 1;
                 return rows.length ? rows.map(([n, c]) => (
@@ -13707,7 +13744,7 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
               })()}
             </T2Box>
             {listHead(`งานพับ · ${R.label}`, A.foldN)}
-            {list(A.list.filter(o => !o.noFold))}
+            {list(A.list.filter(isFoldJob))}
           </div>
         )}
 
