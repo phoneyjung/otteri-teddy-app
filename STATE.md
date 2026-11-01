@@ -1,5 +1,5 @@
 # STATE: PLP Laundromat (otteri-teddy-app)
-อัปเดต: 2026-11-02 · เวอร์ชัน: v186 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
+อัปเดต: 2026-11-02 · เวอร์ชัน: v187 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
 
 ## ภาพรวม
 - Repo: github.com/phoneyjung/otteri-teddy-app · Live: https://phoneyjung.github.io/otteri-teddy-app/
@@ -137,6 +137,7 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 | - | ยังไม่มี | - | - |
 
 ## บันทึกการเปลี่ยนแปลง (ล่าสุดอยู่บน)
+- v187 (2026-11-02): tools/v187_owner_button.py · ปุ่มขวาบนหน้าแรก: แม่บ้าน/แอดมินไม่เห็น · เจ้าของ (session) = ไอคอน layout-dashboard `[data-owner-dash]` กดเข้าหน้าเจ้าของเลย ไม่ถามรหัส · ไม่มีคนล็อกอิน (Teddy 1 ชั่วคราว) = 🔒 รหัสเหมือนเดิม · แม่บ้านใช้ชิปชื่อ → สลับเป็นเจ้าของ (รหัส) ได้เหมือนเดิม · ทดสอบ: harness187 + ชุดเดิมที่เข้าหน้าเจ้าของด้วยแม่กุญแจ ปรับเป็น *v.mjs (ชิป → สลับเป็นเจ้าของ → 📊)
 - v186 (2026-11-02): tools/v186_install_button.py · หน้าล็อกอินรวม `InstallAppCard` (`[data-install-card]` `[data-install-btn]` `[data-install-help=ios|android]`) · Android ใช้ `window.__installPrompt` (เก็บจาก beforeinstallprompt + event 'pwa-installable') · iPhone/ไม่มี prompt = บอก 3 ขั้น · standalone/appinstalled = ซ่อน · ป๊อปอัปติดตั้งเดิม (5 วิ) ไม่เด้งเมื่อ `window.__loginPage` · ลิงก์ส่งแอดมิน: `…/otteri-teddy-app/?openExternalBrowser=1` (LINE เปิดใน Chrome/Safari) · ทดสอบ: harness186 + 182/185/181c
 - v185 (2026-11-02): tools/v185_simple_internal.py · OTTERI `simpleInternal` ['clean','test','other','mine'] + `internalLabels.other` · `internalLabelOf(config,id)` (internalTitleOf / slip / สถิติเจ้าของ) · AdminHomeView 4 ปุ่ม (ไม่มีบัญชีไม่คิดเงิน) · NewOrderView `simpleFree` / `autoItems` (เครื่องที่แตะ → washItems/dryItems · ล้างเครื่อง = hot ไม่มีอบ) · `showTime` + `[data-time-toggle]` · ซ่อนป้ายโปร (งานภายใน) / ช่องยอดเอง / Section เครื่องซัก-อบ / ปุ่มเปลี่ยนเป็นงานลูกค้า · `[data-itype-title]` `[data-simple-items]` · noDayPromo งานภายใน (ร้าน simpleInternal) · คำพม่า 7 คำ · ทดสอบ: harness185 (21 ข้อ) + 181c/182/180 + ชุด TZ กลางวัน (157–179 ผ่าน) · ชุดเดิมบางชุดขึ้นกับเวลา (หลังเที่ยงคืนตกทั้ง v182/v185) ใช้ TZ=America/Chicago รัน
 - v184 (2026-11-02): tools/v184_admin_no_start.py · AdminHomeView ร้าน SOL ไม่มี HomePulseStartCard (🧺 เริ่มเครื่อง/📷 สแกนใบงาน) — v183 ติ๊กให้ตอนบันทึก · เจ้าของถาม 'ทำไมยังมี เริ่มเครื่อง' · ทดสอบ: harness183/182/181b/180

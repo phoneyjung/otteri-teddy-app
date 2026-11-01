@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v186-2026-11-02';
+  window.APP_VERSION = 'v187-2026-11-02';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2453,6 +2453,7 @@ const MM_DICT = {
   'เข้าร้าน': 'ဆိုင်ထဲဝင်ရန်',
   'คู่มือช่วยงาน': 'အလုပ်လမ်းညွှန်',
   'จัดการรายชื่อ': 'ဝန်ထမ်းစာရင်း စီမံရန်',
+  'หน้าเจ้าของ': 'ပိုင်ရှင်စာမျက်နှာ', // v187
   // v186 ปุ่มติดตั้งแอป
   'ติดตั้งแอปลง iPhone': 'iPhone တွင် အက်ပ်ထည့်ရန်',
   'ติดตั้งแอปลงเครื่อง': 'ဖုန်းထဲ အက်ပ်ထည့်ရန်',
@@ -3996,7 +3997,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone, on
         onInternalOrder={(t) => { setOrderDraft(null); setAccountMode(null); setInternalMode(typeof t === 'string' ? t : true); setBackdateDay(null); setView('newOrder'); }}
         onAccountOrder={(id) => { setOrderDraft(null); setInternalMode(false); setAccountMode(id); setBackdateDay(null); setView('newOrder'); }}
         onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} />}
-      {view === 'home' && !isAdminUser && <HomeView onResumeDraft={(d) => { setOrderDraft(d); setInternalMode(false); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} collections={collections} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setOrderDraft(null); setInternalMode(false); setAccountMode(null); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={(t) => { setOrderDraft(null); setAccountMode(null); setInternalMode(typeof t === 'string' ? t : true); setBackdateDay(null); setView('newOrder'); }} onAccountOrder={(id) => { setOrderDraft(null); setInternalMode(false); setAccountMode(id); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => setView('ownerLogin')} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
+      {view === 'home' && !isAdminUser && <HomeView onResumeDraft={(d) => { setOrderDraft(d); setInternalMode(false); setAccountMode(null); setBackdateDay(null); setView('newOrder'); }} onToggleLang={toggleLang} config={config} orders={orders} tokenExchanges={tokenExchanges} collections={collections} onAddToken={handleAddTokenExchange} onDeleteToken={handleDeleteTokenExchange} onOpenChecklist={() => setView('checklist')} onNewOrder={(day) => { setOrderDraft(null); setInternalMode(false); setAccountMode(null); setBackdateDay(typeof day === 'number' ? day : null); setView('newOrder'); }} onInternalOrder={(t) => { setOrderDraft(null); setAccountMode(null); setInternalMode(typeof t === 'string' ? t : true); setBackdateDay(null); setView('newOrder'); }} onAccountOrder={(id) => { setOrderDraft(null); setInternalMode(false); setAccountMode(id); setBackdateDay(null); setView('newOrder'); }} dayOffset={homeDayOffset} setDayOffset={setHomeDayOffset} onOwnerLogin={() => { if (isOwner || (currentStaff && currentStaff.isOwnerLogin)) { setIsOwner(true); setView('ownerDashboard'); } else setView('ownerLogin'); }} onSelectOrder={(o) => { setSelectedOrder(o); setView('receipt'); }} onChangeBrand={onChangeBrand} onOpenDelivery={() => setView('deliveryChecker')} currentStaff={currentStaff} onSwitchStaff={handleSwitchStaff} onRoleSwitch={handleRoleSwitch} prevStaff={prevStaff} printServer={printServer} printServerStatus={printServerStatus} onTogglePrintServer={handleTogglePrintServer} />}
       {view === 'deliveryChecker' && <DeliveryCheckerView onBack={() => setView('home')} />}
       {view === 'newOrder' && <NewOrderView config={config} orders={orders} backdateDay={internalMode ? null : backdateDay} draft={internalMode ? null : orderDraft} accountMode={internalMode ? null : accountMode} onCancel={() => { if (!internalMode) clearOrderDraft(config.brand); setOrderDraft(null); setInternalMode(false); setBackdateDay(null); setView('home'); }} onSubmit={handleNewOrder} isOwner={isOwner} isAdmin={isAdminUser} internalMode={internalMode} />}
       {view === 'checklist' && <ChecklistView config={config} currentStaff={currentStaff} isOwner={isOwner} onBack={() => setView('home')} />}
@@ -4716,9 +4717,9 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
               {onChangeBrand && <button onClick={onChangeBrand} className="bg-white bg-opacity-20 backdrop-blur-sm rounded-full p-2.5 border border-white border-opacity-30 active:scale-95 transition" title={tr(config, "เปลี่ยนร้าน")}>
                 <Icon name="repeat" className="w-5 h-5 text-white" />
               </button>}
-              <button onClick={onOwnerLogin} className="bg-white bg-opacity-20 backdrop-blur-sm rounded-full p-2.5 border border-white border-opacity-30 active:scale-95 transition">
-                <Icon name="lock" className="w-5 h-5 text-white" />
-              </button>
+              {(ownerNow || !currentStaff) && <button onClick={onOwnerLogin} data-owner-dash={ownerNow ? '1' : undefined} title={tr(config, 'หน้าเจ้าของ')} className="bg-white bg-opacity-20 backdrop-blur-sm rounded-full p-2.5 border border-white border-opacity-30 active:scale-95 transition">
+                <Icon name={ownerNow ? 'layout-dashboard' : 'lock'} className="w-5 h-5 text-white" />
+              </button>}{/* v187 แม่บ้าน/แอดมินไม่เห็น · เจ้าของ = 📊 เข้าได้เลย · ร้านที่ยังไม่มีบัญชี (Teddy 1 ชั่วคราว) = 🔒 ใส่รหัสเหมือนเดิม */}
             </div>
           </div>
           {/* เฟส 1 — chip ชื่อแม่บ้านที่ login อยู่ */}
