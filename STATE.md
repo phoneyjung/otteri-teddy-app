@@ -1,5 +1,5 @@
 # STATE: PLP Laundromat (otteri-teddy-app)
-อัปเดต: 2026-11-02 · เวอร์ชัน: v187 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
+อัปเดต: 2026-11-02 · เวอร์ชัน: v188 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
 
 ## ภาพรวม
 - Repo: github.com/phoneyjung/otteri-teddy-app · Live: https://phoneyjung.github.io/otteri-teddy-app/
@@ -121,6 +121,7 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 - [ ] ตัวจริง (index.html) ใบรับงานยังขึ้น # จากรหัส id (id.split('-')[0]) ไม่ใช่เลขคิว — ถามเจ้าของว่าจะแก้ในตัวจริงด้วยไหม (หน้าทดสอบแก้แล้ว)
 - [ ] แจ้งแม่บ้าน Teddy 1: ล้างเครื่อง/ซ่อม/โทเคนแก้ปัญหา ต้องกด 🔧 บิลงานร้าน · ลูกค้าใช้คูปองแอดไลน์ซักเอง กด 🎟️ (ถ่ายรูปคูปอง) — ก่อน v177 ไม่เคยมีบิลพวกนี้เลย (สิ้นเดือนจะลงบัญชีเป็นรายจ่ายจากบิลจริง)
 - [ ] เจ้าของเพิ่มบัญชีแม่บ้าน Teddy 1 (หน้าล็อกอิน → ⚙️ จัดการรายชื่อ → ติ๊กร้าน Teddy) — ตอนนี้ Teddy 1 เข้าแบบปุ่มชั่วคราว
+- [ ] คู่มือแอดมิน (shop-assets inbox/otteri-admin-guide) ขั้น LINE ยังไม่มีรูปจริง · ขั้น SOL เครื่องอบใช้รูปเครื่องซักแทน (ขอรูป Select Menu เครื่องอบ + Extra Time)
 - [ ] เจ้าของตั้งแอดมิน: หน้าเจ้าของ → ⚙️ ตั้งค่า → แม่บ้าน → กดปุ่ม 'แม่บ้าน' ให้เป็น '🔧 แอดมิน' (หรือหน้าเลือกชื่อ → เพิ่มรายชื่อ → ติ๊กแอดมิน) · แจ้งแม่บ้าน Otteri ว่าล้างเครื่อง/ผ้าเจ้าของ/เกอิชา ลงเองไม่ได้แล้ว
 - [ ] ใส่ QR บัญชีร้าน Otteri (ตอนนี้ขึ้น 'ยังไม่ได้ใส่ QR บัญชีร้าน' — คลิปสอนเลยไม่โชว์ QR)
 - [ ] ให้พนักงานพม่าตรวจคำแปลใหม่ ~76 + 28 + 18 + 27 + 16 + 15 + 15 + 4 (ทิป v176) + 24 (บิลงานร้าน Teddy 1 v177) + 22 (โหมดแอดมิน v181) + 7 (ล็อกอินรวม v182) คำ (31 คำล่าสุด = ผ้าเจ้าของ/ค้างจ่าย + หน้าตา ui2 + 'ใน SOL เลือก Hot' หน้าทดสอบ Otteri) (คอมเมนต์ "⚡ ยิงพัลส์ / กระทบยอด (v141)" และ "🧺 ผนังเครื่อง (v142)" ใน MM_DICT)
@@ -137,6 +138,7 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 | - | ยังไม่มี | - | - |
 
 ## บันทึกการเปลี่ยนแปลง (ล่าสุดอยู่บน)
+- v188 (2026-11-02): tools/v188_admin_geisha.py · หน้าแอดมิน 5 ปุ่ม (+ 🏢 ร้านเกอิชา) · `simpleAcct` / `simpleMode` · ฟอร์มเกอิชากล่องเดียว `[data-simple-acct]` แตะเครื่อง `[data-acct-machine]` + ⏱️ `topUpAmt` `[data-topup]` (±฿10 ลงอบรายการแรก) · ซ่อนข้อมูลลูกค้า/รูปตะกร้า/รายการเสริม/การชำระเงิน/เว็บ · บันทึก internalMachines ของงานเกอิชา (ติ๊ก SOL ตรงเครื่อง) · ใบรับงานเกอิชา (แอดมิน/เจ้าของ) เด้ง handleShare (ปิดธงใน timeout) · คู่มือแอดมิน 5 แผ่นใน shop-assets branch import/otteri-admin-guide · ทดสอบ: harness188 + ชุดเดิม 19 ชุด (TZ กลางวัน)
 - v187 (2026-11-02): tools/v187_owner_button.py · ปุ่มขวาบนหน้าแรก: แม่บ้าน/แอดมินไม่เห็น · เจ้าของ (session) = ไอคอน layout-dashboard `[data-owner-dash]` กดเข้าหน้าเจ้าของเลย ไม่ถามรหัส · ไม่มีคนล็อกอิน (Teddy 1 ชั่วคราว) = 🔒 รหัสเหมือนเดิม · แม่บ้านใช้ชิปชื่อ → สลับเป็นเจ้าของ (รหัส) ได้เหมือนเดิม · ทดสอบ: harness187 + ชุดเดิมที่เข้าหน้าเจ้าของด้วยแม่กุญแจ ปรับเป็น *v.mjs (ชิป → สลับเป็นเจ้าของ → 📊)
 - v186 (2026-11-02): tools/v186_install_button.py · หน้าล็อกอินรวม `InstallAppCard` (`[data-install-card]` `[data-install-btn]` `[data-install-help=ios|android]`) · Android ใช้ `window.__installPrompt` (เก็บจาก beforeinstallprompt + event 'pwa-installable') · iPhone/ไม่มี prompt = บอก 3 ขั้น · standalone/appinstalled = ซ่อน · ป๊อปอัปติดตั้งเดิม (5 วิ) ไม่เด้งเมื่อ `window.__loginPage` · ลิงก์ส่งแอดมิน: `…/otteri-teddy-app/?openExternalBrowser=1` (LINE เปิดใน Chrome/Safari) · ทดสอบ: harness186 + 182/185/181c
 - v185 (2026-11-02): tools/v185_simple_internal.py · OTTERI `simpleInternal` ['clean','test','other','mine'] + `internalLabels.other` · `internalLabelOf(config,id)` (internalTitleOf / slip / สถิติเจ้าของ) · AdminHomeView 4 ปุ่ม (ไม่มีบัญชีไม่คิดเงิน) · NewOrderView `simpleFree` / `autoItems` (เครื่องที่แตะ → washItems/dryItems · ล้างเครื่อง = hot ไม่มีอบ) · `showTime` + `[data-time-toggle]` · ซ่อนป้ายโปร (งานภายใน) / ช่องยอดเอง / Section เครื่องซัก-อบ / ปุ่มเปลี่ยนเป็นงานลูกค้า · `[data-itype-title]` `[data-simple-items]` · noDayPromo งานภายใน (ร้าน simpleInternal) · คำพม่า 7 คำ · ทดสอบ: harness185 (21 ข้อ) + 181c/182/180 + ชุด TZ กลางวัน (157–179 ผ่าน) · ชุดเดิมบางชุดขึ้นกับเวลา (หลังเที่ยงคืนตกทั้ง v182/v185) ใช้ TZ=America/Chicago รัน

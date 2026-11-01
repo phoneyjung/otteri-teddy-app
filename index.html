@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v187-2026-11-02';
+  window.APP_VERSION = 'v188-2026-11-02';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2454,6 +2454,7 @@ const MM_DICT = {
   'คู่มือช่วยงาน': 'အလုပ်လမ်းညွှန်',
   'จัดการรายชื่อ': 'ဝန်ထမ်းစာရင်း စီမံရန်',
   'หน้าเจ้าของ': 'ပိုင်ရှင်စာမျက်နှာ', // v187
+  'เพิ่มเวลาอบ': 'အခြောက်ခံချိန် တိုးရန်', // v188
   // v186 ปุ่มติดตั้งแอป
   'ติดตั้งแอปลง iPhone': 'iPhone တွင် အက်ပ်ထည့်ရန်',
   'ติดตั้งแอปลงเครื่อง': 'ဖုန်းထဲ အက်ပ်ထည့်ရန်',
@@ -3717,7 +3718,7 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone, on
       const savedOrder = { ...orderWithoutId, id: newId };
       const fastFree = (isOwner || isAdminUser) && isFreeJob(savedOrder, config); // 🔧 v183 แอดมิน/เจ้าของ ไม่ต้องกดเริ่มเครื่อง/ส่งเอง
       if (fastFree) autoSolStartFree(config, savedOrder);
-      if (fastFree && isInternalOrder(savedOrder)) setAutoShareSlip(true);
+      if (fastFree) setAutoShareSlip(true); // v188 งานเกอิชาด้วย (แชร์ใบรับงาน)
       playSuccessSound();
       setSelectedOrder(savedOrder);
       if (config.hasPrinter) setAutoOpenTicket(true); // เปิดใบงานให้เลย (เฉพาะสาขาที่มีเครื่องพิมพ์)
@@ -5399,6 +5400,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
 function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdmin, internalMode, backdateDay, orders, draft, accountMode }) {
   const freeOk = isOwner || !!isAdmin; // 🔧 v181 แอดมิน = ลงงานภายใน/งานไม่คิดเงินได้ (เดิมใช้ isOwner ทั้งฟอร์ม)
   const [showTime, setShowTime] = useState(false); // 🧾 v185 ฟอร์มสั้น: กล่องเวลาเปิดเมื่อแตะ
+  const [topUpAmt, setTopUpAmt] = useState(() => { const d = editingOrder && (editingOrder.dryItems || []).find(i => i.topUp > 0); return d ? d.topUp : 0; }); // ⏱️ v188 เพิ่มเวลาอบ (ฟอร์มสั้น)
   const [webOrders, setWebOrders] = useState([]);
   const [showWeb, setShowWeb] = useState(false);
   const [webPicked, setWebPicked] = useState(null); // { id, code }
@@ -5566,7 +5568,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
   const maidClean = !!internalType && internalType === 'clean' && !isOwner; // v181 แอดมินใช้ฟอร์มล้างเครื่องแบบง่าย (แตะเครื่องซัก = ใส่รายการให้) เหมือนแม่บ้าน
   // 🧾 v185 ฟอร์มสั้น (แอดมิน/เจ้าของ ร้าน simpleInternal): แตะเครื่อง = แอปใส่รายการ+ราคาให้ (ซัก/อบ)
   const simpleFree = !!internalType && freeOk && !!config.simpleInternal && internalType !== 'fix';
-  const autoItems = maidClean || simpleFree;
+  const simpleAcct = !internalType && !!acct && !!acct.noRevenue && freeOk && !!config.simpleInternal; // 🏢 v188 งานเกอิชา (แอดมิน/เจ้าของ) ฟอร์มสั้น
+  const simpleMode = simpleFree || simpleAcct;
+  const autoItems = maidClean || simpleFree || simpleAcct;
   useEffect(() => {
     if (!autoItems) return;
     const allM = (COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || [];
@@ -5574,8 +5578,10 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
     allM.filter(m => internalMachines.includes(m.label)).forEach(m => { const kg = parseInt(m.size, 10) || 0; if (/^w/i.test(m.id)) wBy[kg] = (wBy[kg] || 0) + 1; else if (/^d/i.test(m.id)) dBy[kg] = (dBy[kg] || 0) + 1; });
     const temp = internalType === 'clean' ? 'hot' : 'cold';
     setWashItems(Object.keys(wBy).map(kg => ({ size: Number(kg), temp, qty: wBy[kg] })).filter(i => config.washMachines.some(w => w.size === i.size)));
-    setDryItems(internalType === 'clean' ? [] : Object.keys(dBy).map(kg => ({ size: Number(kg), qty: dBy[kg] })).filter(i => config.dryMachines.some(d => d.size === i.size)));
-  }, [autoItems, internalType, internalMachines.join('|')]);
+    const dry = internalType === 'clean' ? [] : Object.keys(dBy).map(kg => ({ size: Number(kg), qty: dBy[kg] })).filter(i => config.dryMachines.some(d => d.size === i.size));
+    if (dry.length && topUpAmt > 0) dry[0] = { ...dry[0], topUp: topUpAmt }; // ⏱️ v188
+    setDryItems(dry);
+  }, [autoItems, internalType, internalMachines.join('|'), topUpAmt]);
 
   useEffect(() => { // 🎨 ui2: มีซัก/อบ = ฝากพับ 1 ตะกร้า (ยังไม่เลือกอะไร = ยอด 0)
     if (!config.ui2 || foldTouched.current || config.freeService || internalType || (acct && acct.noFold)) return;
@@ -5634,7 +5640,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
     if (!hasAnyItem && customAmt <= 0) missingList.push(tr(config, fixType ? 'กรอกจำนวนโทเคนที่ให้' : 'เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง'));
     if (!internalReason.trim()) missingList.push(tr(config, 'ใส่เหตุผล (บังคับ)'));
   }
-  if (!isInternal && !hasAnyItem) missingList.push(tr(config, 'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)'));
+  if (!isInternal && !hasAnyItem) missingList.push(tr(config, simpleAcct ? 'เลือกเครื่องที่ทำ (บังคับ)' : 'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)'));
   if (!isInternal && needCustomerInfo && !name.trim()) missingList.push(tr(config, 'ใส่ชื่อลูกค้า'));
   if (needPhone && !phone.trim()) missingList.push(tr(config, 'ใส่เบอร์โทรลูกค้า'));
   else if (needPhone && phone.trim().length < 9) missingList.push(tr(config, 'เบอร์โทรไม่ครบ (อย่างน้อย 9 หลัก)'));
@@ -5794,7 +5800,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
       webCode: webPicked ? webPicked.code : (editingOrder && editingOrder.webCode) || null,
       internalType: internalType || null,
       internalReason: internalType ? internalReason.trim() : '',
-      internalMachines: internalType ? internalMachines : null,
+      internalMachines: internalType || simpleAcct ? internalMachines : null, // v188 งานเกอิชา (ฟอร์มสั้น) เก็บเครื่องที่แตะ → ติ๊ก SOL ตรงเครื่อง
       internalCustom: internalType && customAmt > 0 ? customAmt : null,
       collected: editingOrder?.collected || false,
       collectedAt: editingOrder?.collectedAt || null,
@@ -5852,12 +5858,12 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
         )}
 
         {/* Section "วันเวลารับงาน" — แสดงเฉพาะเจ้าของ (สำหรับบันทึกย้อนหลัง) */}
-        {simpleFree && !showTime && (
+        {simpleMode && !showTime && (
           <button data-time-toggle onClick={() => setShowTime(true)} className="w-full text-left text-xs font-bold text-slate-500 px-1">
             🕐 {tr(config, 'เวลา: ตอนนี้')} · <span className="underline">{tr(config, 'ลงย้อนหลัง แตะเปลี่ยนเวลา')}</span>
           </button>
         )}
-        {freeOk && (!simpleFree || showTime) && (
+        {freeOk && (!simpleMode || showTime) && (
           <div className="rounded-2xl p-4 shadow-lg border-2 border-amber-300" style={{background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'}}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">🔐</span>
@@ -5992,7 +5998,38 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </div>
         )}
 
-        {!isInternal && !isEdit && (!config.ui2 || pendingWeb.length > 0 || !!webPicked) && (
+        {simpleAcct && (
+          <div className="rounded-2xl p-4 border-2 border-sky-300 bg-sky-50" data-simple-acct>
+            <p className="font-extrabold text-slate-900">{acct.emoji || '🏢'} {tr(config, acct.name)}</p>
+            <p className="text-xs font-bold text-sky-800 mb-3">{acctPayLong}{acct.noFold ? ' · ' + tr(config, 'ไม่พับ') : ''}</p>
+            <p className="text-xs font-bold text-slate-700 mb-1.5">{tr(config, 'เครื่องที่ทำ')} <span className="text-rose-600">*{tr(config, 'บังคับ')}</span></p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
+                const on = internalMachines.includes(m.label);
+                return (
+                  <button key={m.id} data-acct-machine={m.id} onClick={() => setInternalMachines(on ? internalMachines.filter(x => x !== m.label) : [...internalMachines, m.label])}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>{m.label}</button>
+                );
+              })}
+            </div>
+            {dryItems.length > 0 && (
+              <div className="flex items-center gap-2 mb-2" data-topup>
+                <span className="text-xs font-bold text-slate-700 flex-1">⏱️ {tr(config, 'เพิ่มเวลาอบ')}</span>
+                <button onClick={() => setTopUpAmt(v => Math.max(0, v - 10))} data-topup-minus className="w-9 h-9 rounded-full bg-white border border-slate-300 font-extrabold text-slate-700 active:scale-90">−</button>
+                <span className="w-14 text-center font-extrabold tabular-nums">฿{topUpAmt}</span>
+                <button onClick={() => setTopUpAmt(v => v + 10)} data-topup-plus className="w-9 h-9 rounded-full bg-sky-600 text-white font-extrabold active:scale-90">+</button>
+              </div>
+            )}
+            <div className="rounded-xl bg-white border-2 border-slate-200 px-3 py-2" data-simple-items>
+              {washItems.length || dryItems.length
+                ? <p className="text-xs font-bold text-slate-700">{[...washItems.map(i => `${tr(config, 'ซัก')} ${i.size}kg × ${i.qty}`), ...dryItems.map(i => `${tr(config, 'อบ')} ${i.size}kg × ${i.qty}${i.topUp ? ` (+${tr(config, 'เพิ่มเวลา')} ฿${i.topUp})` : ''}`)].join(' · ')} · ฿{formatMoney(total)}</p>
+                : <p className="text-xs text-slate-500">{tr(config, 'แตะเครื่องที่ทำด้านบน')}</p>}
+            </div>
+            <p className="text-[11px] text-slate-700 mt-2">{tr(config, 'แตะเครื่อง แล้วกดบันทึก — แอปติ๊กเริ่มเครื่องให้เอง')}</p>
+          </div>
+        )}
+
+        {!isInternal && !simpleAcct && !isEdit && (!config.ui2 || pendingWeb.length > 0 || !!webPicked) && (
           <div>
             <button onClick={() => setShowWeb(true)}
               className={`w-full rounded-2xl p-3 border-2 flex items-center gap-3 active:scale-95 transition ${webPicked ? 'border-emerald-400 bg-emerald-50' : pendingWeb.length ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white'}`}>
@@ -6088,7 +6125,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
         </button>}
 
 
-        {!isInternal && <Section iconName="user" title={tr(config, "ข้อมูลลูกค้า")}>
+        {!isInternal && !simpleAcct && <Section iconName="user" title={tr(config, "ข้อมูลลูกค้า")}>
           {((config.accounts || []).length > 0 || config.ui2) && <div className="flex flex-wrap gap-1.5 mb-3">
             {config.ui2 && !acct && (
               <button data-line-chip onClick={() => !fromKev && setFromLine(!fromLine)}
@@ -6120,7 +6157,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </React.Fragment>}
         </Section>}
 
-        {!isInternal && <Section iconName="camera" title={tr(config, "รูปตะกร้าผ้า")}>
+        {!isInternal && !simpleAcct && <Section iconName="camera" title={tr(config, "รูปตะกร้าผ้า")}>
           <input ref={basketInputRef} type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
           <input ref={basketCameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoUpload(e, setBasketPhoto)} className="hidden" />
           {basketPhoto ? (
@@ -6188,7 +6225,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </div>
         </Section>}
 
-        {!isInternal && <Section iconName="sparkles" title={tr(config, "รายการเสริม / ขายแยก")}>
+        {!isInternal && !simpleAcct && <Section iconName="sparkles" title={tr(config, "รายการเสริม / ขายแยก")}>
           <p className="text-[11px] text-slate-500 -mt-2 mb-2">{tr(config, "💡 ขายน้ำยาเดี่ยวๆ ก็ได้ — ไม่ต้องเลือกเครื่องซัก/อบ")}</p>
           <CounterRow iconEmoji="🧴" label={tr(config, "น้ำยาซัก")} sublabel={`฿${config.detergentPrice} / ซอง`} unit={tr(config, "ซอง")} qty={detergentQty} onAdd={() => setDetergentQty(q => q + 1)} onRemove={() => setDetergentQty(q => Math.max(0, q - 1))} colorActive="bg-purple-500" />
           <CounterRow iconEmoji="🌸" label={tr(config, "น้ำยาปรับผ้านุ่ม")} sublabel={`฿${config.softenerPrice} / ซอง`} unit={tr(config, "ซอง")} qty={softenerQty} onAdd={() => setSoftenerQty(q => q + 1)} onRemove={() => setSoftenerQty(q => Math.max(0, q - 1))} colorActive="bg-pink-500" />
@@ -6321,7 +6358,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </Section>
         )}
 
-        {!isInternal && acct && <Section iconName="dollar-sign" title={tr(config, "การชำระเงิน")}>
+        {!isInternal && acct && !simpleAcct && <Section iconName="dollar-sign" title={tr(config, "การชำระเงิน")}>
           <div className="rounded-2xl p-4 border bg-sky-50 border-sky-200" data-account-pay>
             <p className="text-sm font-extrabold text-sky-900">{acct.emoji || '🏢'} {acctWord(config, acct)} · {tr(config, acct.name)}</p>
             <p className="text-xs font-bold text-sky-800 mt-0.5">{tr(config, acct.noRevenue ? 'ไม่ต้องรับเงิน ไม่ต้องให้สแกน — ไม่นับรายได้' : 'ไม่ต้องรับเงิน ไม่ต้องให้สแกน — เจ้าของเก็บรวมสิ้นเดือน')}</p>
@@ -6877,6 +6914,12 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
     if (onSlipShared) onSlipShared();
     shareReportSlip(config, slipUrl, 'งานภายใน', 'internal-' + (order.internalType || ''));
   }, [autoShareSlip, slipUrl, internal]);
+  useEffect(() => { // 🏢 v188 งานไม่คิดเงิน (เกอิชา) โดยแอดมิน/เจ้าของ: เด้งแชร์ใบรับงานเข้า LINE · ไม่เด้ง = ปุ่มส่งเข้า Line ยังอยู่
+    if (!autoShareSlip || internal || slipSharedRef.current) return;
+    slipSharedRef.current = true;
+    const t = setTimeout(() => { if (onSlipShared) onSlipShared(); handleShare(); }, 700); // ปิดธงใน timeout (ปิดก่อน = effect cleanup ยกเลิก timer)
+    return () => clearTimeout(t);
+  }, [autoShareSlip, internal]);
   const orderPhotos = useOrderPhotos(order); // รูปตะกร้า (โหลดไว้ก่อน — iOS ต้องแชร์ทันทีที่กด)
   const [showJobTicket, setShowJobTicket] = useState(false);
   const [ticketPreview, setTicketPreview] = useState(''); // ภาพจริงที่จะพิมพ์ (ใช้แสดงพรีวิว)
@@ -11432,7 +11475,7 @@ function AdminHomeView({ config, orders, currentStaff, onSwitchStaff, onToggleLa
   const btns = [
     ...(config.simpleInternal ? config.simpleInternal.map(id => INTERNAL_TYPES.find(t => t.id === id)).filter(Boolean).map(t => ({ k: t.id, icon: t.emoji, title: tr(config, t.id === 'clean' || t.id === 'test' ? BILL_BTN[t.id][0] : internalLabelOf(config, t.id)), sub: tr(config, ADMIN_BTN_SUB2[t.id] || ADMIN_BTN_SUB[t.id] || 'ไม่นับรายได้'), click: () => onInternalOrder(t.id) }))
       : internalTypesFor(config).filter(t => t.id !== 'fix').map(t => ({ k: t.id, icon: t.emoji, title: tr(config, (BILL_BTN[t.id] || [t.label])[0]), sub: tr(config, ADMIN_BTN_SUB[t.id] || 'ไม่นับรายได้'), click: () => onInternalOrder(t.id) }))),
-    ...(config.simpleInternal ? [] : config.accounts || []).filter(a => a.noRevenue).map(a => ({ k: 'acct-' + a.id, icon: a.emoji || '🏢', title: tr(config, a.name), sub: tr(config, a.noFold ? 'ไม่คิดเงิน · ไม่พับ' : 'ไม่คิดเงิน'), click: () => onAccountOrder(a.id) })),
+    ...(config.accounts || []).filter(a => a.noRevenue).map(a => ({ k: 'acct-' + a.id, icon: a.emoji || '🏢', title: tr(config, a.name), sub: tr(config, a.noFold ? 'ไม่คิดเงิน · ไม่พับ' : 'ไม่คิดเงิน'), click: () => onAccountOrder(a.id) })),
   ];
   const titleOf = (o) => (isInternalOrder(o) ? internalTitleOf(o, config) : `${(accountOf(o, config) || {}).emoji || '🏢'} ${tr(config, o.customerName || '')}`);
   const days = [tr(config, 'วันนี้'), tr(config, 'เมื่อวาน'), tr(config, '2 วันก่อน')];
