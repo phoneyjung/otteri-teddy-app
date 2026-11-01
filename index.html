@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v175-2026-11-01';
+  window.APP_VERSION = 'v176-2026-11-01';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -386,6 +386,7 @@ Object.assign(OTTERI_CONFIG, {
   accounts: [{ id: 'geisha', name: 'ร้านเกอิชา', emoji: '🏢', noFold: true }], // 🏢 ค้างจ่าย รวมบิลสิ้นเดือน · ไม่พับ · ราคาปกติ (ไม่ใช้โปรวันพุธ)
   t2Sys: true,
   defaultPay: 'transfer', // ให้แม่บ้านถือเงินสดน้อยที่สุด
+  transferTip: true, // 💝 v176 ลูกค้าโอนเกิน = ทิปของแม่บ้าน (จ่ายรวมเงินเดือนวันที่ 1) · ทิปเงินสดไม่ต้องลง
   pulse: { mode: 'sol', solUrl: 'https://backoffice.otteri-sol.com/dashboard', maxPerShot: 15, stacks: 0, dryMinPer10: {}, washBusyMin: 35, dayStartHour: 9, solMap: { top: ['', '', '', '', '', '', '', '', 'D4', 'D6'], bottom: ['W1', 'W2', 'W3', 'W4', 'W6', 'W7', 'W8', 'D1', 'D5', 'D7'] } },
 });
 
@@ -1038,7 +1039,7 @@ function exportMonthlyExcel(orders, config, year, month) {
   sheetDaily.push(['รวม', '', sum.count, sum.total, sum.cash, sum.transfer, sum.lineDiscount, sum.promoDiscount, sum.delivery, sum.fold, sum.foldJobs]);
 
   // ชีต 3: รายการงานทั้งหมด
-  const sheetOrders = [['วันที่', 'เวลา', 'ลูกค้า', 'เบอร์โทร', 'แม่บ้าน', 'วิธีจ่าย', 'ยอดรวม', 'เงินสด', 'เงินโอน', 'ค่าซัก', 'ค่าอบ', 'น้ำยา', 'ค่าพับ', 'ตะกร้าพับ', 'ค่าส่ง', 'โซนส่ง', 'ส่วนลดคูปอง', 'ส่วนลดโปร', 'เก็บเงินแล้ว', 'หมายเหตุ']];
+  const sheetOrders = [['วันที่', 'เวลา', 'ลูกค้า', 'เบอร์โทร', 'แม่บ้าน', 'วิธีจ่าย', 'ยอดรวม', 'เงินสด', 'เงินโอน', 'ค่าซัก', 'ค่าอบ', 'น้ำยา', 'ค่าพับ', 'ตะกร้าพับ', 'ค่าส่ง', 'โซนส่ง', 'ส่วนลดคูปอง', 'ส่วนลดโปร', 'เก็บเงินแล้ว', 'หมายเหตุ'].concat(config.transferTip ? ['ทิป (โอนเกิน)', 'ทิปของ'] : [])];
   inMonth.forEach(o => {
     const x = orderBreakout(o, config);
     const d = new Date(o.createdAt);
@@ -1050,13 +1051,20 @@ function exportMonthlyExcel(orders, config, year, month) {
       o.paymentMethod === 'account' ? accountPayText(o, config) : o.paymentMethod === 'transfer' ? 'โอน' : o.paymentMethod === 'split' ? 'สด+โอน' : 'เงินสด',
       x.total, x.cash, x.transfer, x.wash, x.dry, x.extras, x.fold, x.foldBaskets, x.delivery, zone,
       x.lineDiscount, x.promoDiscount, o.collected ? 'เก็บแล้ว' : 'รอเก็บ', o.note || '',
-    ]);
+    ].concat(config.transferTip ? [o.tip || 0, o.tip > 0 ? (o.tipBy || o.staffName || '') : ''] : []));
   });
 
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(sheetSummary), 'สรุปรวม');
   window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(sheetDaily), 'รายวัน');
   window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(sheetOrders), 'รายการงาน');
+  if (config.transferTip) { // 💝 v176 ทิปแม่บ้าน (ลูกค้าโอนเกิน) — จ่ายรวมเงินเดือนวันที่ 1
+    const by = {}; inMonth.filter(o => o.tip > 0).forEach(o => { const k = o.tipBy || o.staffName || '-'; (by[k] = by[k] || { n: 0, sum: 0 }); by[k].n++; by[k].sum += o.tip; });
+    const sheetTips = [['ทิปแม่บ้าน (ลูกค้าโอนเกิน)', label], [], ['แม่บ้าน', 'จำนวนใบ', 'ทิปรวม']];
+    Object.keys(by).sort().forEach(k => sheetTips.push([k, by[k].n, by[k].sum]));
+    sheetTips.push(['รวม', Object.values(by).reduce((a, v) => a + v.n, 0), Object.values(by).reduce((a, v) => a + v.sum, 0)]);
+    window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(sheetTips), 'ทิปแม่บ้าน');
+  }
   window.XLSX.writeFile(wb, `${config.brand}-${year}-${String(month + 1).padStart(2, '0')}.xlsx`);
 }
 
@@ -1865,6 +1873,11 @@ const MM_DICT = {
   // 🧾 v171 ใบรายงานเข้ากลุ่ม
   'กำลังทำใบรายงาน…': 'အစီရင်ခံစာ ပြင်ဆင်နေသည်…',
   'แตะเพื่อเปิดใบรายงาน': 'အစီရင်ခံစာ ဖွင့်ရန် နှိပ်ပါ',
+  // 💝 v176 ทิป (Otteri) — รอพนักงานพม่าตรวจคำแปล
+  'ลูกค้าโอนเกิน = ทิป': 'ဖောက်သည် ပိုလွှဲ = ဘောက်ဆူး',
+  'ทิป': 'ဘောက်ဆူး',
+  'ลูกค้าโอนรวม': 'ဖောက်သည် လွှဲစုစုပေါင်း',
+  'ทิปเป็นของแม่บ้าน จ่ายรวมเงินเดือนวันที่ 1 · ทิปเงินสดไม่ต้องลง': 'ဘောက်ဆူးသည် ဝန်ထမ်းအတွက် · ၁ ရက်နေ့ လစာနှင့်အတူ ပေးမည် · ငွေသား ဘောက်ဆူး မှတ်ရန်မလို',
   'ใบรายงานนี้ส่งเข้ากลุ่ม ไม่ต้องส่งลูกค้า': 'ဤအစီရင်ခံစာကို Group သို့ပို့ပါ · ဖောက်သည်ထံ မပို့ရ',
   '💳 ลูกค้าจ่ายมาแบบไหน': '💳 ဖောက်သည် ဘယ်လိုပေးလဲ',
   '💳 โอน': '💳 ငွေလွှဲ',
@@ -5088,6 +5101,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
   const [paymentMethod, setPaymentMethod] = useState(seed?.paymentMethod || config.defaultPay || 'cash');
   const [splitCash, setSplitCash] = useState(seed?.cashAmount != null ? String(seed.cashAmount) : '');
   const [splitTransfer, setSplitTransfer] = useState(seed?.transferAmount != null ? String(seed.transferAmount) : '');
+  const [tipAmt, setTipAmt] = useState(seed?.tip ? String(seed.tip) : ''); // 💝 v176
   const [note, setNote] = useState(seed?.note || '');
   const [deliveryZone, setDeliveryZone] = useState(seed?.deliveryZone || null);
   const seedZone = seed?.deliveryZone || null; // โซนเดิมของใบงานที่เปิดแก้ — ถ้าเป็นโซนที่ซ่อนแล้ว ยังโชว์ปุ่มให้เห็นว่าเลือกอยู่
@@ -5112,8 +5126,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     if (!clientIdRef.current) clientIdRef.current = 'c' + Date.now() + Math.random().toString(36).slice(2, 7);
     saveOrderDraft(config.brand, { clientId: clientIdRef.current, customerName: name, customerPhone: phone, clothCount, washItems, dryItems, detergentQty, softenerQty,
       foldBaskets, noFold, paymentMethod, cashAmount: splitCash === '' ? null : Number(splitCash), transferAmount: splitTransfer === '' ? null : Number(splitTransfer),
-      note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, hadPhoto: !!basketPhoto, accountId: accountId || null });
-  }, [name, phone, clothCount, washItems, dryItems, detergentQty, softenerQty, foldBaskets, noFold, paymentMethod, splitCash, splitTransfer, note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, basketPhoto, accountId]);
+      note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, hadPhoto: !!basketPhoto, accountId: accountId || null, tip: tipAmt === '' ? null : Number(tipAmt) });
+  }, [name, phone, clothCount, washItems, dryItems, detergentQty, softenerQty, foldBaskets, noFold, paymentMethod, splitCash, splitTransfer, note, deliveryZone, riderId, fromKev, fromLine, useLinePromo, pickupTime, basketPhoto, accountId, tipAmt]);
   const [customDateTime, setCustomDateTime] = useState(() => {
     if (backdateMode) {
       const now = new Date(), b = new Date(backdateDay);
@@ -5211,6 +5225,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
     internalCustom: internalType && customAmt > 0 ? customAmt : null,
   };
   const breakdown = calculateBreakdown(tempOrder, config);
+  const tipNum = parseInt(tipAmt, 10) || 0; // 💝 v176
   const total = breakdown.total;
   const hasAnyItem = washItems.length > 0 || dryItems.length > 0 || (detergentQty > 0) || (softenerQty > 0) || (foldBaskets > 0);
   // Teddy 2 บังคับใส่เบอร์ลูกค้า (ใช้ติดต่อกลับ/ตามงาน)
@@ -5398,6 +5413,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
       accountId: acct ? acct.id : null,
       cashAmount: !acct && paymentMethod === 'split' ? splitCashNum : null,
       transferAmount: !acct && paymentMethod === 'split' ? splitTransferNum : null,
+      // 💝 v176 ทิป (ลูกค้าโอนเกิน) — ไม่รวมในยอดงาน
+      tip: config.transferTip && !internalType && !acct && (paymentMethod === 'transfer' || paymentMethod === 'split') && tipNum > 0 ? tipNum : null,
+      tipBy: config.transferTip && !internalType && !acct && (paymentMethod === 'transfer' || paymentMethod === 'split') && tipNum > 0 ? ((editingOrder && editingOrder.tipBy) || ((currentStaffLS(config) || {}).name) || '') : null,
       cashReceived: total,
       note: note.trim() || '',
       deliveryZone: deliveryZone || null,
@@ -6011,6 +6029,19 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, inter
                   </div>
                 );
               })()}
+            </div>
+          )}
+
+          {/* 💝 v176 ลูกค้าโอนเกิน = ทิปของแม่บ้าน (Otteri) · ทิปเงินสดไม่ต้องลง */}
+          {config.transferTip && (paymentMethod === 'transfer' || paymentMethod === 'split') && (
+            <div data-tip-box className="rounded-2xl px-3 py-2.5 border border-pink-200 bg-pink-50">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-sm font-extrabold text-pink-800">💝 {tr(config, 'ลูกค้าโอนเกิน = ทิป')}</span>
+                <span className="text-sm font-bold text-pink-700">฿</span>
+                <input type="number" inputMode="numeric" value={tipAmt} onChange={e => setTipAmt(e.target.value.replace(/[^\d]/g, ''))} placeholder="0" aria-label={tr(config, 'ทิป')}
+                  className="w-24 px-3 py-2 bg-white rounded-xl border-2 border-pink-200 focus:border-pink-400 outline-none text-lg font-bold text-pink-700 text-right" />
+              </div>
+              <p className="text-[11px] text-pink-700 mt-1">{tipNum > 0 ? `${tr(config, 'ลูกค้าโอนรวม')} ฿${formatMoney((paymentMethod === 'split' ? (parseFloat(splitTransfer) || 0) : total) + tipNum)} · ` : ''}{tr(config, 'ทิปเป็นของแม่บ้าน จ่ายรวมเงินเดือนวันที่ 1 · ทิปเงินสดไม่ต้องลง')}</p>
             </div>
           )}
 
@@ -6754,6 +6785,12 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
                   {internal ? '🔧 งานภายใน (ไม่ใช่รายได้)' : order.paymentMethod === 'account' ? '🏢 ' + accountPayText(order, config) : (order.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด')}
                 </p>
               </div>
+              {order.tip > 0 && (
+                <div className="col-span-2" data-tip-line>
+                  <p className="text-xs text-slate-500">ทิป (ลูกค้าโอนเกิน)</p>
+                  <p className="font-bold text-sm" style={{ color: '#BE185D' }}>💝 ฿{formatMoney(order.tip)} · ขอบคุณค่ะ 🙏</p>
+                </div>
+              )}
               {order.deliveryZone && (
                 <div className="col-span-2">
                   <p className="text-xs text-slate-500">บริการ Delivery</p>
@@ -13395,6 +13432,33 @@ function OwnerDashboardT2({ config, orders, collections, tokenExchanges, staffLi
             </T2Box>
             {A.dlist.some(t => t.paymentMethod === 'transfer') && <T2DetList config={config} k="transfer" items={A.dlist.filter(t => t.paymentMethod === 'transfer')} title={`ขายน้ำยา (โอน) · ${R.label}`} />}
             {history(m => m === 'transfer', 'transfer')}
+            {config.transferTip && (() => { // 💝 v176 ทิปแม่บ้าน (ลูกค้าโอนเกิน) — จ่ายรวมเงินเดือนวันที่ 1
+              const tl = A.list.filter(o => (o.tip || 0) > 0);
+              const by = {}; tl.forEach(o => { const k = o.tipBy || o.staffName || '-'; by[k] = (by[k] || 0) + (o.tip || 0); });
+              const sum = tl.reduce((a, o) => a + (o.tip || 0), 0);
+              const pend = trPendList.reduce((a, o) => a + (o.tip || 0), 0);
+              return (
+                <T2Box k="transfer" title={`💝 ทิปแม่บ้าน · ${R.label}`} right={<span className="text-xs font-bold text-slate-500">จ่ายรวมเงินเดือนวันที่ 1</span>}>
+                  <div data-tip-owner>
+                    {sum > 0 ? (
+                      <div className="divide-y divide-slate-100">
+                        {Object.entries(by).sort((a, b) => b[1] - a[1]).map(([n, v]) => (
+                          <div key={n} className="flex items-center justify-between py-2">
+                            <span className="text-sm font-bold text-slate-800">{n}</span>
+                            <span className="text-sm font-extrabold tabular-nums" style={{ color: '#BE185D' }}>฿{formatMoney(v)}</span>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between pt-2">
+                          <span className="text-sm font-extrabold text-slate-900">รวม {tl.length} ใบ</span>
+                          <span className="text-base font-extrabold tabular-nums" style={{ color: '#BE185D' }}>฿{formatMoney(sum)}</span>
+                        </div>
+                      </div>
+                    ) : <p className="text-sm text-slate-500">ไม่มีทิปใน{R.label}</p>}
+                    <p className="text-xs text-slate-500 mt-1.5">ลูกค้าโอนเกินยอด = ทิป · ไม่นับเป็นรายได้ร้าน{pend > 0 ? ` · ใบโอนที่ยังไม่เคลียร์ ในบัญชีจะเกินอีก ฿${formatMoney(pend)} (ทิป)` : ''}</p>
+                  </div>
+                </T2Box>
+              );
+            })()}
             {listHead(`ใบงานโอน · ${R.label}`, A.list.filter(o => orderTransferPart(o, config) > 0).length)}
             {list(A.list.filter(o => orderTransferPart(o, config) > 0))}
           </div>
