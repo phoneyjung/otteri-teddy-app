@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v188-2026-11-02';
+  window.APP_VERSION = 'v189-2026-11-02';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -502,13 +502,14 @@ const COIN_POINTS = {
   },
   teddy: {
     tokenMode: true, tokenValue: 10, unitName: 'โทเคน',
-    machines: [
+    chipSize: true, // v189 ชิปเลือกเครื่องขึ้นขนาดด้วย (ซัก 1 · 17kg)
+    machines: [ // v189 เจ้าของแก้: ซัก 1 = 17kg · ซัก 2 = 13kg · ซัก 3–6 = 10kg
       { id: 'w1', label: 'ซัก 1', size: '17kg' },
-      { id: 'w2', label: 'ซัก 2', size: '10kg' },
+      { id: 'w2', label: 'ซัก 2', size: '13kg' },
       { id: 'w3', label: 'ซัก 3', size: '10kg' },
       { id: 'w4', label: 'ซัก 4', size: '10kg' },
       { id: 'w5', label: 'ซัก 5', size: '10kg' },
-      { id: 'w6', label: 'ซัก 6', size: '13kg' },
+      { id: 'w6', label: 'ซัก 6', size: '10kg' },
       { id: 'd1', label: 'อบ 1', size: '15kg' },
       { id: 'd2', label: 'อบ 2', size: '15kg' },
       { id: 'd3', label: 'อบ 3', size: '15kg' },
@@ -2362,6 +2363,11 @@ const MM_DICT = {
   'นับเงิน': 'ငွေရေတွက်',
   'ค่าเครื่อง': 'စက်ခ',
   'ตู้แลกเสีย': 'အကြွေလဲစက် ပျက်',
+  'ตู้แลกเสีย / ไม่มีเงินสด': 'အကြွေလဲစက် ပျက် / ငွေသားမရှိ', // v189
+  'ให้ลูกค้าสแกนจ่ายเข้าบัญชีร้าน': 'ဖောက်သည်ကို ဆိုင်အကောင့်သို့ စကင်ဖတ်ပြီး ပေးချေခိုင်းပါ', // v189
+  'ดูสลิปว่าโอนสำเร็จก่อน แล้วค่อยให้ลูกค้า': 'လွှဲပြီးကြောင်း စလစ်ကို အရင်ကြည့်ပြီးမှ ဖောက်သည်ကို ပေးပါ', // v189
+  'จำนวนโทเคนที่ให้': 'ပေးသော တိုကင် အရေအတွက်', // v189
+  '(ตู้แลกเสีย / ไม่มีเงินสด)': '(အကြွေလဲစက် ပျက် / ငွေသားမရှိ)', // v189
   'รอเคลียร์': 'ရှင်းရန်ကျန်',
   'ใกล้หมด': 'ကုန်ခါနီး',
   'ลูกค้าใช้โปร': 'ဖောက်သည် ပရိုမိုးရှင်းသုံး',
@@ -4863,7 +4869,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
           menuOn(config, 'promoCredit') && { k: 'promo', icon: '🎟️', title: tr(config, 'ลูกค้าใช้โปร'), sub: tr(config, pulseOn(config) ? 'ซักเอง ไม่ฝาก' : 'สแกนเครดิตให้ลูกค้า'), on: showPromoForm, click: () => setShowPromoForm(v => !v) },
           { k: 'det', icon: '🧴', title: tr(config, 'ขายน้ำยา'), sub: detTodayN > 0 ? <><b className="text-slate-800">{detTodayN}</b> {tr(config, 'ครั้งวันนี้')}</> : tr(config, 'ไม่ใช่รับงาน'), on: false, click: () => setDetSheet(true) },
           exOn && { k: 'ex', icon: '🪙', title: tr(config, exchangeName(config)), warn: low,
-            sub: low ? `${tr(config, exchangeUnit(config))} ${tr(config, 'ใกล้หมด')}` : activeTokenSum > 0 ? <><b className={showTokenForm ? 'text-white' : 'text-slate-800'}>฿{formatMoney(activeTokenSum)}</b> {tr(config, 'รอเคลียร์')}</> : tr(config, 'ตู้แลกเสีย'),
+            sub: low ? `${tr(config, exchangeUnit(config))} ${tr(config, 'ใกล้หมด')}` : activeTokenSum > 0 ? <><b className={showTokenForm ? 'text-white' : 'text-slate-800'}>฿{formatMoney(activeTokenSum)}</b> {tr(config, 'รอเคลียร์')}</> : tr(config, 'ตู้แลกเสีย / ไม่มีเงินสด'), // v189
             on: showTokenForm, click: () => setShowTokenForm(v => !v) },
         ].filter(Boolean);
         const row = tiles.length !== 3;
@@ -5057,7 +5063,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
               🪙
             </div>
             <div className="text-left flex-1">
-              <p className="font-bold text-amber-900 text-sm">{tr(config, exchangeName(config))} {tr(config, '(ตู้แลกเหรียญเสีย)')}</p>
+              <p className="font-bold text-amber-900 text-sm">{tr(config, exchangeName(config))} {tr(config, '(ตู้แลกเสีย / ไม่มีเงินสด)')}</p>
               {activeTokenSum > 0 ? (
                 <p className="text-xs text-amber-700">{tr(config, 'รอเคลีย:')} ฿{formatMoney(activeTokenSum)} • {activeTokens.length} {tr(config, 'ครั้ง')}</p>
               ) : (
@@ -5119,6 +5125,25 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
                   className="w-full px-4 py-3 bg-amber-50 rounded-xl border-2 border-amber-200 focus:bg-white outline-none transition text-lg font-bold text-slate-900"
                 />
               </div>
+
+              {/* 💳 v189 เลือกโอน → QR บัญชีร้านพร้อมยอด · ลูกค้าโอนเข้าร้านตรง ไม่ผ่านบัญชีแม่บ้าน */}
+              {tokenPayment === 'transfer' && amountNum > 0 && (() => {
+                const qrSrc = buildPromptPayQr(config.brand, amountNum) || PAYMENT_QRS[config.brand] || null;
+                if (!qrSrc) return null;
+                return (
+                  <div className="rounded-xl p-3 border-2 border-violet-300 bg-violet-50 flex items-center gap-3" data-token-qr>
+                    <div className="bg-white p-1.5 rounded-lg border border-slate-200 flex-none">
+                      <img src={qrSrc} alt="QR" style={{ width: '132px', height: '132px', display: 'block' }} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-extrabold text-violet-800">📱 {tr(config, 'ให้ลูกค้าสแกนจ่ายเข้าบัญชีร้าน')}</p>
+                      <p className="text-2xl font-extrabold text-slate-900 leading-tight">฿{formatMoney(amountNum)}</p>
+                      <p className="text-[11px] text-slate-600">{PAYMENT_ACCOUNT_NAMES[config.brand] || ''}</p>
+                      <p className="text-[11px] font-bold text-rose-600 mt-1">{tr(config, 'ดูสลิปว่าโอนสำเร็จก่อน แล้วค่อยให้ลูกค้า')}</p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Teddy: 2 ช่อง — Token ของร้าน + เหรียญ 10 จริง */}
               {config.hasToken && amountNum > 0 && (
@@ -5776,8 +5801,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
       backdated: isBackdated || !!(editingOrder && editingOrder.backdated),
       enteredAt: isBackdated ? Date.now() : ((editingOrder && editingOrder.enteredAt) || null),
       clothCount: clothCount.trim() || '',
-      washItems: washItems || [],
-      dryItems: dryItems || [],
+      washItems: fixType ? [] : (washItems || []), // 🪙 v189 โทเคนแก้ปัญหา = จำนวนโทเคน + เหตุผล ไม่มีเครื่อง
+      dryItems: fixType ? [] : (dryItems || []),
       detergentQty: detergentQty || 0,
       softenerQty: softenerQty || 0,
       foldBaskets: internalType || (acct && acct.noFold) ? 0 : (foldBaskets || 0),
@@ -5800,7 +5825,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
       webCode: webPicked ? webPicked.code : (editingOrder && editingOrder.webCode) || null,
       internalType: internalType || null,
       internalReason: internalType ? internalReason.trim() : '',
-      internalMachines: internalType || simpleAcct ? internalMachines : null, // v188 งานเกอิชา (ฟอร์มสั้น) เก็บเครื่องที่แตะ → ติ๊ก SOL ตรงเครื่อง
+      internalMachines: internalType || simpleAcct ? (fixType ? [] : internalMachines) : null, // v188 งานเกอิชา (ฟอร์มสั้น) เก็บเครื่องที่แตะ → ติ๊ก SOL ตรงเครื่อง
       internalCustom: internalType && customAmt > 0 ? customAmt : null,
       collected: editingOrder?.collected || false,
       collectedAt: editingOrder?.collectedAt || null,
@@ -5935,7 +5960,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
               {(simpleFree ? config.simpleInternal.map(id => INTERNAL_TYPES.find(t => t.id === id)).filter(Boolean) : internalTypesFor(config)).filter(t => freeOk || !internalOwnerOnly(config).includes(t.id)).map(t => {
                 const locked = !freeOk && internalOwnerOnly(config).includes(t.id);
                 return (
-                  <button key={t.id} data-itype={t.id} onClick={() => { if (locked) { alert('🔒 ' + t.label + ' — เฉพาะเจ้าของ'); return; } if (t.id !== internalType && (t.id === 'mine' || internalType === 'mine' || (!freeOk && (t.id === 'clean' || internalType === 'clean')))) { setInternalMachines([]); if (!freeOk) { setWashItems([]); setDryItems([]); } } setInternalType(t.id); }}
+                  <button key={t.id} data-itype={t.id} onClick={() => { if (locked) { alert('🔒 ' + t.label + ' — เฉพาะเจ้าของ'); return; } if (t.id !== internalType && (t.id === 'mine' || internalType === 'mine' || (!freeOk && (t.id === 'clean' || internalType === 'clean')))) { setInternalMachines([]); if (!freeOk) { setWashItems([]); setDryItems([]); } } if (t.id !== internalType && (t.id === 'fix' || internalType === 'fix')) setInternalCustom(''); setInternalType(t.id); }}
                     className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${internalType === t.id ? 'bg-slate-900 text-white border-slate-900' : locked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
                     {locked ? '🔒' : t.emoji} {freeOk ? internalLabelOf(config, t.id) : tr(config, internalLabelOf(config, t.id))}
                   </button>
@@ -5944,7 +5969,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
             </div>}
             {!freeOk && internalType === 'clean' && <p className="text-[11px] font-bold text-slate-700 mb-3">{tr(config, 'ล้างได้เฉพาะเครื่องซัก เครื่องละ 1 ครั้งต่อ 7 วัน')}</p>}
             {internalType === 'mine' && !simpleFree && <p className="text-[11px] font-bold text-slate-700 mb-1">{tr(config, 'ฟรี · ไม่นับเป็นรายได้ · เลือกซัก/อบด้านล่าง แล้วเริ่มเครื่องเหมือนงานลูกค้า')}</p>}
-            {(internalType !== 'mine' || simpleFree) && <React.Fragment>
+            {(internalType !== 'mine' || simpleFree) && !fixType && <React.Fragment>
             <p className="text-xs font-bold text-slate-700 mb-1.5">{freeOk ? 'เครื่องที่ทำ' : internalType === 'clean' ? tr(config, 'เครื่องซักที่จะล้าง') : tr(config, 'เครื่องที่ทำ')} {fixType ? <span className="text-slate-500">({tr(config, 'ถ้ามี')})</span> : <span className="text-rose-600">*{tr(config, 'บังคับ')}</span>} ({tr(config, 'เลือกได้หลายเครื่อง')})</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
@@ -5956,7 +5981,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
                 return (
                   <button key={m.id} onClick={() => { if (lock && lock.dry && !on) { alert('🧼 แม่บ้านล้างได้เฉพาะเครื่องซัก'); return; } if (lock && !on) { alert(`🧼 ${m.label} ล้างไปแล้วเมื่อ ${new Date(lock.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}\nล้างได้อีกครั้ง ${until}`); return; } setInternalMachines(on ? internalMachines.filter(x => x !== m.label) : [...internalMachines, m.label]); }}
                     className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 ${on ? (lock ? 'bg-rose-600 text-white border-rose-600' : 'bg-slate-900 text-white border-slate-900') : lock ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
-                    {m.label}{lock ? ` 🔒${until}` : ''}
+                    {m.label}{(COIN_POINTS[config.brand] || {}).chipSize && m.size ? ` · ${m.size}` : ''}{lock ? ` 🔒${until}` : ''}
                   </button>
                 );
               })}
@@ -5984,7 +6009,25 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
                 <input type="text" value={internalReason} onChange={e => setInternalReason(e.target.value)} data-ireason
                   className={`w-full px-3 py-2.5 rounded-xl border-2 text-sm ${internalReason.trim() ? 'bg-white border-slate-300' : 'bg-rose-50 border-rose-300'}`}
                   placeholder={tr(config, fixType ? 'เช่น เครื่องกินโทเคน ให้ลูกค้าใหม่ 4 อัน' : internalType === 'other' && simpleFree ? 'เช่น เครื่องหยุดกลางคัน ซักให้ลูกค้าใหม่' : 'เช่น ทดสอบหลังช่างซ่อม')} />
-                {!simpleFree && <React.Fragment>
+                {!simpleFree && fixType && (() => { // 🪙 v189 ใส่เป็นจำนวนโทเคน (เก็บเป็นบาท = โทเคน × ราคาโทเคน เหมือนเดิม)
+                  const tv = (COIN_POINTS[config.brand] || {}).tokenValue || 10;
+                  const qty = customAmt > 0 ? Math.round(customAmt / tv) : 0;
+                  const setQty = (n) => setInternalCustom(n > 0 ? String(n * tv) : '');
+                  return (
+                    <React.Fragment>
+                      <p className="text-xs font-bold text-slate-700 mb-1 mt-3">{tr(config, 'จำนวนโทเคนที่ให้')} <span className="text-rose-600">*{tr(config, 'บังคับ')}</span></p>
+                      <div className="flex items-center gap-2" data-itoken>
+                        <button type="button" onClick={() => setQty(Math.max(0, qty - 1))} data-itoken-minus className="w-11 h-11 rounded-full bg-white border-2 border-slate-300 text-xl font-extrabold text-slate-700 active:scale-90">−</button>
+                        <input type="number" inputMode="numeric" value={qty > 0 ? String(qty) : ''} onChange={e => setQty(Math.max(0, parseInt(e.target.value, 10) || 0))} onFocus={e => e.target.select()} data-icustom
+                          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-lg font-bold text-center" placeholder="0" />
+                        <button type="button" onClick={() => setQty(qty + 1)} data-itoken-plus className="w-11 h-11 rounded-full bg-amber-500 text-white text-xl font-extrabold active:scale-90">+</button>
+                        <span className="text-sm font-extrabold text-slate-700">🪙 {tr(config, 'โทเคน')}</span>
+                      </div>
+                      {qty > 0 && <p className="text-xs font-extrabold text-slate-800 mt-1">= ฿{formatMoney(customAmt)}</p>}
+                    </React.Fragment>
+                  );
+                })()}
+                {!simpleFree && !fixType && <React.Fragment>
                 <p className="text-xs font-bold text-slate-700 mb-1 mt-3">{tokenShop(config) ? tr(config, fixType ? 'จำนวนโทเคนที่ให้ (บาท)' : 'ยอดโทเคนที่หยอด (ถ้าไม่เลือกเครื่องด้านล่าง)') : 'กำหนดยอดเครดิตเอง (ถ้าไม่เลือกเครื่องด้านล่าง)'}</p>
                 <input type="number" inputMode="numeric" value={internalCustom} onChange={e => setInternalCustom(e.target.value)} onFocus={e => e.target.select()} data-icustom
                   className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-lg font-bold text-right" placeholder="0" />
@@ -6187,7 +6230,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </Field>
         </Section>}
 
-        {!autoItems && <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
+        {!autoItems && !fixType && <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
           <div className="space-y-3">
             {config.washMachines.map(m => (
               <WashMachineRow key={m.size} machine={m} hasMultipleTemps={hasMultipleTemps} getQty={getQty} washItems={washItems} onUpdate={(temp, delta) => updateItem(washItems, setWashItems, m.size, delta, temp)} />
@@ -6195,7 +6238,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </div>
         </Section>}
 
-        {!autoItems && <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
+        {!autoItems && !fixType && <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
           <div className="space-y-2">
             {config.dryMachines.map(m => {
               const qty = getQty(dryItems, m.size, 'cold');
