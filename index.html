@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v189-2026-11-02';
+  window.APP_VERSION = 'v190-2026-11-02';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -424,6 +424,7 @@ const TEDDY_CONFIG = {
   hasKev: true,
   tokenFix: true, // 🪙 v177 บิล 'โทเคนแก้ปัญหา' (แม่บ้านให้โทเคนแก้ปัญหาลูกค้า · บังคับเหตุผล)
   maidInternal: ['test'], // 🔧 v177 แม่บ้านทำบิลซ่อม/ทดสอบเครื่องเองได้ (เจ้าของไม่ได้อยู่ร้าน)
+  maidBackdate: true, // ⏪ v190 แม่บ้านลงย้อนหลังได้จากฟอร์ม (ลืมลงตอนลูกค้ามา)
   deliveryZones: [
     { id: 'free', label: 'ส่งฟรี 0฿ (ในมหาลัย)', price: 0, riderFee: 20, color: '#14B8A6', hidden: true }, // v170: ยังไม่มีโปรส่งฟรี → ไม่ให้เลือกตอนลง/แก้ออเดอร์ (ใบงานเก่ายังหาชื่อโซนนี้เจอ) · เริ่มโปรเมื่อไหร่ ลบ hidden: true ออก
     { id: 'green', label: 'เขียว (ใกล้สุด)', price: 20, color: '#10B981' },
@@ -456,6 +457,7 @@ const TEDDY2_CONFIG = {
   gradient: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)',
   linePromoDiscount: 50, // Teddy 2 ลดแอดไลน์ 50 (มากกว่า Teddy 1)
   tokenFix: false, maidInternal: [], // v177: บิลโทเคนแก้ปัญหา/ซ่อมโดยแม่บ้าน = เฉพาะ Teddy 1
+  maidBackdate: false, // v190 ลงย้อนหลังจากฟอร์ม = เฉพาะ Teddy 1 (Teddy 2 ยิงพัลส์ ใช้ลงย้อนหลังจากหน้าแรกเหมือนเดิม)
   pulse: { workerUrl: 'https://teddy-pulse.phoneyjung.workers.dev', maxPerShot: 12, stacks: 8, dryMinPer10: { 12: 7, 17: 6 }, washBusyMin: 45 }, // ⚡ ยิงพัลส์ผ่านระบบ EC (เปิด/ปิดที่ ตั้งค่า)
   washMachines: [
     { size: 12, count: 3, prices: { cold: 50, warm: 60, hot: 70 } },
@@ -1845,6 +1847,9 @@ const MM_DICT = {
   'ลงงานวันที่': 'ဤရက်အတွက် အလုပ်ထည့်',
   'ไม่มีรายการในวันนี้': 'ဤရက်တွင် စာရင်းမရှိပါ',
   'กำลังลงงานย้อนหลัง': 'နောက်ကြောင်းပြန် အလုပ်ထည့်နေသည်',
+  'ลืมลง? แตะเพื่อลงย้อนหลัง': 'မေ့သွားလား? နောက်ကြောင်းပြန်ထည့်ရန် နှိပ်ပါ', // v190
+  'ใช้เวลาตอนนี้': 'ယခုအချိန် သုံးမည်', // v190
+  'เลือกวัน-เวลาที่ทำจริง': 'တကယ်လုပ်ခဲ့သည့် ရက်-အချိန် ရွေးပါ', // v190
   'เลือกวัน-เวลาที่ลูกค้ามาจริง': 'ဖောက်သည် တကယ်လာသည့် ရက်နှင့်အချိန် ရွေးပါ',
   'ยืนยันลงงานย้อนหลัง': 'နောက်ကြောင်းပြန် အလုပ်ထည့်ရန် အတည်ပြု',
   'งานนี้ไม่ใช่ของวันนี้ ใช่ไหม? เช็ควันเวลาให้ถูกก่อนกดตกลง': 'ဒီအလုပ်က ဒီနေ့အလုပ် မဟုတ်ဘူးနော်? OK မနှိပ်ခင် ရက်နှင့်အချိန် စစ်ပါ',
@@ -5503,7 +5508,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
   // Default: ใช้เวลาปัจจุบัน (สำหรับงานใหม่) หรือเวลาเดิม (สำหรับการแก้ไข)
   // ⏪ ลงงานย้อนหลัง (เปิดจากหน้าแรกตอนดูวันก่อนหน้า) — แม่บ้านเลือกวันเวลาได้ แต่ต้องกดยืนยัน
   const backdateMode = !isEdit && typeof backdateDay === 'number';
-  const canPickTime = freeOk || backdateMode;
+  const maidBack = !freeOk && !isEdit && !backdateMode && !!config.maidBackdate; // ⏪ v190 Teddy 1: แม่บ้านแตะลงย้อนหลังในฟอร์มได้
+  const canPickTime = freeOk || backdateMode || maidBack;
   const [useCustomTime, setUseCustomTime] = useState(isEdit || backdateMode); // edit mode → เปิดให้แก้ได้เลย
   // 📝 v167: จำใบรับงานใหม่ที่กำลังกรอกไว้ในเครื่อง — แอปถูกปิด/รีโหลดระหว่างถ่ายรูป กลับมาทำต่อได้
   useEffect(() => {
@@ -5798,8 +5804,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
       moneyPhoto: moneyPhoto === null ? null : (moneyPhoto || ''),
       linePromoPhoto: linePromoPhoto === null ? null : (linePromoPhoto || ''),
       photoRef: !!(editingOrder && editingOrder.photoRef),
-      backdated: isBackdated || !!(editingOrder && editingOrder.backdated),
-      enteredAt: isBackdated ? Date.now() : ((editingOrder && editingOrder.enteredAt) || null),
+      backdated: isBackdated || (maidBack && useCustomTime && finalCreatedAt < Date.now() - 600000) || !!(editingOrder && editingOrder.backdated), // v190 แม่บ้านลงย้อนหลังวันเดียวกัน (>10 นาที) ก็ติดป้าย
+      enteredAt: isBackdated || (maidBack && useCustomTime && finalCreatedAt < Date.now() - 600000) ? Date.now() : ((editingOrder && editingOrder.enteredAt) || null),
       clothCount: clothCount.trim() || '',
       washItems: fixType ? [] : (washItems || []), // 🪙 v189 โทเคนแก้ปัญหา = จำนวนโทเคน + เหตุผล ไม่มีเครื่อง
       dryItems: fixType ? [] : (dryItems || []),
@@ -5865,10 +5871,17 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
 
       <div className="px-5 py-5 space-y-5">
         {/* ⏪ แม่บ้านลงงานย้อนหลัง */}
-        {!freeOk && backdateMode && (
-          <div className="rounded-2xl p-4 shadow-lg border-2 border-amber-400" style={{background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'}}>
+        {maidBack && !useCustomTime && (
+          <button data-backdate-toggle onClick={() => { setCustomDateTime(toLocalInputValue(Date.now())); setUseCustomTime(true); }}
+            className="w-full rounded-2xl px-4 py-3 bg-white border-2 border-dashed border-amber-300 text-left active:scale-95 transition">
+            <p className="text-sm font-extrabold text-slate-800">🕐 {tr(config, 'เวลา: ตอนนี้')}</p>
+            <p className="text-sm font-bold text-amber-700">⏪ {tr(config, 'ลืมลง? แตะเพื่อลงย้อนหลัง')}</p>
+          </button>
+        )}
+        {!freeOk && (backdateMode || (maidBack && useCustomTime)) && (
+          <div className="rounded-2xl p-4 shadow-lg border-2 border-amber-400" data-backdate-box style={{background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'}}>
             <p className="font-extrabold text-amber-900 text-base mb-1">⏪ {tr(config, 'กำลังลงงานย้อนหลัง')}</p>
-            <p className="text-xs text-amber-800 mb-3">{tr(config, 'เลือกวัน-เวลาที่ลูกค้ามาจริง')}</p>
+            <p className="text-xs text-amber-800 mb-3">{tr(config, isInternal ? 'เลือกวัน-เวลาที่ทำจริง' : 'เลือกวัน-เวลาที่ลูกค้ามาจริง')}</p>
             <input
               type="datetime-local"
               value={customDateTime}
@@ -5879,6 +5892,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
             {!isNaN(new Date(customDateTime).getTime()) && (
               <p className="text-sm font-extrabold text-amber-900 mt-2 text-center">📅 {new Date(customDateTime).toLocaleString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} น.</p>
             )}
+            {maidBack && <button data-backdate-cancel onClick={() => setUseCustomTime(false)} className="mt-3 w-full py-2.5 rounded-xl bg-white text-amber-900 text-sm font-bold border border-amber-300 active:scale-95 transition">↩ {tr(config, 'ใช้เวลาตอนนี้')}</button>}
           </div>
         )}
 
