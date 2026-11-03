@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v195-2026-11-03';
+  window.APP_VERSION = 'v196-2026-11-03';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -7605,7 +7605,7 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
                 // 🧾 v193/v194 ท้ายใบงาน: ข้อความสั้น ชัด เด่น ให้คนเห็นแล้วสแกนแอดไลน์ + ติดต่อร้านได้ (ไม่มีไอดีไลน์)
                 const tf = config.ticketFooter;
                 const lineQr = tf.lineUrl ? buildLinkQrDataUrl(tf.lineUrl, 6, 6) : null;
-                const showPromo = !!(tf.linePromo && config.hasLinePromo && config.linePromoDiscount > 0 && !order.useLinePromo);
+                const showPromo = !!(tf.linePromo && config.hasLinePromo && config.linePromoDiscount > 0); // v196 ขึ้นทุกใบ (คนอื่นเห็นจะได้สแกน)
                 return (
                   <div data-ticket-footer style={{ borderTop: '2px dashed #000', paddingTop: '10px', textAlign: 'center' }}>
                     {tf.headline && <div data-ticket-headline style={{ background: '#000', color: '#fff', borderRadius: '12px', padding: '6px 10px 10px', fontSize: '52px', fontWeight: 900, lineHeight: 1.2 }}>{tf.headline}</div>}
