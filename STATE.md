@@ -116,7 +116,8 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 - Firestore: `pulseLogs` (1 doc = ยิง 1 ครั้ง, id = reqId, status confirmed/forced/sent/unknown/failed/void/refunded, v142+ มี kind/kg/temp/heat/dryMin/mismatch, v146+ refundReq{reason,note,by,at} / refundRejected{note,at} / statusBefore, refundedAt, refundReason, refundNote, refundReqBy) — ไม่ต้องแก้ Rules · `pulseDayNotes` (id = brand_YYYY-MM-DD)
 
 ## งานถัดไป
-- [ ] 🔴 (เจ้าของ) EC ระงับบัญชี Teddy 2 ชั่วคราว 3 พ.ย.: ปิด ⚡ ในแอปแล้ว → วาง Worker teddy-pulse v1.1 (Project docs) + ผูก KV ชื่อ STATE → รอ EC ปลดล็อก → ⚙️ ทดสอบการเชื่อมต่อ 1 ครั้ง → เปิด ⚡ คืน · ถาม EC: ล็อกอินพร้อมกันได้กี่ที่ / มี API หรือบัญชีย่อยไหม
+- [x] Worker teddy-pulse v1.1 ขึ้นแล้ว (3 พ.ย. 19:53 · version 3625e632 → b41b8972 พร้อม KV `teddy-pulse-state` ผูกชื่อ STATE · โค้ดตรงกับ Project docs ทุกไบต์ · secrets เดิมอยู่ครบ)
+- [ ] 🔴 EC ยังระงับบัญชี (ทดสอบ 19:55 → Worker พักเองถึง 20:55 · ล็อกอินไป 1 ครั้ง) · เจ้าของส่งข้อความหาทีม EC ขอปลด + ถามล็อกอินพร้อมกันได้กี่ที่ / มี API หรือบัญชีย่อยไหม · ระหว่างนี้ใบงานโอนใช้ 🪙 หยอดเหรียญแทน (v192)
 - [x] สร้าง Worker teddy-pulse + ใส่ EC_USER / EC_PASS (Secret) — 26 ต.ค.
 - [x] เพิ่ม Firestore Rules: pulseLogs, pulseDayNotes — 26 ต.ค.
 - [ ] ตั้งค่า → ⚡ → ทดสอบการเชื่อมต่อ → เปิดสวิตช์
