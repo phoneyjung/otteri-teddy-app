@@ -1,16 +1,17 @@
 # STATE: PLP Laundromat (otteri-teddy-app)
-อัปเดต: 2026-11-02 · เวอร์ชัน: v190 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
+อัปเดต: 2026-11-03 · เวอร์ชัน: v191 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
 
 ## ภาพรวม
 - Repo: github.com/phoneyjung/otteri-teddy-app · Live: https://phoneyjung.github.io/otteri-teddy-app/
 - ไฟล์หลัก: index.html (React 18 CDN + Babel 7.23.5 ในไฟล์เดียว), sw.js, manifest.json · `app.v6.js` ไม่ได้ถูกใช้แล้ว
 - เทคโนโลยี: Firebase Firestore compat 10.13.2 (โปรเจกต์ plp-laundromat) · GitHub Pages
-- ตัวกลางยิงพัลส์: Cloudflare Worker `teddy-pulse` (https://teddy-pulse.phoneyjung.workers.dev) — โค้ดเก็บใน Project docs ไม่อยู่ใน repo นี้
+- ตัวกลางยิงพัลส์: Cloudflare Worker `teddy-pulse` (https://teddy-pulse.phoneyjung.workers.dev) — v1.1 (3 พ.ย.) ใช้ KV binding `STATE` (ไม่บังคับ) · โค้ดเก็บใน Project docs ไม่อยู่ใน repo นี้
 
 ## เฟสตอนนี้
 v141 เพิ่ม ⚡ ยิงพัลส์เข้าเครื่องจากแอป (ผ่านเว็บ qrcode.ec.in.th) + กระทบยอดเปิดเครื่องรายวัน เฉพาะ Teddy 2
 v142 ใบรับงานเปลี่ยนเป็นผนังเครื่องเหมือนจริง: แตะเครื่อง → ซักเลือกน้ำ / อบเลือกความร้อน+เวลา → เริ่มเครื่อง
 v145 📷 QR บนใบงานที่ปริ้น → แม่บ้านสแกนด้วยกล้องมือถือ (หรือปุ่ม 📷 สแกนใบงาน ในแอป) → เข้าหน้าเริ่มเครื่องของงานนั้นทันที
+v191 🐢 Teddy 2 อ่านเว็บ EC เบาลง (3 พ.ย. EC ระงับบัญชีชั่วคราวเพราะ Worker ล็อกอินถี่): อ่าน 16 เครื่องทีละ 2 · ผลอ่านแชร์ทุกมือถือ 10 นาที (pulseDayNotes/ec_<ร้าน>_<วัน>) · หน้าแรกเช็กทุก 30 นาที · Worker แจ้งพัก = หยุดทันที + ขึ้น ⏸️ · คู่กับ Worker teddy-pulse v1.1 (session เดียว · ล็อกอิน ≤ 6/ชม. · เจอ temporarily unavailable = พัก 60 นาที)
 v190 ⏪ Teddy 1 แม่บ้านลงย้อนหลังได้จากฟอร์มเลย (รับงานใหม่ + บิลงานร้าน): ปุ่มบนสุด '🕐 เวลา: ตอนนี้ · ⏪ ลืมลง? แตะเพื่อลงย้อนหลัง' → เลือกวัน-เวลา · ย้อนเกิน 10 นาที = ป้าย ⏪ + เวลาที่บันทึกจริง ให้เจ้าของเห็น · ต่างวัน = ถามยืนยัน · อนาคตไม่ได้
 v189 🪙 Teddy 1: ขนาดเครื่องซักตามจริง (ซัก 1 = 17kg · ซัก 2 = 13kg · ซัก 3–6 = 10kg) + ชิปเลือกเครื่องขึ้นขนาด · 🪙 โทเคนแก้ปัญหา = ใส่จำนวนโทเคน (− / +) + เหตุผล ไม่ต้องเลือกเครื่อง · 🪙 แลก Token เลือก 💳 โอน → QR บัญชีร้านพร้อมยอด (ลูกค้าโอนเข้าร้านตรง ไม่ผ่านบัญชีแม่บ้าน)
 v185 🧾 Otteri งานภายในเหลือ 4 งาน (ล้างเครื่อง · ซ่อม/ทดสอบ · ปัญหาอื่นๆ/ซักซ้ำ · ผ้าเจ้าของ) + ฟอร์มสั้นสำหรับแอดมิน/เจ้าของ: แตะเครื่อง = แอปใส่รายการ+ราคาให้ · ซ่อม/ปัญหา ใส่เหตุผลช่องเดียว · ไม่มีกล่องเวลาใหญ่/ป้ายโปร/ส่วนเครื่องทุกขนาด · งานภายในไม่คิดโปรวัน/ดึก · หน้าแอดมินไม่มีปุ่มร้านเกอิชาแล้ว (เจ้าของลงเองจากรับงานปกติ) · ที่มา: เจ้าของ 2 พ.ย. 'แก้ให้มี แค่ 4 งานนี้ พอ · ใส่เท่าที่จำเป็นพอ'
@@ -114,6 +115,7 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 - Firestore: `pulseLogs` (1 doc = ยิง 1 ครั้ง, id = reqId, status confirmed/forced/sent/unknown/failed/void/refunded, v142+ มี kind/kg/temp/heat/dryMin/mismatch, v146+ refundReq{reason,note,by,at} / refundRejected{note,at} / statusBefore, refundedAt, refundReason, refundNote, refundReqBy) — ไม่ต้องแก้ Rules · `pulseDayNotes` (id = brand_YYYY-MM-DD)
 
 ## งานถัดไป
+- [ ] 🔴 (เจ้าของ) EC ระงับบัญชี Teddy 2 ชั่วคราว 3 พ.ย.: ปิด ⚡ ในแอปแล้ว → วาง Worker teddy-pulse v1.1 (Project docs) + ผูก KV ชื่อ STATE → รอ EC ปลดล็อก → ⚙️ ทดสอบการเชื่อมต่อ 1 ครั้ง → เปิด ⚡ คืน · ถาม EC: ล็อกอินพร้อมกันได้กี่ที่ / มี API หรือบัญชีย่อยไหม
 - [x] สร้าง Worker teddy-pulse + ใส่ EC_USER / EC_PASS (Secret) — 26 ต.ค.
 - [x] เพิ่ม Firestore Rules: pulseLogs, pulseDayNotes — 26 ต.ค.
 - [ ] ตั้งค่า → ⚡ → ทดสอบการเชื่อมต่อ → เปิดสวิตช์
@@ -140,6 +142,7 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 | - | ยังไม่มี | - | - |
 
 ## บันทึกการเปลี่ยนแปลง (ล่าสุดอยู่บน)
+- v191 (2026-11-03): tools/v191_ec_gentle.py · fetchEcDay ทีละ 2 · `PULSE_EC_PAUSE` / `pulseEcPaused()` จาก Worker 503 `blocked` (หยุดคิว · ไม่เรียกจนถึง retryAt) · machineIds ≤ 3 ส่ง `&fresh=1` · `loadEcShared` / `saveEcShared` (pulseDayNotes doc `ec_<brand>_<date>` kind 'ecShared' · 10 นาที · มีมือถืออื่นกำลังอ่าน (fetchingAt < 90 วิ) = รอ 25 วิแล้วใช้ผลนั้น) · refreshEc(true) = ปุ่ม 🔄 อ่านใหม่จริง · interval 30 นาที + document.hidden ไม่อ่าน · recon `ecPaused` → `[data-ec-paused]` · ⚙️ ทดสอบ = /ping + /status (ล็อกอิน n/6 · KV) · Worker v1.1 อยู่ใน Project docs · ทดสอบ pulse/harness191.mjs + test_worker_v11.mjs · harness158ad (ข้าม doc ec_*)
 - v190 (2026-11-02): tools/v190_teddy1_backdate.py · TEDDY `maidBackdate: true` (TEDDY2 ตั้ง false · Otteri ไม่มี) · NewOrderView `maidBack` = !freeOk && !isEdit && !backdateMode && config.maidBackdate → canPickTime · `[data-backdate-toggle]` / `[data-backdate-box]` (ใช้กล่องเหลืองเดิมของลงย้อนหลังจากหน้าแรก) / `[data-backdate-cancel]` · บันทึก backdated+enteredAt เมื่อต่างวัน หรือแม่บ้านเลือกย้อน >10 นาที · ฟอร์มแลก Token / คูปองแอดไลน์ ยังลงย้อนหลังไม่ได้ · ทดสอบ pulse/harness190.mjs
 - v189 (2026-11-02): tools/v189_teddy1_sizes_token_qr.py · COIN_POINTS.teddy w2 = 13kg · w6 = 10kg (เดิมสลับกัน) + `chipSize: true` (ชิป 'ซัก 1 · 17kg' เฉพาะ Teddy 1/โหมดฝึก) · fixType: ซ่อนชิปเครื่อง + ส่วนเครื่องซัก/อบ · ช่อง `[data-itoken]` (− / + / พิมพ์) เก็บ internalCustom = โทเคน × tokenValue · บันทึก internalMachines/washItems/dryItems ว่าง · สลับประเภทเข้า/ออก fix ล้างยอด · ฟอร์มแลก Token: โอน + ยอด → `[data-token-qr]` (buildPromptPayQr) · ปุ่ม '(ตู้แลกเสีย / ไม่มีเงินสด)' · MM 5 คำ · ทดสอบ pulse/harness189.mjs + harness178d/dv
 - v188 (2026-11-02): tools/v188_admin_geisha.py · หน้าแอดมิน 5 ปุ่ม (+ 🏢 ร้านเกอิชา) · `simpleAcct` / `simpleMode` · ฟอร์มเกอิชากล่องเดียว `[data-simple-acct]` แตะเครื่อง `[data-acct-machine]` + ⏱️ `topUpAmt` `[data-topup]` (±฿10 ลงอบรายการแรก) · ซ่อนข้อมูลลูกค้า/รูปตะกร้า/รายการเสริม/การชำระเงิน/เว็บ · บันทึก internalMachines ของงานเกอิชา (ติ๊ก SOL ตรงเครื่อง) · ใบรับงานเกอิชา (แอดมิน/เจ้าของ) เด้ง handleShare (ปิดธงใน timeout) · คู่มือแอดมิน 5 แผ่นใน shop-assets branch import/otteri-admin-guide · ทดสอบ: harness188 + ชุดเดิม 19 ชุด (TZ กลางวัน)
