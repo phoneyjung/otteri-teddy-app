@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v193-2026-11-03';
+  window.APP_VERSION = 'v194-2026-11-03';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -422,7 +422,7 @@ const TEDDY_CONFIG = {
   hasLinePromo: true,
   linePromoDiscount: 40,
   // 🧾 v193 ท้ายใบงาน = โปรโมทร้าน + ช่องทางติดต่อกลับ (เบอร์/โปรแอดไลน์ Teddy 1 รอเจ้าของยืนยัน)
-  ticketFooter: { slogan: 'ซักก็ไว ใส่ก็วิ๊ง! ที่เท็ดดี้', lineId: '@teddy.np', lineUrl: 'https://line.me/R/ti/p/@teddy.np', phone: '', hours: '', linePromo: false, perks: ['ฝากซัก อบ พับ ฟรี · จ่ายแค่ค่าเครื่อง', 'เดลิเวอรี่ 20–50฿'] },
+  ticketFooter: { headline: 'ซัก อบ พับ ฟรี!', sub: 'รับฝาก จ่ายแค่ค่าเครื่อง', lineUrl: 'https://line.me/R/ti/p/@teddy.np', phone: '', linePromo: false }, // v194 สั้น ชัด เด่น (ไม่มีไอดีไลน์)
   hasKev: true,
   tokenFix: true, // 🪙 v177 บิล 'โทเคนแก้ปัญหา' (แม่บ้านให้โทเคนแก้ปัญหาลูกค้า · บังคับเหตุผล)
   maidInternal: ['test'], // 🔧 v177 แม่บ้านทำบิลซ่อม/ทดสอบเครื่องเองได้ (เจ้าของไม่ได้อยู่ร้าน)
@@ -459,7 +459,7 @@ const TEDDY2_CONFIG = {
   gradient: 'linear-gradient(135deg, #4FD1C5 0%, #00A19A 100%)',
   linePromoDiscount: 50, // Teddy 2 ลดแอดไลน์ 50 (มากกว่า Teddy 1)
   // 🧾 v193 ท้ายใบงาน (ข้อมูลจาก FACTS-shop.md 29 ต.ค.)
-  ticketFooter: { slogan: 'ซักก็ไว ใส่ก็วิ๊ง! ที่เท็ดดี้', lineId: '@736vkujr', lineUrl: 'https://lin.ee/tLp9JME', phone: '083-145-6588', hours: 'แอดมินตอบ 09:00–21:00', linePromo: true, perks: ['เปิด 24 ชม. · ฝากซัก อบ พับ ฟรี จ่ายแค่ค่าเครื่อง', 'ส่งก่อน 20:00 ได้คืนวันเดียวกัน · เดลิเวอรี่ 20–50฿'] }, // leakcheck:allow เบอร์ร้าน (เจ้าของสั่งพิมพ์บนใบงาน 3 พ.ย.)
+  ticketFooter: { headline: 'ซัก อบ พับ ฟรี!', sub: 'รับฝาก จ่ายแค่ค่าเครื่อง · เปิด 24 ชม.', lineUrl: 'https://lin.ee/tLp9JME', phone: '083-145-6588', linePromo: true }, // v194 สั้น ชัด เด่น (ไม่มีไอดีไลน์) · leakcheck:allow เบอร์ร้าน (เจ้าของสั่งพิมพ์บนใบงาน 3 พ.ย.)
   tokenFix: false, maidInternal: [], // v177: บิลโทเคนแก้ปัญหา/ซ่อมโดยแม่บ้าน = เฉพาะ Teddy 1
   maidBackdate: false, // v190 ลงย้อนหลังจากฟอร์ม = เฉพาะ Teddy 1 (Teddy 2 ยิงพัลส์ ใช้ลงย้อนหลังจากหน้าแรกเหมือนเดิม)
   pulse: { workerUrl: 'https://teddy-pulse.phoneyjung.workers.dev', maxPerShot: 12, stacks: 8, dryMinPer10: { 12: 7, 17: 6 }, washBusyMin: 45 }, // ⚡ ยิงพัลส์ผ่านระบบ EC (เปิด/ปิดที่ ตั้งค่า)
@@ -7602,30 +7602,23 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
                 ) : null;
               })()}
               {config.ticketFooter ? (() => {
-                // 🧾 v193 ท้ายใบงาน: โปรโมทร้าน + ลูกค้าติดต่อกลับได้ (QR แอดไลน์ · ไอดีไลน์ · เบอร์โทร)
+                // 🧾 v193/v194 ท้ายใบงาน: ข้อความสั้น ชัด เด่น ให้คนเห็นแล้วสแกนแอดไลน์ + ติดต่อร้านได้ (ไม่มีไอดีไลน์)
                 const tf = config.ticketFooter;
-                const lineQr = tf.lineUrl ? buildLinkQrDataUrl(tf.lineUrl, 5, 6) : null;
+                const lineQr = tf.lineUrl ? buildLinkQrDataUrl(tf.lineUrl, 6, 6) : null;
                 const showPromo = !!(tf.linePromo && config.hasLinePromo && config.linePromoDiscount > 0 && !order.useLinePromo);
                 return (
-                  <div data-ticket-footer style={{ borderTop: '2px dashed #000', paddingTop: '8px', textAlign: 'center' }}>
-                    {tf.slogan && <div style={{ fontSize: '25px', fontWeight: 900, lineHeight: 1.25 }}>{tf.slogan}</div>}
-                    {(tf.perks || []).map((p, i) => <div key={'tfp' + i} style={{ fontSize: '18px', fontWeight: 600, lineHeight: 1.35 }}>{p}</div>)}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', border: '2px solid #000', borderRadius: '10px', padding: '10px 12px', margin: '8px 0 8px', textAlign: 'left' }}>
-                      {lineQr && (
-                        <div style={{ textAlign: 'center', flex: 'none' }}>
-                          <img src={lineQr} alt="LINE" data-line-qr style={{ display: 'block', imageRendering: 'pixelated' }} />
-                          <div style={{ fontSize: '16px', fontWeight: 800 }}>สแกนแอดไลน์</div>
-                        </div>
-                      )}
-                      <div style={{ lineHeight: 1.3 }}>
-                        <div style={{ fontSize: '21px', fontWeight: 900 }}>ผ้ามีปัญหา / สอบถาม</div>
-                        <div style={{ fontSize: '18px', fontWeight: 600 }}>ติดต่อร้านได้เลย</div>
-                        {tf.lineId && <div style={{ fontSize: '23px', fontWeight: 900, marginTop: '4px' }}>LINE {tf.lineId}</div>}
-                        {tf.phone && <div style={{ fontSize: '23px', fontWeight: 900 }}>โทร {tf.phone}</div>}
-                        {tf.hours && <div style={{ fontSize: '17px', fontWeight: 600 }}>{tf.hours}</div>}
+                  <div data-ticket-footer style={{ borderTop: '2px dashed #000', paddingTop: '10px', textAlign: 'center' }}>
+                    {tf.headline && <div data-ticket-headline style={{ background: '#000', color: '#fff', borderRadius: '12px', padding: '6px 10px 10px', fontSize: '52px', fontWeight: 900, lineHeight: 1.2 }}>{tf.headline}</div>}
+                    {tf.sub && <div style={{ fontSize: '22px', fontWeight: 800, margin: '6px 0 2px' }}>{tf.sub}</div>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', border: '3px solid #000', borderRadius: '12px', padding: '10px 14px', margin: '8px 0', textAlign: 'left' }}>
+                      {lineQr && <img src={lineQr} alt="LINE" data-line-qr style={{ display: 'block', flex: 'none', imageRendering: 'pixelated' }} />}
+                      <div style={{ lineHeight: 1.25 }}>
+                        <div style={{ fontSize: '34px', fontWeight: 900 }}>สแกนแอดไลน์</div>
+                        <div style={{ fontSize: '21px', fontWeight: 700, marginTop: '4px' }}>ผ้ามีปัญหา / สอบถาม</div>
+                        {tf.phone && <div style={{ fontSize: '26px', fontWeight: 900 }}>โทร {tf.phone}</div>}
                       </div>
                     </div>
-                    {showPromo && <div data-line-promo style={{ display: 'inline-block', fontSize: '20px', fontWeight: 800, border: '2px solid #000', borderRadius: '999px', padding: '2px 14px', marginBottom: '6px' }}>แอดไลน์ครั้งแรก ลดค่าซัก {config.linePromoDiscount}฿</div>}
+                    {showPromo && <div data-line-promo style={{ display: 'inline-block', fontSize: '21px', fontWeight: 800, border: '2px solid #000', borderRadius: '999px', padding: '2px 14px', marginBottom: '6px' }}>แอดไลน์ครั้งแรก ลดค่าซัก {config.linePromoDiscount}฿</div>}
                     <div style={{ fontSize: '17px' }}>{config.subtitle} · ขอบคุณที่ใช้บริการ</div>
                   </div>
                 );
