@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v194-2026-11-03';
+  window.APP_VERSION = 'v195-2026-11-03';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -7579,8 +7579,8 @@ function ReceiptView({ config, order, onBack, autoOpenTicket, onTicketOpened, is
 
               {order.note && <div style={{ fontSize: '19px', marginBottom: '8px' }}><b>หมายเหตุ:</b> {order.note}</div>}
 
-              {/* 📷 QR เริ่มเครื่อง — แม่บ้านสแกนแล้วเข้าหน้าเลือกเครื่องของงานนี้ (v145) */}
-              {pulseOn(config) && order.id && creditForOrder(order, config) > 0 && (() => {
+              {/* 📷 QR เริ่มเครื่อง — แม่บ้านสแกนแล้วเข้าหน้าเลือกเครื่องของงานนี้ (v145) · v195 ปิด (แม่บ้านกดผ่านแอปแล้ว) เปิดคืน = config.ticketStartQr */}
+              {config.ticketStartQr && pulseOn(config) && order.id && creditForOrder(order, config) > 0 && (() => {
                 const qrSrc = buildLinkQrDataUrl(jobQrUrl(config, order), 6, 12);
                 return qrSrc ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px', border: '3px solid #000', borderRadius: '10px', padding: '14px', margin: '4px 0 10px' }}>
