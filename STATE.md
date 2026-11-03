@@ -1,5 +1,5 @@
 # STATE: PLP Laundromat (otteri-teddy-app)
-อัปเดต: 2026-11-03 · เวอร์ชัน: v191 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
+อัปเดต: 2026-11-03 · เวอร์ชัน: v192 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
 
 ## ภาพรวม
 - Repo: github.com/phoneyjung/otteri-teddy-app · Live: https://phoneyjung.github.io/otteri-teddy-app/
@@ -11,6 +11,7 @@
 v141 เพิ่ม ⚡ ยิงพัลส์เข้าเครื่องจากแอป (ผ่านเว็บ qrcode.ec.in.th) + กระทบยอดเปิดเครื่องรายวัน เฉพาะ Teddy 2
 v142 ใบรับงานเปลี่ยนเป็นผนังเครื่องเหมือนจริง: แตะเครื่อง → ซักเลือกน้ำ / อบเลือกความร้อน+เวลา → เริ่มเครื่อง
 v145 📷 QR บนใบงานที่ปริ้น → แม่บ้านสแกนด้วยกล้องมือถือ (หรือปุ่ม 📷 สแกนใบงาน ในแอป) → เข้าหน้าเริ่มเครื่องของงานนั้นทันที
+v192 🪙 Teddy 2 ยิงผ่านแอปไม่ได้ (EC ใช้ไม่ได้) → ปุ่ม '🪙 ยิงไม่ได้ → หยอดเหรียญแทน' ในหน้าเริ่มเครื่อง: ใบงานยังเป็นโอน · บันทึกหยอดเหรียญ (นับว่าเริ่มแล้ว) + หักเหรียญตั้งต้นของร้าน (แลกเหรียญแบบโอน 'floatCoin') · ไม่นับเป็นเงินสดในมือ · ยกเลิกได้ · ปุ่มเด่นเมื่อ Worker พักหรือยิงไม่สำเร็จใน 2 ชม.
 v191 🐢 Teddy 2 อ่านเว็บ EC เบาลง (3 พ.ย. EC ระงับบัญชีชั่วคราวเพราะ Worker ล็อกอินถี่): อ่าน 16 เครื่องทีละ 2 · ผลอ่านแชร์ทุกมือถือ 10 นาที (pulseDayNotes/ec_<ร้าน>_<วัน>) · หน้าแรกเช็กทุก 30 นาที · Worker แจ้งพัก = หยุดทันที + ขึ้น ⏸️ · คู่กับ Worker teddy-pulse v1.1 (session เดียว · ล็อกอิน ≤ 6/ชม. · เจอ temporarily unavailable = พัก 60 นาที)
 v190 ⏪ Teddy 1 แม่บ้านลงย้อนหลังได้จากฟอร์มเลย (รับงานใหม่ + บิลงานร้าน): ปุ่มบนสุด '🕐 เวลา: ตอนนี้ · ⏪ ลืมลง? แตะเพื่อลงย้อนหลัง' → เลือกวัน-เวลา · ย้อนเกิน 10 นาที = ป้าย ⏪ + เวลาที่บันทึกจริง ให้เจ้าของเห็น · ต่างวัน = ถามยืนยัน · อนาคตไม่ได้
 v189 🪙 Teddy 1: ขนาดเครื่องซักตามจริง (ซัก 1 = 17kg · ซัก 2 = 13kg · ซัก 3–6 = 10kg) + ชิปเลือกเครื่องขึ้นขนาด · 🪙 โทเคนแก้ปัญหา = ใส่จำนวนโทเคน (− / +) + เหตุผล ไม่ต้องเลือกเครื่อง · 🪙 แลก Token เลือก 💳 โอน → QR บัญชีร้านพร้อมยอด (ลูกค้าโอนเข้าร้านตรง ไม่ผ่านบัญชีแม่บ้าน)
@@ -142,6 +143,7 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 | - | ยังไม่มี | - | - |
 
 ## บันทึกการเปลี่ยนแปลง (ล่าสุดอยู่บน)
+- v192 (2026-11-03): tools/v192_float_coin.py · `floatCoinInsert()` = pulseLog coin `coinFromFloat` + `floatExchangeId` → tokenExchanges doc `float-<logId>` (kind 'floatCoin' · paymentMethod 'transfer' · coinCount/tokenCount · refId) · MachinePickerSheet `[data-float-coin]` (ready · ไม่ใช่ SOL · cp.pulse > 0 · ส่วนเงินสดของลูกค้าบันทึก logCoinInsert ตามปกติ) · `ecDown` = pulseEcPaused() หรือ log failed < 2 ชม. → ปุ่มเด่น · undoCoinLog ลบ float doc · watchCoinLog หยุดเมื่อ Worker พัก · ป้าย `[data-float-chip]` 🪙 เหรียญร้าน · MM 8 คำ · ทดสอบ pulse/harness192.mjs (NOFAIL=1 = ปุ่มรอง)
 - v191 (2026-11-03): tools/v191_ec_gentle.py · fetchEcDay ทีละ 2 · `PULSE_EC_PAUSE` / `pulseEcPaused()` จาก Worker 503 `blocked` (หยุดคิว · ไม่เรียกจนถึง retryAt) · machineIds ≤ 3 ส่ง `&fresh=1` · `loadEcShared` / `saveEcShared` (pulseDayNotes doc `ec_<brand>_<date>` kind 'ecShared' · 10 นาที · มีมือถืออื่นกำลังอ่าน (fetchingAt < 90 วิ) = รอ 25 วิแล้วใช้ผลนั้น) · refreshEc(true) = ปุ่ม 🔄 อ่านใหม่จริง · interval 30 นาที + document.hidden ไม่อ่าน · recon `ecPaused` → `[data-ec-paused]` · ⚙️ ทดสอบ = /ping + /status (ล็อกอิน n/6 · KV) · Worker v1.1 อยู่ใน Project docs · ทดสอบ pulse/harness191.mjs + test_worker_v11.mjs · harness158ad (ข้าม doc ec_*)
 - v190 (2026-11-02): tools/v190_teddy1_backdate.py · TEDDY `maidBackdate: true` (TEDDY2 ตั้ง false · Otteri ไม่มี) · NewOrderView `maidBack` = !freeOk && !isEdit && !backdateMode && config.maidBackdate → canPickTime · `[data-backdate-toggle]` / `[data-backdate-box]` (ใช้กล่องเหลืองเดิมของลงย้อนหลังจากหน้าแรก) / `[data-backdate-cancel]` · บันทึก backdated+enteredAt เมื่อต่างวัน หรือแม่บ้านเลือกย้อน >10 นาที · ฟอร์มแลก Token / คูปองแอดไลน์ ยังลงย้อนหลังไม่ได้ · ทดสอบ pulse/harness190.mjs
 - v189 (2026-11-02): tools/v189_teddy1_sizes_token_qr.py · COIN_POINTS.teddy w2 = 13kg · w6 = 10kg (เดิมสลับกัน) + `chipSize: true` (ชิป 'ซัก 1 · 17kg' เฉพาะ Teddy 1/โหมดฝึก) · fixType: ซ่อนชิปเครื่อง + ส่วนเครื่องซัก/อบ · ช่อง `[data-itoken]` (− / + / พิมพ์) เก็บ internalCustom = โทเคน × tokenValue · บันทึก internalMachines/washItems/dryItems ว่าง · สลับประเภทเข้า/ออก fix ล้างยอด · ฟอร์มแลก Token: โอน + ยอด → `[data-token-qr]` (buildPromptPayQr) · ปุ่ม '(ตู้แลกเสีย / ไม่มีเงินสด)' · MM 5 คำ · ทดสอบ pulse/harness189.mjs + harness178d/dv
