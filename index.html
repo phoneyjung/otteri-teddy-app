@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v197-2026-11-03';
+  window.APP_VERSION = 'v198-2026-11-05';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -4408,7 +4408,9 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
     fileToResizedDataUrl(file, 600, 0.6).then(setPromoPhoto).catch(err => alert('อ่านรูปไม่ได้: ' + err.message));
   };
 
-  const handleSubmitPromo = async () => {
+  const promoOwner = role === 'owner' || pulseIsOwnerNow(config, false); // ✍️ v198 เจ้าของบันทึกโปรโดยไม่ยิงเครื่องได้
+  const handleSubmitPromo = async (opts) => {
+    const manual = !!(opts && opts.manual === true && promoOwner); // ✍️ v198 (onClick เดิมส่ง event มา = ไม่ใช่ manual)
     const amount = parseInt(promoAmount, 10) || 0;
     if (amount <= 0) { alert(tr(config, tokenShop(config) ? 'ใส่ยอดโทเคนที่ให้ลูกค้า' : 'ใส่ยอดเครดิตที่สแกนให้ลูกค้า')); return; }
     // ⚡ ยิงพัลส์จากแอป: ยอดต้องหาร 10 ลงตัว + ต้องเลือกเครื่อง 1 เครื่อง
@@ -4422,7 +4424,8 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
     }
     if (!promoPhoto) { alert('ถ่ายรูปหลักฐานก่อนบันทึก'); return; }
     if (!promoStaff) { alert('ใส่ชื่อแม่บ้าน'); return; }
-    if (usePulse && !confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${pulseMachine.label}\n🔢 ${amount / PULSE_BAHT} ${tr(config, 'พัลส์')} (฿${amount})\n🎁 ${promoName || 'ส่วนลด'}`)) return;
+    if (manual && !confirm(`✍️ เจ้าของบันทึกโปร (ไม่ยิงเครื่อง)\n\n🧺 ${pulseMachine.label}\n🎁 ${promoName || 'ส่วนลด'} ฿${amount}\n\n⚠️ แอปไม่สั่งเครื่องให้ — เริ่มเครื่องเอง (หยอดเหรียญ / ตู้) · นับว่าเริ่มแล้ว`)) return;
+    if (usePulse && !manual && !confirm(`⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${pulseMachine.label}\n🔢 ${amount / PULSE_BAHT} ${tr(config, 'พัลส์')} (฿${amount})\n🎁 ${promoName || 'ส่วนลด'}`)) return;
     setSavingPromo(true);
     try {
       const entry = {
@@ -4432,7 +4435,22 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
         dateKey: new Date().toISOString().slice(0, 10),
       };
       let id;
-      if (usePulse) {
+      if (usePulse && manual) {
+        // ✍️ v198 เจ้าของบันทึก (ไม่ยิงเครื่อง) — pulseLog แบบ manual ผูกกับรายการโปร (กระทบยอดนับว่าครบ · ไม่จับคู่ EC)
+        const entryRef = window.db.collection('creditLedger').doc();
+        const now = Date.now();
+        const logId = `${config.brand}-manual-${now}-${Math.random().toString(36).slice(2, 8)}`;
+        await pulseLogRef(logId).set({
+          brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine: pulseMachine.id, machineLabel: pulseMachine.label,
+          pulses: amount / PULSE_BAHT, baht: amount, method: 'manual', status: 'manual',
+          refType: 'promo', refId: entryRef.id, slotKey: 'p', refLabel: '🎟️ ' + entry.promoName,
+          staffId: 'owner', staffName: 'เจ้าของ', createdAt: now,
+          kind: pulseMachine.kind || null, kg: pulseMachine.kg || null,
+          manualNote: 'เจ้าของบันทึกโปร (ไม่ยิงเครื่อง)',
+        });
+        entry.pulseLogId = logId; entry.pulseStatus = 'manual'; entry.machineId = pulseMachine.id; entry.manual = true;
+        id = await saveCreditEntryWithId(config.brand, entryRef.id, entry);
+      } else if (usePulse) {
         const entryRef = window.db.collection('creditLedger').doc(); // จอง id ก่อน → พัลส์ผูกกับรายการนี้
         const res = await firePulse(config, { machine: pulseMachine.id, pulses: amount / PULSE_BAHT, refType: 'promo', refId: entryRef.id, slotKey: 'p', refLabel: '🎟️ ' + entry.promoName });
         if (res.status === 'failed') {
@@ -4464,7 +4482,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
       const lines = [
         '🎟️ ลูกค้าใช้โปร (ซักเอง)',
         `🏪 ${config.name}${p.machine ? ` · 🧺 ${p.machine}` : ''}`,
-        p.pulseLogId ? `🎁 ${p.promoName} · ⚡ ยิงพัลส์ ${p.amount}฿` : `🎁 ${p.promoName} · ${tokenShop(config) ? '🪙 โทเคน' : 'เครดิต'} ${p.amount}฿`,
+        p.manual ? `🎁 ${p.promoName} · ✍️ เจ้าของบันทึก ${p.amount}฿` : p.pulseLogId ? `🎁 ${p.promoName} · ⚡ ยิงพัลส์ ${p.amount}฿` : `🎁 ${p.promoName} · ${tokenShop(config) ? '🪙 โทเคน' : 'เครดิต'} ${p.amount}฿`,
         `🧕 ${p.staffName} · 🕐 ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`,
       ];
       if (p.note) lines.push(`📝 ${p.note}`);
@@ -4497,7 +4515,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
       `🏪 ${config.name}`,
       savedPromo.machine ? `🧺 เครื่อง: ${savedPromo.machine}` : '',
       `🎁 ${savedPromo.promoName}`,
-      savedPromo.pulseLogId ? `⚡ ยิงพัลส์: ${savedPromo.amount}฿ (${savedPromo.pulseStatus === 'confirmed' ? 'เครื่องรับแล้ว' : 'ส่งคำสั่งแล้ว'})` : tokenShop(config) ? `🪙 โทเคนที่ให้: ${savedPromo.amount}฿` : `💳 เครดิตที่สแกน: ${savedPromo.amount}฿`,
+      savedPromo.manual ? `✍️ เจ้าของบันทึก (ไม่ยิงเครื่อง): ${savedPromo.amount}฿` : savedPromo.pulseLogId ? `⚡ ยิงพัลส์: ${savedPromo.amount}฿ (${savedPromo.pulseStatus === 'confirmed' ? 'เครื่องรับแล้ว' : 'ส่งคำสั่งแล้ว'})` : tokenShop(config) ? `🪙 โทเคนที่ให้: ${savedPromo.amount}฿` : `💳 เครดิตที่สแกน: ${savedPromo.amount}฿`,
       `🧕 แม่บ้าน: ${savedPromo.staffName}`,
       `🕐 ${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} ${d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`,
       savedPromo.note ? `📝 ${savedPromo.note}` : '',
@@ -5042,6 +5060,12 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
             <input type="text" value={promoNote} onChange={e => setPromoNote(e.target.value)}
               className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder={tr(config, "หมายเหตุ เช่น เครื่อง 3 / ชื่อลูกค้า")} />
 
+            {pulseOn(config) && promoOwner && (
+              <button onClick={() => handleSubmitPromo({ manual: true })} disabled={savingPromo} data-promo-manual
+                className="w-full py-2.5 rounded-xl border-2 text-sm font-extrabold active:scale-95 transition disabled:opacity-50" style={{ borderColor: '#8B5CF6', background: '#F5F3FF', color: '#5B21B6' }}>
+                ✍️ {tr(config, 'เจ้าของ: บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)')} {promoMachine || ''} ฿{parseInt(promoAmount, 10) || 0}
+              </button>
+            )}
             <button onClick={handleSubmitPromo} disabled={savingPromo}
               className="w-full py-3.5 rounded-2xl bg-rose-500 text-white font-bold text-base active:scale-95 transition disabled:opacity-50">
               {savingPromo ? tr(config, 'กำลังบันทึก…') : tr(config, pulseOn(config) ? '⚡ เริ่มเครื่อง + บันทึก' : 'บันทึกตัดเครดิต') + ' ' + (parseInt(promoAmount, 10) || 0) + '฿'}
@@ -5054,8 +5078,8 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6" onClick={() => setSavedPromo(null)}>
           <div className="bg-white rounded-3xl w-full max-w-xs p-5 text-center max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <p className="text-4xl mb-1">✅</p>
-            <p className="text-lg font-extrabold text-slate-800">{savedPromo.pulseLogId ? tr(config, 'เริ่มเครื่องแล้ว') : tokenShop(config) ? tr(config, 'บันทึกให้โทเคนแล้ว') : tr(config, "บันทึกตัดเครดิตแล้ว")}</p>
-            {savedPromo.pulseLogId && (
+            <p className="text-lg font-extrabold text-slate-800">{savedPromo.manual ? '✍️ ' + tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)') : savedPromo.pulseLogId ? tr(config, 'เริ่มเครื่องแล้ว') : tokenShop(config) ? tr(config, 'บันทึกให้โทเคนแล้ว') : tr(config, "บันทึกตัดเครดิตแล้ว")}</p>
+            {savedPromo.pulseLogId && !savedPromo.manual && (
               <p className={`text-sm font-bold mt-1 ${savedPromo.pulseStatus === 'confirmed' ? 'text-emerald-600' : 'text-amber-600'}`}>
                 {savedPromo.pulseStatus === 'confirmed' ? '✅ ' + tr(config, 'เครื่องรับแล้ว') : '⏳ ' + tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}
               </p>
@@ -5064,7 +5088,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
               <ReportSlipCard config={config} name="ลูกค้าใช้โปร" slipKey={String(savedPromo.createdAt || '') + ':' + (savedPromo.pulseStatus || '')}
                 slip={{ kind: 'promo', photo: savedPromo.photo, at: savedPromo.createdAt, staff: savedPromo.staffName,
                   rows: [['โปร', savedPromo.promoName], ['เครื่อง', savedPromo.machine || ''],
-                    savedPromo.pulseLogId ? ['เริ่มเครื่อง', savedPromo.pulseStatus === 'confirmed' ? '⚡ เครื่องรับแล้ว' : '⚡ ส่งคำสั่งแล้ว'] : [tokenShop(config) ? 'ให้โทเคน' : 'ตัดเครดิต', `${savedPromo.amount}฿`],
+                    savedPromo.manual ? ['เริ่มเครื่อง', '✍️ เจ้าของบันทึก (ไม่ยิงเครื่อง)'] : savedPromo.pulseLogId ? ['เริ่มเครื่อง', savedPromo.pulseStatus === 'confirmed' ? '⚡ เครื่องรับแล้ว' : '⚡ ส่งคำสั่งแล้ว'] : [tokenShop(config) ? 'ให้โทเคน' : 'ตัดเครดิต', `${savedPromo.amount}฿`],
                     ['หมายเหตุ', savedPromo.note || '']],
                   foot: `ยอดโปร ${savedPromo.amount}฿` }} />
             </div>
