@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v200-2026-11-06';
+  window.APP_VERSION = 'v201-2026-11-06';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -1337,9 +1337,19 @@ async function saveOrderToCloud(brand, order) {
     throw e;
   }
 }
+// ✍️ v201 ลบงาน/โปร → ยกเลิกรายการ 'บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)' ของงานนั้น (ไม่ใช่พัลส์จริง · เดิมค้างเป็น 'ยิงพัลส์แต่ไม่พบงาน')
+// พัลส์จริง / หยอดเหรียญจริง ไม่แตะ (เครื่องได้เงินไปแล้ว ต้องเห็นในกระทบยอด)
+async function voidManualLogsOf(refId) {
+  if (!refId) return;
+  const snap = await window.db.collection('pulseLogs').where('refId', '==', refId).get();
+  const jobs = [];
+  snap.forEach(d => { const l = d.data() || {}; if (l.method === 'manual' && l.status === 'manual') jobs.push(voidPulseLog(d.id, 'ลบงานแล้ว (บันทึกว่าเริ่ม ไม่ได้ยิงจริง)')); });
+  await Promise.all(jobs);
+}
 async function deleteOrderFromCloud(orderId) {
   try {
     await window.db.collection('orders').doc(orderId).delete();
+    voidManualLogsOf(orderId).catch(e => console.error('void manual logs:', e)); // ✍️ v201
     if (window.__photoSplitOK) window.db.collection('orderPhotos').doc(orderId).delete().catch(() => {});
     delete ORDER_PHOTO_CACHE[orderId];
   }
@@ -1357,6 +1367,7 @@ async function deleteOrdersBatch(orderIds) {
       });
       await batch.commit();
       if (window.__photoSplitOK) orderIds.slice(i, i + chunkSize).forEach(id => window.db.collection('orderPhotos').doc(id).delete().catch(() => {}));
+      orderIds.slice(i, i + chunkSize).forEach(id => voidManualLogsOf(id).catch(() => {})); // ✍️ v201
     }
   } catch (e) {
     console.error('deleteOrdersBatch error:', e);
@@ -1670,7 +1681,7 @@ function subscribeToCreditLedger(brand, callback) {
 }
 
 async function deleteCreditEntry(id) {
-  try { await window.db.collection('creditLedger').doc(id).delete(); }
+  try { await window.db.collection('creditLedger').doc(id).delete(); voidManualLogsOf(id).catch(() => {}); /* ✍️ v201 โปรที่เจ้าของบันทึก */ }
   catch (e) { console.error('deleteCreditEntry error:', e); }
 }
 
@@ -2291,6 +2302,7 @@ const MM_DICT = {
   'ยอดโทเคนที่หยอด (บาท)': 'ထည့်သော တိုကင် (ဘတ်)', // v200
   'ใส่ยอดเครดิตที่ใช้ (บังคับ)': 'သုံးသော ငွေပမာဏ ထည့်ပါ (မဖြစ်မနေ)', // v200
   'ใส่ยอดที่ใช้จริง — หยอดไม่ครบก็ใส่ตามจริง': 'တကယ်သုံးသည့် ပမာဏ ထည့်ပါ — မပြည့်လည်း ရှိသလောက်ထည့်', // v200
+  'ลบรายการ ✍️ นี้ (งานถูกลบแล้ว)': 'ဤ ✍️ မှတ်တမ်းကို ဖျက်ပါ (အလုပ်ဖျက်ပြီး)', // v201
   'ส่วนลด ยิงจากแอป': 'လျှော့စျေး အက်ပ်မှ ပို့',
   'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)': 'ကူပွန်လျှော့စျေး — အက်ပ်မှ ပို့နိုင် (လျှော်စက်သာ)',
   'ส่วนลดคูปอง': 'ကူပွန်လျှော့စျေး',
@@ -3576,6 +3588,8 @@ function BrandApp({ config: baseConfig, onChangeBrand, deepJobId, onDeepDone, on
   const [currentStaff, setCurrentStaff] = useState(() => {
     try { return JSON.parse(localStorage.getItem('staff-' + config.brand) || 'null'); } catch { return null; }
   });
+  // 👔 v201 ล็อกอินแบบเจ้าของอยู่ = โหมดเจ้าของเสมอ (เดิมกด 'ออก' จากหน้าเจ้าของ → isOwner ปิด แต่หน้าแรกยัง 'โหมดเจ้าของ' → ฟอร์มงานภายในกลายเป็นแบบแม่บ้าน)
+  useEffect(() => { if (currentStaff && currentStaff.isOwnerLogin && !isOwner) setIsOwner(true); }, [currentStaff, isOwner]);
   const [staffList, setStaffList] = useState(() => loadStaffCache(config.brand));
   const [staffStatus, setStaffStatus] = useState('loading'); // loading | ok | slow | error:<code>
   // โหมดเครื่องพิมพ์ — เครื่องนี้จะรับงานจากคิวมาพิมพ์ให้เครื่องอื่น (Android เท่านั้น)
@@ -10238,7 +10252,7 @@ function buildPulseRecon({ config, dateKey, orders, ledger, logs, ec }) {
   const promoIds = new Set((ledger || []).map(e => e.id));
   dayLogs.forEach(l => {
     const exists = l.refType === 'promo' ? promoIds.has(l.refId) : orderIds.has(l.refId);
-    if (!exists) add(`x:${l.id}`, 'error', 'ยิงพัลส์แต่ไม่พบงาน', { label: `${l.machineLabel} · ${l.refLabel || ''}`, amount: l.baht });
+    if (!exists) add(`x:${l.id}`, 'error', 'ยิงพัลส์แต่ไม่พบงาน', { label: `${l.machineLabel} · ${l.refLabel || ''}`, amount: l.baht, voidId: pulseIsManual(l) ? l.id : null });
   });
 
   // แอป ↔ เครื่องจริง — จับคู่ทีละครั้ง: เครื่องเดียวกัน จำนวนพัลส์เท่ากัน เวลาห่างไม่เกิน 2 นาที
@@ -12622,6 +12636,10 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc,
                     <p className="text-sm font-bold text-rose-700">{issueText(i)}{note && (note.issueKeys || []).includes(i.key) ? ' · 📝' : ''}</p>
                     <p className="text-xs text-slate-600">{i.label}{i.times && i.times.length ? ` · 🕐 ${i.times.join(', ')}` : ''}</p>
                     {isOwner && i.ecOut && claimBtn([i], '🔧 เจ้าของยิงทดสอบ → เปลี่ยนเป็นงานซ่อม/ทดสอบ')}
+                    {isOwner && i.voidId && (
+                      <button data-void-orphan onClick={() => { if (confirm('🗑️ ลบรายการ ✍️ ที่บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)?\n\nงานของรายการนี้ถูกลบไปแล้ว')) voidPulseLog(i.voidId, 'เจ้าของลบ (งานถูกลบแล้ว)').catch(e => alert('ลบไม่สำเร็จ: ' + e.message)); }}
+                        className="mt-1.5 w-full py-1.5 rounded-lg border-2 border-slate-300 bg-white text-xs font-extrabold text-slate-600 active:scale-95">🗑️ {tr(config, 'ลบรายการ ✍️ นี้ (งานถูกลบแล้ว)')}</button>
+                    )}
                   </div>
                 ))}
               </div>
