@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v199-2026-11-06';
+  window.APP_VERSION = 'v200-2026-11-06';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2287,6 +2287,10 @@ const MM_DICT = {
   'บันทึกแล้ว (ไม่ยิงจริง)': 'မှတ်တမ်းတင်ပြီး (တကယ် မပို့)', // v199
   'งานภายใน — ใช้เหรียญร้าน ไม่มีเงินเข้า': 'ဆိုင်တွင်းအလုပ် — ဆိုင်အကြွေစေ့သုံး ငွေမဝင်', // v199
   '🔧 ร้านใช้เอง': '🔧 ဆိုင်သုံး', // v199
+  'ยอดเครดิตที่ใช้ (บาท)': 'သုံးသော ခရက်ဒစ် (ဘတ်)', // v200
+  'ยอดโทเคนที่หยอด (บาท)': 'ထည့်သော တိုကင် (ဘတ်)', // v200
+  'ใส่ยอดเครดิตที่ใช้ (บังคับ)': 'သုံးသော ငွေပမာဏ ထည့်ပါ (မဖြစ်မနေ)', // v200
+  'ใส่ยอดที่ใช้จริง — หยอดไม่ครบก็ใส่ตามจริง': 'တကယ်သုံးသည့် ပမာဏ ထည့်ပါ — မပြည့်လည်း ရှိသလောက်ထည့်', // v200
   'ส่วนลด ยิงจากแอป': 'လျှော့စျေး အက်ပ်မှ ပို့',
   'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)': 'ကူပွန်လျှော့စျေး — အက်ပ်မှ ပို့နိုင် (လျှော်စက်သာ)',
   'ส่วนลดคูปอง': 'ကူပွန်လျှော့စျေး',
@@ -5647,6 +5651,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
   const simpleFree = !!internalType && freeOk && !!config.simpleInternal && internalType !== 'fix';
   const simpleAcct = !internalType && !!acct && !!acct.noRevenue && freeOk && !!config.simpleInternal; // 🏢 v188 งานเกอิชา (แอดมิน/เจ้าของ) ฟอร์มสั้น
   const simpleMode = simpleFree || simpleAcct;
+  const amtOnly = isInternal && needInternalDetail && !fixType && !simpleFree; // 🔧 v200 ซ่อม/ทดสอบ/อื่นๆ = เลือกเครื่อง + ใส่ยอดเอง (ไม่ใช้ซัก/อบด้านล่าง)
   const autoItems = maidClean || simpleFree || simpleAcct;
   useEffect(() => {
     if (!autoItems) return;
@@ -5683,7 +5688,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
   const needPhone = needCustomerInfo;
   const phoneOk = !needPhone || phone.trim().length >= 9;
   const nameOk = !needCustomerInfo || name.trim().length > 0;
-  const internalOk = !isInternal || (internalType === 'mine' ? (washItems.length > 0 || dryItems.length > 0) : ((fixType || internalMachines.length > 0) && (!needInternalDetail || (internalReason.trim().length > 0 && (hasAnyItem || customAmt > 0)))));
+  const internalOk = !isInternal || (internalType === 'mine' ? (washItems.length > 0 || dryItems.length > 0) : ((fixType || internalMachines.length > 0) && (!needInternalDetail || (internalReason.trim().length > 0 && (amtOnly ? customAmt > 0 : (hasAnyItem || customAmt > 0))))));
   // 🔧 กติกางานภายในสำหรับแม่บ้าน (v150) — เจ้าของไม่ติด
   const cleanLocks = !freeOk && isInternal ? cleanLocksOf(orders, editingOrder && editingOrder.id) : {};
   const internalMaidIssues = [];
@@ -5714,7 +5719,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
   internalMaidIssues.forEach(t => missingList.push(t));
   if (freeLocked) missingList.push(tr(config, 'งานไม่คิดเงิน — แอดมินหรือเจ้าของเป็นคนลง'));
   if (isInternal && needInternalDetail) {
-    if (!hasAnyItem && customAmt <= 0) missingList.push(tr(config, fixType ? 'กรอกจำนวนโทเคนที่ให้' : 'เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง'));
+    if (amtOnly ? customAmt <= 0 : (!hasAnyItem && customAmt <= 0)) missingList.push(tr(config, fixType ? 'กรอกจำนวนโทเคนที่ให้' : amtOnly ? 'ใส่ยอดเครดิตที่ใช้ (บังคับ)' : 'เลือกเครื่อง (ซัก/อบ) หรือกรอกยอดเครดิตเอง'));
     if (!internalReason.trim()) missingList.push(tr(config, 'ใส่เหตุผล (บังคับ)'));
   }
   if (!isInternal && !hasAnyItem) missingList.push(tr(config, simpleAcct ? 'เลือกเครื่องที่ทำ (บังคับ)' : 'เลือกบริการอย่างน้อย 1 อย่าง (ซัก / อบ / น้ำยา / พับ)'));
@@ -5853,8 +5858,8 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
       backdated: isBackdated || (maidBack && useCustomTime && finalCreatedAt < Date.now() - 600000) || !!(editingOrder && editingOrder.backdated), // v190 แม่บ้านลงย้อนหลังวันเดียวกัน (>10 นาที) ก็ติดป้าย
       enteredAt: isBackdated || (maidBack && useCustomTime && finalCreatedAt < Date.now() - 600000) ? Date.now() : ((editingOrder && editingOrder.enteredAt) || null),
       clothCount: clothCount.trim() || '',
-      washItems: fixType ? [] : (washItems || []), // 🪙 v189 โทเคนแก้ปัญหา = จำนวนโทเคน + เหตุผล ไม่มีเครื่อง
-      dryItems: fixType ? [] : (dryItems || []),
+      washItems: fixType || amtOnly ? [] : (washItems || []), // 🪙 v189 โทเคนแก้ปัญหา = จำนวนโทเคน + เหตุผล ไม่มีเครื่อง · 🔧 v200 ซ่อม/ทดสอบ = ยอดเอง
+      dryItems: fixType || amtOnly ? [] : (dryItems || []),
       detergentQty: detergentQty || 0,
       softenerQty: softenerQty || 0,
       foldBaskets: internalType || (acct && acct.noFold) ? 0 : (foldBaskets || 0),
@@ -6031,7 +6036,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
             {internalType === 'mine' && !simpleFree && <p className="text-[11px] font-bold text-slate-700 mb-1">{tr(config, 'ฟรี · ไม่นับเป็นรายได้ · เลือกซัก/อบด้านล่าง แล้วเริ่มเครื่องเหมือนงานลูกค้า')}</p>}
             {(internalType !== 'mine' || simpleFree) && !fixType && <React.Fragment>
             <p className="text-xs font-bold text-slate-700 mb-1.5">{freeOk ? 'เครื่องที่ทำ' : internalType === 'clean' ? tr(config, 'เครื่องซักที่จะล้าง') : tr(config, 'เครื่องที่ทำ')} {fixType ? <span className="text-slate-500">({tr(config, 'ถ้ามี')})</span> : <span className="text-rose-600">*{tr(config, 'บังคับ')}</span>} ({tr(config, 'เลือกได้หลายเครื่อง')})</p>
-            <div className="flex flex-wrap gap-1.5 mb-3">
+            <div data-imachines className={`flex flex-wrap gap-1.5 mb-3 ${internalMachines.length === 0 ? 'rounded-xl p-1.5 bg-rose-50 border-2 border-rose-300' : ''}`}>
               {((COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || []).map(m => {
                 const on = internalMachines.includes(m.label);
                 const dryNo = internalType === 'clean' && (!isOwner || simpleFree) && /^d/i.test(m.id); // v151: แม่บ้านล้างเฉพาะเครื่องซัก
@@ -6088,11 +6093,15 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
                   );
                 })()}
                 {!simpleFree && !fixType && <React.Fragment>
+                {amtOnly ? (
+                  <p className="text-xs font-bold text-slate-700 mb-1 mt-3">{tr(config, tokenShop(config) ? 'ยอดโทเคนที่หยอด (บาท)' : 'ยอดเครดิตที่ใช้ (บาท)')} <span className="text-rose-600">*{tr(config, 'บังคับ')}</span></p>
+                ) : (
                 <p className="text-xs font-bold text-slate-700 mb-1 mt-3">{tokenShop(config) ? tr(config, fixType ? 'จำนวนโทเคนที่ให้ (บาท)' : 'ยอดโทเคนที่หยอด (ถ้าไม่เลือกเครื่องด้านล่าง)') : 'กำหนดยอดเครดิตเอง (ถ้าไม่เลือกเครื่องด้านล่าง)'}</p>
+                )}
                 <input type="number" inputMode="numeric" value={internalCustom} onChange={e => setInternalCustom(e.target.value)} onFocus={e => e.target.select()} data-icustom
-                  className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-lg font-bold text-right" placeholder="0" />
+                  className={`w-full px-3 py-2.5 rounded-xl border-2 text-lg font-bold text-right ${amtOnly && customAmt <= 0 ? 'bg-rose-50 border-rose-300' : 'border-slate-300 bg-white'}`} placeholder="0" />
                 {tokenShop(config) && customAmt > 0 && <p className="text-xs font-extrabold text-slate-800 mt-1">🪙 = {Math.round(customAmt / ((COIN_POINTS[config.brand] || {}).tokenValue || 10) * 10) / 10} {tr(config, 'โทเคน')}</p>}
-                <p className="text-[11px] text-slate-600 mt-1">{tr(config, 'เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้')}</p>
+                <p className="text-[11px] text-slate-600 mt-1">{tr(config, amtOnly ? 'ใส่ยอดที่ใช้จริง — หยอดไม่ครบก็ใส่ตามจริง' : 'เลือกเครื่อง+อุณหภูมิด้านล่างจะคิดราคาให้เอง · หรือกรอกยอดเองช่องนี้')}</p>
                 </React.Fragment>}
               </React.Fragment>
             ) : (
@@ -6290,7 +6299,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </Field>
         </Section>}
 
-        {!autoItems && !fixType && <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
+        {!autoItems && !fixType && !amtOnly && <Section iconName="droplet" title={tr(config, "เครื่องซัก")}>
           <div className="space-y-3">
             {config.washMachines.map(m => (
               <WashMachineRow key={m.size} machine={m} hasMultipleTemps={hasMultipleTemps} getQty={getQty} washItems={washItems} onUpdate={(temp, delta) => updateItem(washItems, setWashItems, m.size, delta, temp)} />
@@ -6298,7 +6307,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
           </div>
         </Section>}
 
-        {!autoItems && !fixType && <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
+        {!autoItems && !fixType && !amtOnly && <Section iconName="wind" title={tr(config, "เครื่องอบ")}>
           <div className="space-y-2">
             {config.dryMachines.map(m => {
               const qty = getQty(dryItems, m.size, 'cold');
