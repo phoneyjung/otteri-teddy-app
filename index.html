@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v198-2026-11-05';
+  window.APP_VERSION = 'v199-2026-11-06';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2281,6 +2281,12 @@ const MM_DICT = {
   'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วกดตกลง': 'စက်စတင်သည်အထိ အကြွေစေ့ထည့်ပြီး OK နှိပ်ပါ', // v192
   'บันทึกหยอดเหรียญแทนแล้ว': 'အကြွေစေ့ထည့်မှု သိမ်းပြီး', // v192
   'เหรียญร้าน': 'ဆိုင်အကြွေစေ့', // v192
+  'บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)': 'စတင်ပြီးဟု မှတ်တမ်းတင် (တကယ် မပို့)', // v199
+  'แอปไม่สั่งเครื่อง — ช่างเปิดเครื่องเอง': 'အက်ပ်က စက်ကို မစေခိုင်း — ပြင်ဆင်သူက စက်ကို ကိုယ်တိုင်ဖွင့်', // v199
+  'เครื่องเริ่มทำงานแล้ว กดตกลง': 'စက်စတင်ပြီးမှ OK နှိပ်ပါ', // v199
+  'บันทึกแล้ว (ไม่ยิงจริง)': 'မှတ်တမ်းတင်ပြီး (တကယ် မပို့)', // v199
+  'งานภายใน — ใช้เหรียญร้าน ไม่มีเงินเข้า': 'ဆိုင်တွင်းအလုပ် — ဆိုင်အကြွေစေ့သုံး ငွေမဝင်', // v199
+  '🔧 ร้านใช้เอง': '🔧 ဆိုင်သုံး', // v199
   'ส่วนลด ยิงจากแอป': 'လျှော့စျေး အက်ပ်မှ ပို့',
   'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)': 'ကူပွန်လျှော့စျေး — အက်ပ်မှ ပို့နိုင် (လျှော်စက်သာ)',
   'ส่วนลดคูปอง': 'ကူပွန်လျှော့စျေး',
@@ -4587,7 +4593,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
   const buildTokenShareText = (t) => {
     if (!t) return '';
     const dateStr = formatDate(t.createdAt);
-    const payLabel = t.paymentMethod === 'transfer' ? '💳 โอน' : '💵 เงินสด';
+    const payLabel = t.paymentMethod === 'transfer' ? '💳 โอน' : t.paymentMethod === 'internal' ? '🔧 ร้านใช้เอง' : '💵 เงินสด';
     let breakdown = '';
     if (t.tokenCount > 0 && t.coinCount > 0) {
       breakdown = `\n🪙 Token ร้าน: ${t.tokenCount} เหรียญ\n🪙 เหรียญ 10: ${t.coinCount} เหรียญ`;
@@ -5317,7 +5323,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-slate-700">฿{formatMoney(t.amount)}</span>
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${pm === 'transfer' ? 'bg-violet-200 text-violet-800' : 'bg-emerald-200 text-emerald-800'}`}>
-                          {tr(config, pm === 'transfer' ? '💳 โอน' : '💵 สด')}
+                          {tr(config, pm === 'transfer' ? '💳 โอน' : pm === 'internal' ? '🔧 ร้านใช้เอง' : '💵 สด')}
                         </span>
                       </div>
                       {breakdown.length > 0 && (
@@ -9803,17 +9809,17 @@ async function approvePulseRefund(config, log, reason, note) {
 const pulseIsCoin = (l) => !!(l && l.method === 'coin');
 // ✍️ เจ้าของบันทึกว่าเริ่มเครื่องแล้ว (แบบโอน) โดยไม่ยิงจริง (v149) — แก้ใบงานที่แม่บ้านลงผิด
 const pulseIsManual = (l) => !!(l && l.method === 'manual');
-function recordManualStart(config, order, { machine, kind, kg, temp, heat, baht, warn }) {
+function recordManualStart(config, order, { machine, kind, kg, temp, heat, baht, warn, byStaff, note }) { // v199 byStaff/note (แอดมินงานภายใน)
   const now = Date.now();
   const id = `${config.brand}-manual-${now}-${Math.random().toString(36).slice(2, 8)}`;
   const log = {
     brand: config.brand, dateKey: dateKeyOf(new Date(now)), machine, machineLabel: machine ? pulseMachineLabel(config, machine) : 'นอกแอป (ระบบเก่า)',
     pulses: Math.round(baht / PULSE_BAHT), baht, method: 'manual', status: 'manual',
     refType: isInternalOrder(order) ? 'internal' : 'order', refId: order.id, slotKey: null, refLabel: pulseRefLabel(order, config),
-    staffId: 'owner', staffName: 'เจ้าของ', createdAt: now,
+    staffId: byStaff && byStaff.id ? byStaff.id : 'owner', staffName: byStaff && byStaff.name ? byStaff.name : 'เจ้าของ', createdAt: now,
     kind: kind || null, kg: kg || null, temp: temp || null, heat: heat || null,
     dryMin: kind === 'dry' ? dryMinutesFor(config, kg, baht) : null, mismatch: warn || null,
-    manualNote: 'เจ้าของบันทึก (แบบโอน · ไม่ยิงเครื่อง)',
+    manualNote: note || 'เจ้าของบันทึก (แบบโอน · ไม่ยิงเครื่อง)',
   };
   pulseLogRef(id).set(log).catch(e => console.error('manual log error:', e));
   return { id, ...log };
@@ -10005,10 +10011,10 @@ function floatCoinInsert(config, order, { machine, kind, kg, temp, heat, baht, d
   };
   pulseLogRef(id).set(log).catch(e => console.error('float coin log error:', e));
   const ex = {
-    brand: config.brand, kind: 'floatCoin', amount: baht, paymentMethod: 'transfer',
+    brand: config.brand, kind: 'floatCoin', amount: baht, paymentMethod: isInternalOrder(order) ? 'internal' : 'transfer', // 🔧 v199 งานภายใน = เหรียญร้าน ไม่มีเงินเข้า
     tokenCount: cp0.tokenMode ? Math.round(baht / (cp0.tokenValue || 10)) : 0, coinCount: cp0.tokenMode ? 0 : Math.round(baht / 10),
     discBaht: discBaht || 0, refId: order.id, refLabel: pulseRefLabel(order, config), machine, machineLabel: log.machineLabel, pulseLogId: id,
-    staffName: log.staffName, photo: '', note: 'หยอดแทนยิงแอป (ยิงไม่ได้)', createdAt: now,
+    staffName: log.staffName, photo: '', note: isInternalOrder(order) ? 'เหรียญร้านใช้งานภายใน (ยิงไม่ได้)' : 'หยอดแทนยิงแอป (ยิงไม่ได้)', createdAt: now,
   };
   window.db.collection('tokenExchanges').doc(fid).set(ex).catch(e => console.error('float exchange error:', e));
   return { id, ...log };
@@ -11399,9 +11405,18 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
 
       {selM && (fixed || job) && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3">
-          {owner && ready && !busyText && (
-            <button onClick={() => {
+          {(owner || (adminOk && job && isInternalOrder(job.order))) && ready && !busyText && (
+            <button data-manual-start onClick={() => {
               const o = job.order;
+              if (isInternalOrder(o)) { // 🔧 v199 งานภายใน — เจ้าของ/แอดมิน บันทึกว่าเริ่มเองได้ (ไม่มีเงินเกี่ยว)
+                const me = currentStaffLS(config);
+                if (!confirm(`✍️ ${tr(config, 'บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)')}\n\n📋 ${pulseRefLabel(o, config)}\n🧺 ${selM.label} (${selM.kg}kg) · ฿${baht}\n\n⚠️ ${tr(config, 'แอปไม่สั่งเครื่อง — ช่างเปิดเครื่องเอง')}\n👉 ${tr(config, 'เครื่องเริ่มทำงานแล้ว กดตกลง')}`)) return;
+                recordManualStart(config, o, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? tempUse : null, heat: selM.kind === 'dry' ? heat : null, warn, baht,
+                  byStaff: owner ? null : me, note: 'บันทึกเริ่มเครื่องเอง (งานภายใน · ไม่ยิงเครื่อง)' });
+                setOwnerMsg(`✍️ ${selM.label} ฿${baht} — ${tr(config, 'บันทึกแล้ว (ไม่ยิงจริง)')}`);
+                setSel(null);
+                return;
+              }
               const cashNote = (o.paymentMethod === 'cash' || o.paymentMethod === 'split') ? '\n\n💡 ใบงานนี้ลงว่าจ่ายเงินสด — ถ้าลูกค้าโอนจริง ให้แก้วิธีจ่ายในใบงานเป็น "โอน" ด้วย' : '';
               if (!confirm(`✍️ เจ้าของบันทึกว่าเริ่มเครื่องแล้ว (แบบโอน)\n\n📋 ${pulseRefLabel(o, config)}\n🧺 ${selM.label} (${selM.kg}kg) · ฿${baht}\n\n⚠️ แอปจะไม่สั่งเครื่อง — ใช้แก้ใบงานที่เริ่มเครื่องไปแล้วด้วยวิธีอื่น${cashNote}`)) return;
               const mp = { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? tempUse : null, heat: selM.kind === 'dry' ? heat : null, warn };
@@ -11417,7 +11432,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               setSel(null);
             }}
               className="w-full mb-2 py-2.5 rounded-xl border-2 text-sm font-extrabold active:scale-95 transition" style={{ borderColor: '#8B5CF6', background: '#F5F3FF', color: '#5B21B6' }}>
-              ✍️ {tr(config, 'เจ้าของ: บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)')} {selM.label} ฿{baht}
+              ✍️ {tr(config, job && isInternalOrder(job.order) ? 'บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)' : 'เจ้าของ: บันทึกว่าเริ่มแล้ว (ไม่ยิงจริง)')} {selM.label} ฿{baht}
             </button>
           )}
           {ready && !busyText && !block && !isSol(config) && cp.pulse > 0 && (
@@ -11427,7 +11442,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               const lines = [];
               if (coinPart > 0) lines.push(`💵 ${tr(config, 'เงินสดของลูกค้า')} ฿${coinPart}`);
               lines.push(`🪙 ${tr(config, 'เหรียญตั้งต้นของร้าน')} ฿${floatBaht} (${Math.round(floatBaht / 10)} ${tr(config, 'เหรียญ')})`);
-              if (!confirm(`🪙 ${tr(config, 'ยิงไม่ได้ → หยอดเหรียญแทน')}\n\n📋 ${pulseRefLabel(o, config)}\n🧺 ${selM.label} (${selM.kg}kg) · ฿${baht}\n${lines.join('\n')}\n\n• ${tr(config, 'ใบงานยังเป็นโอน — เงินอยู่ในบัญชีร้านแล้ว ไม่ต้องส่งเงิน')}\n• ${tr(config, 'แอปหักเหรียญตั้งต้นให้')}\n\n👉 ${tr(config, 'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วกดตกลง')}`)) return;
+              if (!confirm(`🪙 ${tr(config, 'ยิงไม่ได้ → หยอดเหรียญแทน')}\n\n📋 ${pulseRefLabel(o, config)}\n🧺 ${selM.label} (${selM.kg}kg) · ฿${baht}\n${lines.join('\n')}\n\n• ${tr(config, isInternalOrder(o) ? 'งานภายใน — ใช้เหรียญร้าน ไม่มีเงินเข้า' : 'ใบงานยังเป็นโอน — เงินอยู่ในบัญชีร้านแล้ว ไม่ต้องส่งเงิน')}\n• ${tr(config, 'แอปหักเหรียญตั้งต้นให้')}\n\n👉 ${tr(config, 'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วกดตกลง')}`)) return;
               const mp = { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? tempUse : null, heat: selM.kind === 'dry' ? heat : null, warn };
               const dm = (b) => (selM.kind === 'dry' ? dryMinutesFor(config, selM.kg, b) : null);
               if (coinPart > 0) logCoinInsert(config, o, job.logs || jobLogs || [], { ...mp, baht: coinPart, dryMin: dm(coinPart) });
@@ -15751,7 +15766,7 @@ function TokenExchangeReportView({ config, tokenExchanges, onDelete }) {
                                 ฿{formatMoney(t.amount)}
                               </span>
                               <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${pm === 'transfer' ? 'bg-violet-200 text-violet-800' : 'bg-emerald-200 text-emerald-800'}`}>
-                                {tr(config, pm === 'transfer' ? '💳 โอน' : '💵 สด')}
+                                {tr(config, pm === 'transfer' ? '💳 โอน' : pm === 'internal' ? '🔧 ร้านใช้เอง' : '💵 สด')}
                               </span>
                               {t.cleared && <span className="text-[10px] text-emerald-600 font-bold">✓ เคลียแล้ว</span>}
                             </div>
