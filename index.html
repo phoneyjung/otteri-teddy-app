@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v204-2026-11-08';
+  window.APP_VERSION = 'v205-2026-11-08';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2317,6 +2317,29 @@ const MM_DICT = {
   'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรม → จ่ายด้วยเครดิตของตัวเองที่ตู้ → เครื่องเดินแล้วกดปุ่มด้านล่าง': 'အဆင့်: အဝတ်ထည့် → တံခါးပိတ် → ပရိုဂရမ်ရွေး → ကိုယ်ပိုင်ခရက်ဒစ်ဖြင့် ပေး → စက်လည်ပြီးမှ အောက်ခလုတ်နှိပ်', // v204
   'เครดิตหมด → หยอดเหรียญร้านแทน': 'ခရက်ဒစ်ကုန် → ဆိုင်အကြွေစေ့ ထည့်ပါ', // v204
   'ตัดเครดิตของตัวเองที่ตู้': 'စက်တွင် ကိုယ်ပိုင်ခရက်ဒစ်ဖြင့် ပေး', // v204
+  'ที่จอกล่อง': 'ဘေးဘူးမျက်နှာပြင်တွင်', // v205
+  'สแกน': 'စကင်ဖတ်', // v205
+  'ล็อกอินเบอร์+รหัสของตัวเอง': 'ကိုယ့်ဖုန်းနံပါတ်+စကားဝှက်ဖြင့် ဝင်ပါ', // v205
+  'ใส่': 'ထည့်', // v205
+  'ขั้นตอนที่ตู้': 'စက်တွင် လုပ်ရမည့်အဆင့်', // v205
+  'ใส่ผ้า ปิดประตู กดโหมดที่หน้าเครื่อง': 'အဝတ်ထည့် တံခါးပိတ် စက်ရှေ့တွင် မုဒ်ရွေး', // v205
+  'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง': 'စက်လည်ပြီးမှ အောက်က 🎟️ ခရက်ဒစ်ဖြင့် ပေးပြီး ခလုတ်နှိပ်', // v205
+  'เครื่องเดินแล้ว กดตกลง': 'စက်လည်ပြီးမှ OK နှိပ်', // v205
+  'โอน ตัดเครดิต': 'လွှဲ — ခရက်ဒစ်ဖြင့် ပေး', // v205
+  'โอน → ตัดเครดิต': 'လွှဲ → ခရက်ဒစ်ဖြင့် ပေး', // v205
+  'ส่วนลด ตัดเครดิต': 'လျှော့ငွေ — ခရက်ဒစ်ဖြင့် ပေး', // v205
+  'ส่วนลด → ตัดเครดิต (ซัก)': 'လျှော့ငွေ → ခရက်ဒစ် (လျှော်)', // v205
+  'ส่วนโอน ตัดเครดิต': 'လွှဲသည့်အပိုင်း — ခရက်ဒစ်ဖြင့် ပေး', // v205
+  'ส่วนลดคูปอง — ตัดเครดิตได้ (เฉพาะเครื่องซัก)': 'ကူပွန်လျှော့ငွေ — ခရက်ဒစ်ဖြင့် ပေးနိုင် (လျှော်စက်သာ)', // v205
+  'เริ่มไม่ได้': 'မစနိုင်', // v205
+  'งานนี้เริ่มเครื่องครบแล้ว — เริ่มซ้ำไม่ได้': 'ဤအလုပ် စက်စပြီးပြီ — ထပ်မစနိုင်', // v205
+  'ใบงานนี้เริ่มซักครบแล้ว — เริ่มซ้ำไม่ได้': 'ဤစာရွက် လျှော်ပြီးပြီ — ထပ်မစနိုင်', // v205
+  'อบครบตามใบงานแล้ว — เกินใบงานไม่ได้': 'စာရွက်အတိုင်း အခြောက်ခံပြီး — ပိုမလုပ်နိုင်', // v205
+  'ยอดต้องลงท้ายด้วย 0': 'ပမာဏ 0 ဖြင့် ဆုံးရမည်', // v205
+  'จ่ายแล้วเครื่องไม่ทำงาน': 'ပေးပြီး စက်မလည်', // v205
+  'เริ่มผิดเครื่อง': 'စက်မှားစ', // v205
+  'ตัดเครดิตไปแล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)': 'ခရက်ဒစ်ပေးပြီး သို့သော် စာရွက်တွင် မရေတွက် (ဆိုင်က တာဝန်ယူ)', // v205
+  'วันนี้ยังไม่ได้เปิดระบบบันทึกเริ่มเครื่อง': 'ဤနေ့ စက်စတင်မှတ်တမ်းစနစ် မဖွင့်ရသေး', // v205
   'ส่วนลด ยิงจากแอป': 'လျှော့စျေး အက်ပ်မှ ပို့',
   'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)': 'ကူပွန်လျှော့စျေး — အက်ပ်မှ ပို့နိုင် (လျှော်စက်သာ)',
   'ส่วนลดคูปอง': 'ကူပွန်လျှော့စျေး',
@@ -4455,7 +4478,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
     const usePulse = pulseOn(config);
     const pulseMachine = usePulse ? pulseMachines(config).find(m => m.label === promoMachine) : null;
     if (usePulse) {
-      if (amount % PULSE_BAHT !== 0) { alert(tr(config, 'ยอดต้องลงท้ายด้วย 0 (1 พัลส์ = 10 บาท)')); return; }
+      if (amount % PULSE_BAHT !== 0) { alert(ct(config, 'ยอดต้องลงท้ายด้วย 0 (1 พัลส์ = 10 บาท)')); return; }
       const maxBaht = ((config.pulse && config.pulse.maxPerShot) || 12) * PULSE_BAHT;
       if (amount > maxBaht) { alert(tr(config, 'ยอดสูงสุดต่อครั้ง') + ' ' + maxBaht + '฿'); return; }
       if (!pulseMachine) { alert(tr(config, 'เลือกเครื่องที่ลูกค้าใช้')); return; }
@@ -4464,7 +4487,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
     if (!promoStaff) { alert('ใส่ชื่อแม่บ้าน'); return; }
     if (manual && !confirm(`✍️ เจ้าของบันทึกโปร (ไม่ยิงเครื่อง)\n\n🧺 ${pulseMachine.label}\n🎁 ${promoName || 'ส่วนลด'} ฿${amount}\n\n⚠️ แอปไม่สั่งเครื่องให้ — เริ่มเครื่องเอง (หยอดเหรียญ / ตู้) · นับว่าเริ่มแล้ว`)) return;
     if (usePulse && !manual && !confirm(isCredit(config) // 🎟️ v204
-      ? `🎟️ ${tr(config, 'ยืนยันตัดเครดิต')}\n\n🧺 ${pulseMachine.label}\n🎟️ ${tr(config, 'ตัดเครดิตของตัวเองที่ตู้')} ฿${amount}\n🎁 ${promoName || 'ส่วนลด'}\n\n👉 ${tr(config, 'จ่ายด้วยเครดิตของตัวเองที่ตู้ จนเครื่องเริ่มทำงาน แล้วกดตกลง')}`
+      ? `🎟️ ${tr(config, 'ยืนยันตัดเครดิต')}\n\n🧺 ${pulseMachine.label}\n🎟️ ${tr(config, 'ตัดเครดิตของตัวเองที่ตู้')} ฿${amount}\n🎁 ${promoName || 'ส่วนลด'}\n\n${creditStepLines(config, creditPlan(config, { kind: pulseMachine.kind, kg: pulseMachine.kg, baht: amount, coin: 0 })).map((t, i) => `${i + 1}) ${t}`).join('\n')}\n✅ ${tr(config, 'เครื่องเดินแล้ว กดตกลง')}`
       : `⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${pulseMachine.label}\n🔢 ${amount / PULSE_BAHT} ${tr(config, 'พัลส์')} (฿${amount})\n🎁 ${promoName || 'ส่วนลด'}`)) return;
     setSavingPromo(true);
     try {
@@ -5120,8 +5143,8 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
             <p className="text-4xl mb-1">✅</p>
             <p className="text-lg font-extrabold text-slate-800">{savedPromo.manual ? '✍️ ' + tr(config, 'เจ้าของบันทึกแล้ว (ไม่ยิงจริง)') : savedPromo.pulseLogId ? tr(config, 'เริ่มเครื่องแล้ว') : tokenShop(config) ? tr(config, 'บันทึกให้โทเคนแล้ว') : tr(config, "บันทึกตัดเครดิตแล้ว")}</p>
             {savedPromo.pulseLogId && !savedPromo.manual && (
-              <p className={`text-sm font-bold mt-1 ${savedPromo.pulseStatus === 'confirmed' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {savedPromo.pulseStatus === 'confirmed' ? '✅ ' + tr(config, 'เครื่องรับแล้ว') : '⏳ ' + tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}
+              <p className={`text-sm font-bold mt-1 ${savedPromo.pulseStatus === 'confirmed' || savedPromo.pulseStatus === 'credit' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {savedPromo.pulseStatus === 'credit' ? '🎟️ ' + tr(config, 'ตัดเครดิตแล้ว') : savedPromo.pulseStatus === 'confirmed' ? '✅ ' + tr(config, 'เครื่องรับแล้ว') : '⏳ ' + tr(config, 'ส่งคำสั่งแล้ว ดูที่เครื่องว่าเริ่มทำงานไหม')}
               </p>
             )}
             <div className="mt-3 text-left">
@@ -9683,6 +9706,46 @@ const PULSE_GATE = {};     // brand → { needReason, open } — ใช้กั
 const pulseOn = (config) => !!(config && config.pulse && config.settings && config.settings.pulseEnabled === true);
 const isSol = (config) => !!(config && config.pulse && config.pulse.mode === 'sol'); // 🟦 Otteri: เริ่มเครื่องผ่าน SOL
 const isCredit = (config) => !!(config && config.pulse && config.pulse.mode === 'credit'); // 🎟️ v204 Teddy 2: ตัดเครดิตที่ตู้ (ไม่ติดต่อ EC)
+// 🎟️ v205 คำในหน้าแม่บ้านโหมดตัดเครดิต (แทนคำว่า ยิง/พัลส์) · ใช้ ct(config, คำเดิม) แทน tr(config, คำเดิม)
+const CREDIT_WORDS = {
+  'โอน ยิงแอป': 'โอน ตัดเครดิต', 'โอน → ยิงแอป': 'โอน → ตัดเครดิต',
+  'ส่วนลด ยิงจากแอป': 'ส่วนลด ตัดเครดิต', 'ส่วนลด → ยิงแอป (ซัก)': 'ส่วนลด → ตัดเครดิต (ซัก)',
+  'ส่วนโอน ยิงจากแอป': 'ส่วนโอน ตัดเครดิต', 'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)': 'ส่วนลดคูปอง — ตัดเครดิตได้ (เฉพาะเครื่องซัก)',
+  'ยิงไม่ได้': 'เริ่มไม่ได้',
+  'งานนี้เริ่มเครื่องครบแล้ว — ยิงซ้ำไม่ได้': 'งานนี้เริ่มเครื่องครบแล้ว — เริ่มซ้ำไม่ได้',
+  'ใบงานนี้เริ่มซักครบแล้ว — ยิงซ้ำไม่ได้': 'ใบงานนี้เริ่มซักครบแล้ว — เริ่มซ้ำไม่ได้',
+  'อบครบตามใบงานแล้ว — ยิงเกินใบงานไม่ได้': 'อบครบตามใบงานแล้ว — เกินใบงานไม่ได้',
+  'ยอดต้องลงท้ายด้วย 0 (1 พัลส์ = 10 บาท)': 'ยอดต้องลงท้ายด้วย 0',
+  'ยิงแล้วเครื่องไม่ทำงาน': 'จ่ายแล้วเครื่องไม่ทำงาน', 'ยิงผิดเครื่อง': 'เริ่มผิดเครื่อง',
+  'เครื่องได้รับพัลส์แล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)': 'ตัดเครดิตไปแล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)',
+  'วันนี้ยังไม่ได้เปิดระบบยิงพัลส์จากแอป': 'วันนี้ยังไม่ได้เปิดระบบบันทึกเริ่มเครื่อง',
+};
+const ct = (config, s) => tr(config, isCredit(config) && CREDIT_WORDS[s] ? CREDIT_WORDS[s] : s);
+const fireIcon = (config) => (isCredit(config) ? '🎟️' : '⚡');
+// 🎟️ v205 รอบที่ต้องแตะที่จอกล่องข้างเครื่อง (เจ้าของยืนยัน 8 พ.ย.): ซัก = ราคาเดียว · อบ = ราคาเริ่ม แล้วเพิ่มเวลา 20/10 ทีละรอบ
+// เงินสด (coin) หยอดเหรียญก่อน แล้วตัดเครดิตส่วนที่เหลือ — pay = ยอดที่ใส่ในหน้าเครดิต
+function creditPlan(config, { kind, kg, baht, coin }) {
+  const taps = [];
+  let left = baht || 0;
+  if (kind === 'dry') {
+    const base = config.dryMachines ? ((config.dryMachines.find(d => d.size === kg) || {}).price || 0) : 0;
+    if (base > 0 && left >= base) { taps.push(base); left -= base; }
+    while (left >= 20) { taps.push(20); left -= 20; }
+    if (left >= 10) { taps.push(10); left -= 10; }
+    if (left > 0) taps.push(left);
+  } else if (left > 0) taps.push(left);
+  let c = Math.max(0, coin || 0);
+  return taps.map(t => { const use = Math.min(c, t); c -= use; return { tap: t, coin: use, pay: t - use }; });
+}
+function creditStepLines(config, rounds) {
+  let loginShown = false;
+  return rounds.map(r => {
+    if (r.pay <= 0) return `💵 ${tr(config, 'หยอดเหรียญ')} ฿${r.coin}`;
+    const login = loginShown ? '' : ` → ${tr(config, 'ล็อกอินเบอร์+รหัสของตัวเอง')}`;
+    loginShown = true;
+    return `${r.coin > 0 ? `💵 ${tr(config, 'หยอดเหรียญ')} ฿${r.coin} → ` : ''}${tr(config, 'แตะ')} ฿${r.tap} ${tr(config, 'ที่จอกล่อง')} → Use Credit → ${tr(config, 'สแกน')}${login} → ${tr(config, 'ใส่')} ${r.pay} → Use credit`;
+  });
+}
 const ecName = (config) => (isSol(config) ? 'SOL' : 'EC');
 const pulseSinceOf = (config) => (config && config.settings && config.settings.pulseSinceMs) || 0;
 // 🔁 v202 user EC ใหม่: วันก่อน ecSince ประวัติอยู่ในบัญชีเดิม → ไม่อ่าน Worker · ใช้ผลที่เก็บไว้อย่างเดียว
@@ -9957,7 +10020,7 @@ function PayLeftLine({ config, pay, small }) {
   const parts = [];
   if (pay.coinLeft > 0) parts.push(<span key="c" className="text-emerald-700">💵 {tr(config, 'เงินสด หยอดเหรียญ')} ฿{pay.coinLeft}</span>);
   if (pay.discLeft > 0) parts.push(<span key="d" className="text-amber-700">🎟️ {tr(config, 'ส่วนลด (เฉพาะเครื่องซัก)')} ฿{pay.discLeft}</span>);
-  if (pay.transferLeft > 0) parts.push(<span key="t" className="text-sky-700">⚡ {tr(config, 'โอน ยิงแอป')} ฿{pay.transferLeft}</span>);
+  if (pay.transferLeft > 0) parts.push(<span key="t" className="text-sky-700">{fireIcon(config)} {ct(config, 'โอน ยิงแอป')} ฿{pay.transferLeft}</span>);
   return (
     <p className={small ? 'text-[11px] font-bold pl-7' : 'text-sm font-extrabold mt-1'}>
       {parts.map((p, i) => <React.Fragment key={i}>{i > 0 && <span className="text-slate-400"> · </span>}{p}</React.Fragment>)}
@@ -10778,7 +10841,9 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
   }
   const steps = order && order.internalType === 'clean'
     ? `🧼 ${tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')}\n⚠️ ${tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}`
-    : `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n3) ${cr && pulseBaht > 0 ? tr(config, coin > 0 ? 'หยอดเหรียญ + จ่ายด้วยเครดิตของตัวเองที่ตู้ จนเครื่องเริ่มทำงาน แล้วกดตกลง' : 'จ่ายด้วยเครดิตของตัวเองที่ตู้ จนเครื่องเริ่มทำงาน แล้วกดตกลง') : coin > 0 ? tr(config, 'หยอดเหรียญ แล้วกดตกลง') : tr(config, 'กดตกลง = ชำระเงิน เครื่องเริ่มทำงาน')}`;
+    : cr && pulseBaht > 0 // 🎟️ v205 ขั้นตอนที่ตู้เป็นรอบ ๆ
+    ? `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n${creditStepLines(config, creditPlan(config, { kind, kg, baht, coin })).map((t, i) => `${i + 3}) ${t}`).join('\n')}\n✅ ${tr(config, 'เครื่องเดินแล้ว กดตกลง')}`
+    : `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n3) ${coin > 0 ? tr(config, 'หยอดเหรียญ แล้วกดตกลง') : tr(config, 'กดตกลง = ชำระเงิน เครื่องเริ่มทำงาน')}`;
   // v158: เตือนทุกครั้งก่อนยิง — กดโหมดที่หน้าเครื่องให้ตรงใบงาน (บรรทัดแรก)
   const modeLine = order && order.internalType === 'clean'
     ? `⚠️ ${tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}`
@@ -11324,13 +11389,13 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
     const all = job.alloc.slots;
     const custom = all.find(s => s.kind === 'custom');
     const usedHere = all.some(s => s.logs.some(l => l.machine === selM.id));
-    if (custom) { if (custom.got >= custom.baht) block = tr(config, 'งานนี้เริ่มเครื่องครบแล้ว — ยิงซ้ำไม่ได้'); }
+    if (custom) { if (custom.got >= custom.baht) block = ct(config, 'งานนี้เริ่มเครื่องครบแล้ว — ยิงซ้ำไม่ได้'); }
     else if (!all.some(s => slotSameKind(s, selM))) block = selM.kind === 'wash' ? tr(config, 'ใบงานนี้ไม่มีซัก — แก้ใบงานเพิ่มซักก่อน') : tr(config, 'ใบงานนี้ไม่มีอบ — แก้ใบงานเพิ่มอบก่อน');
     else if (!all.some(s => slotSameKind(s, selM) && s.kg === selM.kg)) block = `${tr(config, 'ขนาดเครื่องไม่ตรงใบงาน')} (${tr(config, 'ใบงานเป็น')} ${[...new Set(all.filter(s => slotSameKind(s, selM)).map(s => s.kg))].join('/')}kg) — ${tr(config, 'ถ้าจะเปลี่ยนขนาดเครื่อง ให้แก้บิลก่อน')}`; // v152
     else if (!openSlots.some(s => slotSameKind(s, selM))) {
-      if (selM.kind === 'wash') block = tr(config, 'ใบงานนี้เริ่มซักครบแล้ว — ยิงซ้ำไม่ได้');
+      if (selM.kind === 'wash') block = ct(config, 'ใบงานนี้เริ่มซักครบแล้ว — ยิงซ้ำไม่ได้');
       else if (!usedHere) block = tr(config, 'อบครบแล้ว — เพิ่มเวลาได้เฉพาะเครื่องที่อบงานนี้');
-      else block = isInternalOrder(job.order) ? tr(config, 'อบครบตามใบงานแล้ว — ยิงเกินใบงานไม่ได้') : tr(config, 'อบครบตามใบงานแล้ว — ลูกค้าจะเพิ่มเวลา กด ⏱️ ลูกค้าเพิ่มเวลาอบ'); // v158: ห้ามยิงเกินใบงาน
+      else block = isInternalOrder(job.order) ? ct(config, 'อบครบตามใบงานแล้ว — ยิงเกินใบงานไม่ได้') : tr(config, 'อบครบตามใบงานแล้ว — ลูกค้าจะเพิ่มเวลา กด ⏱️ ลูกค้าเพิ่มเวลาอบ'); // v158: ห้ามยิงเกินใบงาน
     }
   }
   // 🔧 งานภายใน (v150): แม่บ้านเปิดได้เฉพาะเครื่องที่ระบุในใบงาน · เจ้าของเปิดได้ (มีเตือน)
@@ -11474,13 +11539,13 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               <div className="rounded-xl px-3 py-3 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
                 <p className="text-base font-extrabold text-amber-900">💵 {tr(config, 'ใบงานเงินสด — แอปไม่สั่งเครื่องให้')}</p>
                 <p className="text-sm font-extrabold text-amber-900 mt-0.5">👉 {tr(config, 'ไปหยอดเหรียญที่เครื่องเอง')} {selM.label} ฿{cp.coin}</p>
-                {cp.disc > 0 && <p className="text-sm font-bold text-amber-700">🎟️ {tr(config, 'ส่วนลด ยิงจากแอป')} ฿{cp.disc}</p>}
-                {cp.pulse - cp.disc > 0 && <p className="text-sm font-bold text-sky-800">⚡ {tr(config, 'ส่วนโอน ยิงจากแอป')} ฿{cp.pulse - cp.disc}</p>}
+                {cp.disc > 0 && <p className="text-sm font-bold text-amber-700">🎟️ {ct(config, 'ส่วนลด ยิงจากแอป')} ฿{cp.disc}</p>}
+                {cp.pulse - cp.disc > 0 && <p className="text-sm font-bold text-sky-800">{fireIcon(config)} {ct(config, 'ส่วนโอน ยิงจากแอป')} ฿{cp.pulse - cp.disc}</p>}
                 <p className="text-[11px] font-bold text-amber-800 mt-1">{tr(config, 'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วค่อยกดบันทึก')}</p>
               </div>
             )}
             {(fixed || job) && !block && pay && cp.disc > 0 && cp.coin === 0 && (
-              <p className="text-sm font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">🎟️ {tr(config, 'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)')} ฿{cp.disc}</p>
+              <p className="text-sm font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">🎟️ {ct(config, 'ส่วนลดคูปอง — ยิงจากแอปได้ (เฉพาะเครื่องซัก)')} ฿{cp.disc}</p>
             )}
             {block && <p className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">🚫 {block}</p>}
             {block && firedHere && <p className="text-xs font-bold text-slate-600 px-1">💡 {tr(config, 'เครื่องมีปัญหา? กด ⚠️ ที่รายการด้านล่าง ให้เจ้าของคืนเครดิต')}</p>}
@@ -11576,7 +11641,16 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
               <div className="rounded-xl px-3 py-2.5 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
                 <p className="text-sm font-extrabold text-amber-900">⚠️ {tr(config, isSol(config) ? 'เลือกโปรแกรมใน SOL ให้ตรงใบงาน' : 'กดโหมดที่หน้าเครื่องให้ตรงใบงาน')}: {selM.kind === 'wash' ? `💧 ${tr(config, washTempLabel(tempUse))}` : `🌡️ ${tr(config, 'ความร้อนตามใบงาน')}`}</p>
                 {selM.kind === 'dry' && <p className="text-[11px] font-bold text-amber-800">{tr(config, 'ความร้อนไม่ต้องเลือกในแอป — ทุกระดับราคาเท่ากัน')}</p>}
-                <p className="text-[11px] font-bold text-slate-500 mt-0.5">📝 {tr(config, isSol(config) ? 'ขั้นตอน: ใส่ผ้า → ปิดประตู → กดปุ่มด้านล่าง → กด Start ใน SOL → กลับมากด ✅' : isCredit(config) ? 'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรม → จ่ายด้วยเครดิตของตัวเองที่ตู้ → เครื่องเดินแล้วกดปุ่มด้านล่าง' : 'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรมที่หน้าเครื่อง → กดเริ่ม (ชำระเงิน)')}</p>
+                {isCredit(config) ? ( // 🎟️ v205 ขั้นตอนที่ตู้เป็นข้อ ๆ
+                  <div className="mt-1.5 rounded-lg bg-white/70 px-2 py-1.5" data-credit-steps>
+                    <p className="text-xs font-extrabold text-slate-700">📝 {tr(config, 'ขั้นตอนที่ตู้')}</p>
+                    <p className="text-[13px] font-bold text-slate-800 mt-0.5">1) {tr(config, 'ใส่ผ้า ปิดประตู กดโหมดที่หน้าเครื่อง')}</p>
+                    {creditStepLines(config, creditPlan(config, { kind: selM.kind, kg: selM.kg, baht, coin: cp.coin })).map((t, i) => (
+                      <p key={i} className="text-[13px] font-bold text-slate-800 mt-0.5">{i + 2}) {t}</p>
+                    ))}
+                    <p className="text-[13px] font-extrabold text-emerald-800 mt-0.5">✅ {tr(config, 'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง')}</p>
+                  </div>
+                ) : <p className="text-[11px] font-bold text-slate-500 mt-0.5">📝 {tr(config, isSol(config) ? 'ขั้นตอน: ใส่ผ้า → ปิดประตู → กดปุ่มด้านล่าง → กด Start ใน SOL → กลับมากด ✅' : 'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรมที่หน้าเครื่อง → กดเริ่ม (ชำระเงิน)')}</p>}
               </div>
             ))}
             {warn && <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ {warn}</p>}
@@ -11644,7 +11718,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
           <button disabled={!ready || !!busyText}
             onClick={() => onFire(job, { machine: selM.id, kind: selM.kind, kg: selM.kg, temp: selM.kind === 'wash' ? tempUse : null, heat: selM.kind === 'dry' ? heat : null, baht, warn, coinBaht: cp.coin, discBaht: cp.disc }, () => setSel(null))}
             className="w-full py-4 rounded-2xl text-white text-lg font-extrabold active:scale-95 transition disabled:opacity-40" style={{ background: cp.coin > 0 && cp.pulse === 0 && !block ? '#D97706' : config.gradient }}>
-            {busyText ? `⏳ ${busyText}` : block ? `🚫 ${tr(config, 'ยิงไม่ได้')}` : !ready
+            {busyText ? `⏳ ${busyText}` : block ? `🚫 ${ct(config, 'ยิงไม่ได้')}` : !ready
               ? (selM.kind === 'wash' ? tr(config, 'เลือกน้ำก่อน') : tr(config, 'เลือกเวลาอบ'))
               : cp.coin > 0 && cp.pulse === 0 ? `💵 ${tr(config, 'หยอดที่เครื่องแล้ว · บันทึก')} ${selM.label} ฿${baht}`
               : cp.coin > 0 ? `💵 ฿${cp.coin} + ${isSol(config) ? '🟦' : isCredit(config) ? '🎟️' : '⚡'} ฿${cp.pulse} · ${tr(config, 'เริ่มเครื่อง')} ${selM.label}`
@@ -11789,8 +11863,8 @@ function PulseStarterCard({ config, order: orderProp, isOwner }) {
         <p className="text-xs font-bold mt-1.5">
           {[
             pay.coinNeed > 0 && <span key="c" className="text-emerald-700">💵 {tr(config, 'เงินสด → หยอดเหรียญ')} ฿{pay.coinUsed}/{pay.coinNeed}</span>,
-            pay.discountOn > 0 && <span key="d" className="text-amber-700">🎟️ {tr(config, 'ส่วนลด → ยิงแอป (ซัก)')} ฿{pay.discountUsed}/{pay.discountOn}</span>,
-            pay.transferOn > 0 && <span key="t" className="text-sky-700">⚡ {tr(config, 'โอน → ยิงแอป')} ฿{Math.min(pay.transferUsed, pay.transferOn)}/{pay.transferOn}</span>,
+            pay.discountOn > 0 && <span key="d" className="text-amber-700">🎟️ {ct(config, 'ส่วนลด → ยิงแอป (ซัก)')} ฿{pay.discountUsed}/{pay.discountOn}</span>,
+            pay.transferOn > 0 && <span key="t" className="text-sky-700">{fireIcon(config)} {ct(config, 'โอน → ยิงแอป')} ฿{Math.min(pay.transferUsed, pay.transferOn)}/{pay.transferOn}</span>,
             pay.manual > 0 && <span key="m" className="text-violet-700">✍️ ฿{pay.manual}</span>,
           ].filter(Boolean).map((x, i) => <React.Fragment key={i}>{i > 0 && ' · '}{x}</React.Fragment>)}
         </p>
@@ -11820,7 +11894,7 @@ function PulseStarterCard({ config, order: orderProp, isOwner }) {
           <div className="rounded-xl p-2.5 border bg-sky-50 border-sky-200">
             <p className="text-sm font-bold text-sky-800">↩️ {tr(config, 'คืนเครดิตแล้ว')}</p>
             {logs.filter(pulseRefunded).map(l => (
-              <p key={l.id} className="text-[11px] text-slate-600 mt-1"><span className="line-through font-bold">🧺 {l.machineLabel} ฿{l.baht}</span> · {new Date(l.createdAt || 0).toTimeString().slice(0, 5)} · {tr(config, refundReasonLabel(l.refundReason))}{l.refundNote ? ' — ' + l.refundNote : ''}</p>
+              <p key={l.id} className="text-[11px] text-slate-600 mt-1"><span className="line-through font-bold">🧺 {l.machineLabel} ฿{l.baht}</span> · {new Date(l.createdAt || 0).toTimeString().slice(0, 5)} · {ct(config, refundReasonLabel(l.refundReason))}{l.refundNote ? ' — ' + l.refundNote : ''}</p>
             ))}
           </div>
         )}
@@ -12305,7 +12379,7 @@ function RefundAction({ config, log, isOwner, hideRequest }) {
         {owner ? (
           <>
             {btn('bg-emerald-50 border-emerald-400 text-emerald-700', () => {
-              if (!confirm(`↩️ ${tr(config, 'คืนเครดิต')} ฿${log.baht}\n\n📋 ${log.refLabel || ''}\n🧺 ${log.machineLabel || ''}\n⚠️ ${tr(config, refundReasonLabel(log.refundReq.reason))}${log.refundReq.note ? ' — ' + log.refundReq.note : ''}\n\nใบงานจะกลับมาเปิดเครื่องได้อีก ฿${log.baht}`)) return;
+              if (!confirm(`↩️ ${tr(config, 'คืนเครดิต')} ฿${log.baht}\n\n📋 ${log.refLabel || ''}\n🧺 ${log.machineLabel || ''}\n⚠️ ${ct(config, refundReasonLabel(log.refundReq.reason))}${log.refundReq.note ? ' — ' + log.refundReq.note : ''}\n\nใบงานจะกลับมาเปิดเครื่องได้อีก ฿${log.baht}`)) return;
               run(() => approvePulseRefund(config, log));
             }, '✅ ' + tr(config, 'คืนเครดิต'))}
             {btn('bg-white border-slate-300 text-slate-600', () => {
@@ -12358,7 +12432,7 @@ function PulseRefundSheet({ config, log, owner, onClose }) {
         </div>
         <p className="text-xs text-slate-500 mb-3">{tr(config, 'ขอคืนเครดิตให้ใบงานนี้ เพื่อสแกนเริ่มเครื่องใหม่')}</p>
         <div className="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2 mb-3">
-          <p className="text-sm font-extrabold text-slate-800">🧺 {log.machineLabel} · ฿{log.baht} <span className="text-xs font-bold text-slate-500">({pulseIsCoin(log) ? '💵 ' + tr(config, 'หยอดเหรียญ') : log.pulses + ' ' + tr(config, 'พัลส์')})</span></p>
+          <p className="text-sm font-extrabold text-slate-800">🧺 {log.machineLabel} · ฿{log.baht} <span className="text-xs font-bold text-slate-500">({pulseIsCoin(log) ? '💵 ' + tr(config, 'หยอดเหรียญ') : pulseIsCredit(log) ? '🎟️ ' + tr(config, 'ตัดเครดิต') : log.pulses + ' ' + tr(config, 'พัลส์')})</span></p>
           <p className="text-xs text-slate-600">📋 {log.refLabel || '-'} · 🕐 {new Date(log.createdAt || 0).toTimeString().slice(0, 5)}{pulseLogDetail(config, log) ? ' · ' + pulseLogDetail(config, log) : ''}</p>
         </div>
         {done ? (
@@ -12375,7 +12449,7 @@ function PulseRefundSheet({ config, log, owner, onClose }) {
               {REFUND_REASONS.map(r => (
                 <button key={r.id} onClick={() => setReason(r.id)}
                   className={`rounded-2xl px-2 py-3 border-2 text-sm font-bold active:scale-95 transition ${reason === r.id ? 'bg-rose-500 border-rose-500 text-white' : 'bg-white border-slate-200 text-slate-700'}`}>
-                  {r.emoji} {tr(config, r.label)}
+                  {r.emoji} {ct(config, r.label)}
                 </button>
               ))}
             </div>
@@ -12725,7 +12799,7 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc,
       )}
 
       {!recon.active ? (
-        <p className="text-sm text-slate-500 text-center py-6">{tr(config, 'วันนี้ยังไม่ได้เปิดระบบยิงพัลส์จากแอป')}</p>
+        <p className="text-sm text-slate-500 text-center py-6">{ct(config, 'วันนี้ยังไม่ได้เปิดระบบยิงพัลส์จากแอป')}</p>
       ) : (
         <>
           <div className="grid grid-cols-3 gap-2">
@@ -12753,9 +12827,9 @@ function PulseReconPanel({ config, orders, dateKey, setDateKey, isOwner, autoEc,
           {recon.refunds.length > 0 && (
             <div className="rounded-2xl p-3 bg-sky-50 border border-sky-200">
               <p className="text-sm font-extrabold text-sky-900">↩️ {tr(config, 'คืนเครดิตโดยเจ้าของ')} ฿{formatMoney(recon.refundBaht)} · {recon.refunds.length} {tr(config, 'รายการ')}</p>
-              <p className="text-[11px] text-sky-800">{tr(config, 'เครื่องได้รับพัลส์แล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)')}</p>
+              <p className="text-[11px] text-sky-800">{ct(config, 'เครื่องได้รับพัลส์แล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)')}</p>
               {recon.refunds.map(r => (
-                <p key={r.id} className="text-xs text-slate-700 mt-1">• <b>{r.machineLabel} ฿{r.baht}</b> · {r.refLabel} · {tr(config, refundReasonLabel(r.reason))}{r.note ? ' — ' + r.note : ''}{r.ecSeen === false ? ' · ' + tr(config, 'เครื่องไม่ได้รับ') : ''}</p>
+                <p key={r.id} className="text-xs text-slate-700 mt-1">• <b>{r.machineLabel} ฿{r.baht}</b> · {r.refLabel} · {ct(config, refundReasonLabel(r.reason))}{r.note ? ' — ' + r.note : ''}{r.ecSeen === false ? ' · ' + tr(config, 'เครื่องไม่ได้รับ') : ''}</p>
               ))}
             </div>
           )}
