@@ -5,7 +5,7 @@
 - Repo: github.com/phoneyjung/otteri-teddy-app · Live: https://phoneyjung.github.io/otteri-teddy-app/
 - ไฟล์หลัก: index.html (React 18 CDN + Babel 7.23.5 ในไฟล์เดียว), sw.js, manifest.json · `app.v6.js` ไม่ได้ถูกใช้แล้ว
 - เทคโนโลยี: Firebase Firestore compat 10.13.2 (โปรเจกต์ plp-laundromat) · GitHub Pages
-- ตัวกลางยิงพัลส์: Cloudflare Worker `teddy-pulse` (https://teddy-pulse.phoneyjung.workers.dev) — v1.2 (8 พ.ย. · รอเจ้าของวางใน Cloudflare · ที่ใช้อยู่ = v1.1) ใช้ KV binding `STATE` · โค้ดเก็บใน Project docs ไม่อยู่ใน repo นี้
+- ตัวกลางยิงพัลส์: Cloudflare Worker `teddy-pulse` (https://teddy-pulse.phoneyjung.workers.dev) — v1.2 ขึ้นแล้ว (8 พ.ย. 14:51 · version 0cc3e37e → แก้ป้ายวันที่ทับอีกรอบ · โค้ดตรงกับ Project docs ทุกไบต์ sha256 e5baf965…) ใช้ KV binding `STATE` · โค้ดเก็บใน Project docs ไม่อยู่ใน repo นี้
 
 ## เฟสตอนนี้
 v141 เพิ่ม ⚡ ยิงพัลส์เข้าเครื่องจากแอป (ผ่านเว็บ qrcode.ec.in.th) + กระทบยอดเปิดเครื่องรายวัน เฉพาะ Teddy 2
@@ -127,7 +127,7 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 
 ## งานถัดไป
 - [x] Worker teddy-pulse v1.1 ขึ้นแล้ว (3 พ.ย. 19:53 · version 3625e632 → b41b8972 พร้อม KV `teddy-pulse-state` ผูกชื่อ STATE · โค้ดตรงกับ Project docs ทุกไบต์ · secrets เดิมอยู่ครบ)
-- [ ] 🔴 สลับไป user EC ใหม่ (8 พ.ย.): ① วางโค้ด Worker v1.2 (Project docs `claude/teddy-pulse-worker-v1.2 (Cloudflare).txt`) ② เจ้าของแก้ Secrets EC_USER / EC_PASS เป็น user ใหม่เอง (เปลี่ยนรหัส = เลิกพักอัตโนมัติ เพราะพักผูกกับรหัสชุดเดิม) ③ ⚙️ 🔌 ทดสอบ 1 ครั้ง → ล็อกอินวันนี้ 1/20 ④ ยิงทดสอบ 1 พัลส์เครื่องว่าง ดูว่ารหัสกล่องเดิมใช้ได้ · ⚠️ KV pause เดิมหมด 8 พ.ย. 23:59 — ถ้ายังไม่แก้ Secrets ก่อนแอปเรียก Worker (พรุ่งนี้เช้า) Worker จะลองล็อกอิน user เดิม · ถามทีม EC: ย้ายประวัติ/ส่ง Excel ส.ค.–8 พ.ย. · เครดิตสมาชิกย้ายครบไหม · ใช้โปรแกรมแบบนี้ได้ไหม/กี่ครั้ง · ขอ user แยกให้โปรแกรม
+- [ ] 🔴 สลับไป user EC ใหม่ (8 พ.ย.): ① ✅ Worker v1.2 ขึ้นแล้ว (อัปผ่าน API content ของแดชบอร์ด · secrets/KV เดิมครบ) · ✅ KV `pause` ต่อ until = 31 ธ.ค. 69 23:59 (tag เดิม = รหัสชุดเก่า · reason 'รอใส่ user EC ใหม่') ② เจ้าของแก้ Secrets EC_USER / EC_PASS เป็น user ใหม่เอง (เปลี่ยนรหัส = เลิกพักอัตโนมัติ เพราะพักผูกกับรหัสชุดเดิม) ③ ⚙️ 🔌 ทดสอบ 1 ครั้ง → ล็อกอินวันนี้ 1/20 ④ ยิงทดสอบ 1 พัลส์เครื่องว่าง ดูว่ารหัสกล่องเดิมใช้ได้ · ถามทีม EC: ย้ายประวัติ/ส่ง Excel ส.ค.–8 พ.ย. · เครดิตสมาชิกย้ายครบไหม · ใช้โปรแกรมแบบนี้ได้ไหม/กี่ครั้ง · ขอ user แยกให้โปรแกรม
 - [x] (เดิม) EC ระงับบัญชี 3–8 พ.ย. · ทีม EC นัดแก้วันอาทิตย์ 8 พ.ย. → เจ้าของสั่งหยุดล็อกอิน (3 พ.ย. 20:20): แก้ KV `teddy-pulse-state` คีย์ `pause` ให้ `until` = 1794157140000 (อา. 8 พ.ย. 23:59) ไม่มีวันหมดอายุ · Worker ไม่แตะเว็บ EC เลยจนถึงเวลานั้น (/status = paused) · EC ปลดแล้วอยากเปิดก่อน = แก้ `until` ใน KV เป็น 0 (ห้ามแก้ `tag`) แล้วกด ⚙️ 🔌 ทดสอบ 1 ครั้ง ต้องได้ 'ล็อกอิน 1/6' · ระหว่างนี้ใบงานโอนใช้ 🪙 หยอดเหรียญแทน (v192)
 - [x] สร้าง Worker teddy-pulse + ใส่ EC_USER / EC_PASS (Secret) — 26 ต.ค.
 - [x] เพิ่ม Firestore Rules: pulseLogs, pulseDayNotes — 26 ต.ค.
