@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v205-2026-11-08';
+  window.APP_VERSION = 'v206-2026-11-10';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2325,6 +2325,7 @@ const MM_DICT = {
   'ใส่ผ้า ปิดประตู กดโหมดที่หน้าเครื่อง': 'အဝတ်ထည့် တံခါးပိတ် စက်ရှေ့တွင် မုဒ်ရွေး', // v205
   'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง': 'စက်လည်ပြီးမှ အောက်က 🎟️ ခရက်ဒစ်ဖြင့် ပေးပြီး ခလုတ်နှိပ်', // v205
   'เครื่องเดินแล้ว กดตกลง': 'စက်လည်ပြီးမှ OK နှိပ်', // v205
+  'ดูเครดิตที่เหลือ (Available credits) ต่ำกว่า 1,000 → บอกเจ้าของร้านเติม': 'ကျန်ခရက်ဒစ် (Available credits) ကြည့်ပါ — 1,000 အောက်ဆိုရင် ဆိုင်ရှင်ကို ဖြည့်ခိုင်းပါ', // v206
   'โอน ตัดเครดิต': 'လွှဲ — ခရက်ဒစ်ဖြင့် ပေး', // v205
   'โอน → ตัดเครดิต': 'လွှဲ → ခရက်ဒစ်ဖြင့် ပေး', // v205
   'ส่วนลด ตัดเครดิต': 'လျှော့ငွေ — ခရက်ဒစ်ဖြင့် ပေး', // v205
@@ -4487,7 +4488,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
     if (!promoStaff) { alert('ใส่ชื่อแม่บ้าน'); return; }
     if (manual && !confirm(`✍️ เจ้าของบันทึกโปร (ไม่ยิงเครื่อง)\n\n🧺 ${pulseMachine.label}\n🎁 ${promoName || 'ส่วนลด'} ฿${amount}\n\n⚠️ แอปไม่สั่งเครื่องให้ — เริ่มเครื่องเอง (หยอดเหรียญ / ตู้) · นับว่าเริ่มแล้ว`)) return;
     if (usePulse && !manual && !confirm(isCredit(config) // 🎟️ v204
-      ? `🎟️ ${tr(config, 'ยืนยันตัดเครดิต')}\n\n🧺 ${pulseMachine.label}\n🎟️ ${tr(config, 'ตัดเครดิตของตัวเองที่ตู้')} ฿${amount}\n🎁 ${promoName || 'ส่วนลด'}\n\n${creditStepLines(config, creditPlan(config, { kind: pulseMachine.kind, kg: pulseMachine.kg, baht: amount, coin: 0 })).map((t, i) => `${i + 1}) ${t}`).join('\n')}\n✅ ${tr(config, 'เครื่องเดินแล้ว กดตกลง')}`
+      ? `🎟️ ${tr(config, 'ยืนยันตัดเครดิต')}\n\n🧺 ${pulseMachine.label}\n🎟️ ${tr(config, 'ตัดเครดิตของตัวเองที่ตู้')} ฿${amount}\n🎁 ${promoName || 'ส่วนลด'}\n\n${creditStepLines(config, creditPlan(config, { kind: pulseMachine.kind, kg: pulseMachine.kg, baht: amount, coin: 0 })).map((t, i) => `${i + 1}) ${t}`).join('\n')}\n💳 ${tr(config, CREDIT_LOW_TEXT)}\n✅ ${tr(config, 'เครื่องเดินแล้ว กดตกลง')}`
       : `⚡ ${tr(config, 'ยืนยันเริ่มเครื่อง')}\n\n🧺 ${pulseMachine.label}\n🔢 ${amount / PULSE_BAHT} ${tr(config, 'พัลส์')} (฿${amount})\n🎁 ${promoName || 'ส่วนลด'}`)) return;
     setSavingPromo(true);
     try {
@@ -9707,6 +9708,7 @@ const pulseOn = (config) => !!(config && config.pulse && config.settings && conf
 const isSol = (config) => !!(config && config.pulse && config.pulse.mode === 'sol'); // 🟦 Otteri: เริ่มเครื่องผ่าน SOL
 const isCredit = (config) => !!(config && config.pulse && config.pulse.mode === 'credit'); // 🎟️ v204 Teddy 2: ตัดเครดิตที่ตู้ (ไม่ติดต่อ EC)
 // 🎟️ v205 คำในหน้าแม่บ้านโหมดตัดเครดิต (แทนคำว่า ยิง/พัลส์) · ใช้ ct(config, คำเดิม) แทน tr(config, คำเดิม)
+const CREDIT_LOW_TEXT = 'ดูเครดิตที่เหลือ (Available credits) ต่ำกว่า 1,000 → บอกเจ้าของร้านเติม'; // 💳 v206 เจ้าของ: ต่ำกว่า 1,000 บอกเจ้าของเติม
 const CREDIT_WORDS = {
   'โอน ยิงแอป': 'โอน ตัดเครดิต', 'โอน → ยิงแอป': 'โอน → ตัดเครดิต',
   'ส่วนลด ยิงจากแอป': 'ส่วนลด ตัดเครดิต', 'ส่วนลด → ยิงแอป (ซัก)': 'ส่วนลด → ตัดเครดิต (ซัก)',
@@ -10842,7 +10844,7 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
   const steps = order && order.internalType === 'clean'
     ? `🧼 ${tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')}\n⚠️ ${tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}`
     : cr && pulseBaht > 0 // 🎟️ v205 ขั้นตอนที่ตู้เป็นรอบ ๆ
-    ? `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n${creditStepLines(config, creditPlan(config, { kind, kg, baht, coin })).map((t, i) => `${i + 3}) ${t}`).join('\n')}\n✅ ${tr(config, 'เครื่องเดินแล้ว กดตกลง')}`
+    ? `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n${creditStepLines(config, creditPlan(config, { kind, kg, baht, coin })).map((t, i) => `${i + 3}) ${t}`).join('\n')}\n💳 ${tr(config, CREDIT_LOW_TEXT)}\n✅ ${tr(config, 'เครื่องเดินแล้ว กดตกลง')}`
     : `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n3) ${coin > 0 ? tr(config, 'หยอดเหรียญ แล้วกดตกลง') : tr(config, 'กดตกลง = ชำระเงิน เครื่องเริ่มทำงาน')}`;
   // v158: เตือนทุกครั้งก่อนยิง — กดโหมดที่หน้าเครื่องให้ตรงใบงาน (บรรทัดแรก)
   const modeLine = order && order.internalType === 'clean'
@@ -11648,6 +11650,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
                     {creditStepLines(config, creditPlan(config, { kind: selM.kind, kg: selM.kg, baht, coin: cp.coin })).map((t, i) => (
                       <p key={i} className="text-[13px] font-bold text-slate-800 mt-0.5">{i + 2}) {t}</p>
                     ))}
+                    <p className="text-[12px] font-extrabold text-rose-700 mt-0.5" data-credit-low>💳 {tr(config, CREDIT_LOW_TEXT)}</p>
                     <p className="text-[13px] font-extrabold text-emerald-800 mt-0.5">✅ {tr(config, 'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง')}</p>
                   </div>
                 ) : <p className="text-[11px] font-bold text-slate-500 mt-0.5">📝 {tr(config, isSol(config) ? 'ขั้นตอน: ใส่ผ้า → ปิดประตู → กดปุ่มด้านล่าง → กด Start ใน SOL → กลับมากด ✅' : 'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรมที่หน้าเครื่อง → กดเริ่ม (ชำระเงิน)')}</p>}
