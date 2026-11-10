@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v206-2026-11-10';
+  window.APP_VERSION = 'v207-2026-11-10';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2325,6 +2325,8 @@ const MM_DICT = {
   'ใส่ผ้า ปิดประตู กดโหมดที่หน้าเครื่อง': 'အဝတ်ထည့် တံခါးပိတ် စက်ရှေ့တွင် မုဒ်ရွေး', // v205
   'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง': 'စက်လည်ပြီးမှ အောက်က 🎟️ ခရက်ဒစ်ဖြင့် ပေးပြီး ခလုတ်နှိပ်', // v205
   'เครื่องเดินแล้ว กดตกลง': 'စက်လည်ပြီးမှ OK နှိပ်', // v205
+  'เครื่องเดินแล้ว กดปุ่ม 💵 หยอดที่เครื่องแล้ว ด้านล่าง': 'စက်လည်ပြီးမှ အောက်က 💵 စက်တွင်ထည့်ပြီး ခလုတ်နှိပ်', // v207
+  'เครื่องเดินแล้ว กดปุ่ม 💵+🎟️ เริ่มเครื่อง ด้านล่าง': 'စက်လည်ပြီးမှ အောက်က 💵+🎟️ စက်စတင် ခလုတ်နှိပ်', // v207
   'ดูเครดิตที่เหลือ (Available credits) ต่ำกว่า 1,000 → บอกเจ้าของร้านเติม': 'ကျန်ခရက်ဒစ် (Available credits) ကြည့်ပါ — 1,000 အောက်ဆိုရင် ဆိုင်ရှင်ကို ဖြည့်ခိုင်းပါ', // v206
   'โอน ตัดเครดิต': 'လွှဲ — ခရက်ဒစ်ဖြင့် ပေး', // v205
   'โอน → ตัดเครดิต': 'လွှဲ → ခရက်ဒစ်ဖြင့် ပေး', // v205
@@ -11647,11 +11649,17 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
                   <div className="mt-1.5 rounded-lg bg-white/70 px-2 py-1.5" data-credit-steps>
                     <p className="text-xs font-extrabold text-slate-700">📝 {tr(config, 'ขั้นตอนที่ตู้')}</p>
                     <p className="text-[13px] font-bold text-slate-800 mt-0.5">1) {tr(config, 'ใส่ผ้า ปิดประตู กดโหมดที่หน้าเครื่อง')}</p>
-                    {creditStepLines(config, creditPlan(config, { kind: selM.kind, kg: selM.kg, baht, coin: cp.coin })).map((t, i) => (
-                      <p key={i} className="text-[13px] font-bold text-slate-800 mt-0.5">{i + 2}) {t}</p>
-                    ))}
-                    <p className="text-[12px] font-extrabold text-rose-700 mt-0.5" data-credit-low>💳 {tr(config, CREDIT_LOW_TEXT)}</p>
-                    <p className="text-[13px] font-extrabold text-emerald-800 mt-0.5">✅ {tr(config, 'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง')}</p>
+                    {(() => { // 💵 v207 ใบงานเงินสด/สด+โอน: 💳 เฉพาะตอนใช้เครดิต · ✅ บอกปุ่มให้ตรง
+                      const rounds = creditPlan(config, { kind: selM.kind, kg: selM.kg, baht, coin: cp.coin });
+                      const useCredit = rounds.some(r => r.pay > 0), useCoin = rounds.some(r => r.coin > 0);
+                      return (<>
+                        {creditStepLines(config, rounds).map((t, i) => (
+                          <p key={i} className="text-[13px] font-bold text-slate-800 mt-0.5">{i + 2}) {t}</p>
+                        ))}
+                        {useCredit && <p className="text-[12px] font-extrabold text-rose-700 mt-0.5" data-credit-low>💳 {tr(config, CREDIT_LOW_TEXT)}</p>}
+                        <p className="text-[13px] font-extrabold text-emerald-800 mt-0.5" data-credit-done>✅ {tr(config, !useCredit ? 'เครื่องเดินแล้ว กดปุ่ม 💵 หยอดที่เครื่องแล้ว ด้านล่าง' : useCoin ? 'เครื่องเดินแล้ว กดปุ่ม 💵+🎟️ เริ่มเครื่อง ด้านล่าง' : 'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง')}</p>
+                      </>);
+                    })()}
                   </div>
                 ) : <p className="text-[11px] font-bold text-slate-500 mt-0.5">📝 {tr(config, isSol(config) ? 'ขั้นตอน: ใส่ผ้า → ปิดประตู → กดปุ่มด้านล่าง → กด Start ใน SOL → กลับมากด ✅' : 'ขั้นตอน: ใส่ผ้า → ปิดประตู → เลือกโปรแกรมที่หน้าเครื่อง → กดเริ่ม (ชำระเงิน)')}</p>}
               </div>
