@@ -1,5 +1,5 @@
 # STATE: PLP Laundromat (otteri-teddy-app)
-อัปเดต: 2026-11-10 · เวอร์ชัน: v212 (พรีวิว รอเจ้าของตกลง · ตัวจริง v211 — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
+อัปเดต: 2026-11-10 · เวอร์ชัน: v212 (ตัวจริง — Otteri ใช้ระบบใหม่แล้ว) + 🧪 Otteri ทดสอบ (test/ = ตัวจริง + ห่อทดสอบ · otteri-test-2026-11-01)
 
 ## ภาพรวม
 - Repo: github.com/phoneyjung/otteri-teddy-app · Live: https://phoneyjung.github.io/otteri-teddy-app/
@@ -168,7 +168,7 @@ v144 ปุ่ม 🧺 เริ่มเครื่อง แยกบนห�
 | - | ยังไม่มี | - | - |
 
 ## บันทึกการเปลี่ยนแปลง (ล่าสุดอยู่บน)
-- v212 (2026-11-10): tools/v212_sol_split_words.py · คำในหน้าเริ่มเครื่องงานสด+โอนของร้าน SOL · พรีวิว รอ 'ขึ้นจริง'
+- v212 (2026-11-10): tools/v212_sol_split_words.py · คำในหน้าเริ่มเครื่องงานสด+โอนของร้าน SOL · เจ้าของกด 'ขึ้นจริงเลย' 10 พ.ย.
 - v211 (2026-11-10): tools/v211_otteri_qr.py · QR ร้าน Otteri (ขายน้ำยาโอน + ใบรับงานโอน) · เจ้าของกด 'ขึ้นจริงเลย' 10 พ.ย. · ตรวจบนเว็บจริงแล้ว (index + sw = v211)
 - v205 (2026-11-08): tools/v205_credit_steps.py · `CREDIT_WORDS` / `ct()` / `fireIcon()` · `creditPlan()` (ซัก = ราคาเดียว · อบ = ราคาเริ่มถ้ายอด ≥ ราคาเริ่ม แล้ว 20/10 · coin หักรอบแรก) · `creditStepLines()` (ล็อกอินเฉพาะรอบแรกที่ตัดเครดิต) · `[data-credit-steps]` ในกล่องเหลือง · fireForOrder steps credit · โปรซักเอง confirm + บันทึกแล้ว '🎟️ ตัดเครดิตแล้ว' · PayLeftLine / block ×3 / การ์ดสด+โอน / ส่วนลดคูปอง / ปุ่มหลักบล็อก / การ์ดใบงาน / แผ่นแจ้งปัญหา / เหตุผล ×4 / หมายเหตุคืนเครดิต / วันยังไม่เปิด → ct · MM 24 คำ · ทดสอบ pulse/harness205.mjs + harness203/202/192 บนสำเนาที่ปิด credit · ภาพตรวจ pulse/preview/review_t2 (out205)
 - v204 (2026-11-08): tools/v204_credit_mode.py · TEDDY2 pulse.mode 'credit' · `isCredit()` · `pulseIsCredit()` · `creditRecordStart()` (firePulse แยกก่อนเรียก Worker) · PULSE_LIVE + 'credit' · fetchEcDay/refreshEc/checkCoinLog คืนทันที · ปุ่ม 🔄 ซ่อน · fireForOrder ข้อความ 🎟️ (head/payTxt/steps) · fireResultMsg 'credit' · เสียงสำเร็จ ×3 · หน้าเลือกเครื่อง: ขั้นตอน/ปุ่มหลัก/ปุ่มรอง/เพิ่มเวลาอบ · การ์ดใบงาน 🎟️ · ชิป credit (statusChip + JobFiredList `[data-credit-chip]`) · RefundAction ไม่ซ่อนสำหรับเหรียญ · CoinCheckAction เหลือปุ่มยกเลิก · กระทบยอด แถว ตัดเครดิต/หยอดเหรียญ · หน้าแรก 🎟️/🪙 · buckets · โปรซักเอง confirm · แท็บเจ้าของ '🎟️ เริ่มเครื่อง' · ตั้งค่าไม่มีปุ่มทดสอบ `[data-credit-mode]` · CreditView: subscribe pulseLogs method 'credit' · `creditUseFor()` · statFor/monthStatFor · `[data-credit-banner]` · MM 10 คำ · ทดสอบ pulse/harness204.mjs + harness203/202/192 บนสำเนาที่ปิด credit (ผ่าน)
