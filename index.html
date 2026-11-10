@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v211-2026-11-10';
+  window.APP_VERSION = 'v212-2026-11-10';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2255,6 +2255,10 @@ const MM_DICT = {
   'บันทึกแล้ว': 'မှတ်တမ်းတင်ပြီး',
   'ลูกค้าจ่ายเงินสด — หยอดเหรียญเอง': 'ဖောက်သည် ငွေသားပေး — အကြွေစေ့ ကိုယ်တိုင်ထည့်',
   'ส่วนโอน ยิงจากแอป': 'လွှဲငွေအပိုင်း အက်ပ်မှ ပို့',
+  'ส่วนโอน กด Start ใน SOL': 'လွှဲငွေအပိုင်း SOL တွင် Start နှိပ်', // v212
+  'โอน กด Start ใน SOL': 'လွှဲငွေ SOL တွင် Start နှိပ်', // v212
+  'โอน → Start ใน SOL': 'လွှဲငွေ → SOL တွင် Start', // v212
+  'หยอดเหรียญส่วนสดก่อน → กดปุ่มด้านล่าง → ไปกด Start ใน SOL ส่วนโอน': 'ငွေသားအပိုင်း ဒင်္ဂါးအရင်ထည့် → အောက်ခလုတ်နှိပ် → လွှဲငွေအပိုင်း SOL တွင် Start နှိပ်', // v212
   'หยอดเหรียญที่เครื่องให้ครบก่อน แล้วค่อยกดปุ่มด้านล่าง': 'စက်ထဲသို့ အကြွေစေ့ အရင်ပြည့်အောင်ထည့်ပြီးမှ အောက်ခလုတ်ကို နှိပ်ပါ',
   'หยอดเหรียญแล้ว': 'အကြွေစေ့ ထည့်ပြီး',
   'เงินสด → หยอดเหรียญ': 'ငွေသား → အကြွေစေ့ထည့်',
@@ -9778,8 +9782,10 @@ const CREDIT_WORDS = {
   'เครื่องได้รับพัลส์แล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)': 'ตัดเครดิตไปแล้ว แต่ไม่นับกับใบงาน (ร้านรับภาระ)',
   'วันนี้ยังไม่ได้เปิดระบบยิงพัลส์จากแอป': 'วันนี้ยังไม่ได้เปิดระบบบันทึกเริ่มเครื่อง',
 };
-const ct = (config, s) => tr(config, isCredit(config) && CREDIT_WORDS[s] ? CREDIT_WORDS[s] : s);
-const fireIcon = (config) => (isCredit(config) ? '🎟️' : '⚡');
+// 🟦 v212 ร้าน SOL (Otteri): ส่วนโอน = แม่บ้านกด Start ใน SOL เอง (แอปไม่ได้ยิง)
+const SOL_WORDS = { 'โอน ยิงแอป': 'โอน กด Start ใน SOL', 'โอน → ยิงแอป': 'โอน → Start ใน SOL', 'ส่วนโอน ยิงจากแอป': 'ส่วนโอน กด Start ใน SOL' };
+const ct = (config, s) => tr(config, isCredit(config) && CREDIT_WORDS[s] ? CREDIT_WORDS[s] : isSol(config) && SOL_WORDS[s] ? SOL_WORDS[s] : s);
+const fireIcon = (config) => (isCredit(config) ? '🎟️' : isSol(config) ? '🟦' : '⚡');
 // 🎟️ v205 รอบที่ต้องแตะที่จอกล่องข้างเครื่อง (เจ้าของยืนยัน 8 พ.ย.): ซัก = ราคาเดียว · อบ = ราคาเริ่ม แล้วเพิ่มเวลา 20/10 ทีละรอบ
 // เงินสด (coin) หยอดเหรียญก่อน แล้วตัดเครดิตส่วนที่เหลือ — pay = ยอดที่ใส่ในหน้าเครดิต
 function creditPlan(config, { kind, kg, baht, coin }) {
@@ -11626,7 +11632,7 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
                 <p className="text-sm font-extrabold text-amber-900 mt-0.5">👉 {tr(config, 'ไปหยอดเหรียญที่เครื่องเอง')} {selM.label} ฿{cp.coin}</p>
                 {cp.disc > 0 && <p className="text-sm font-bold text-amber-700">🎟️ {ct(config, 'ส่วนลด ยิงจากแอป')} ฿{cp.disc}</p>}
                 {cp.pulse - cp.disc > 0 && <p className="text-sm font-bold text-sky-800">{fireIcon(config)} {ct(config, 'ส่วนโอน ยิงจากแอป')} ฿{cp.pulse - cp.disc}</p>}
-                <p className="text-[11px] font-bold text-amber-800 mt-1">{tr(config, 'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วค่อยกดบันทึก')}</p>
+                <p className="text-[11px] font-bold text-amber-800 mt-1" data-sol-split-step={isSol(config) && cp.pulse - cp.disc > 0 ? '1' : undefined}>{isSol(config) && cp.pulse - cp.disc > 0 ? tr(config, 'หยอดเหรียญส่วนสดก่อน → กดปุ่มด้านล่าง → ไปกด Start ใน SOL ส่วนโอน') : tr(config, 'หยอดเหรียญจนเครื่องเริ่มทำงาน แล้วค่อยกดบันทึก')}</p>
               </div>
             )}
             {(fixed || job) && !block && pay && cp.disc > 0 && cp.coin === 0 && (
