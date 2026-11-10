@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v207-2026-11-10';
+  window.APP_VERSION = 'v208-2026-11-10';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -2325,6 +2325,8 @@ const MM_DICT = {
   'ใส่ผ้า ปิดประตู กดโหมดที่หน้าเครื่อง': 'အဝတ်ထည့် တံခါးပိတ် စက်ရှေ့တွင် မုဒ်ရွေး', // v205
   'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง': 'စက်လည်ပြီးမှ အောက်က 🎟️ ခရက်ဒစ်ဖြင့် ပေးပြီး ခလုတ်နှိပ်', // v205
   'เครื่องเดินแล้ว กดตกลง': 'စက်လည်ပြီးမှ OK နှိပ်', // v205
+  '🎟️ ตัดเครดิตที่ตู้ + บันทึก': '🎟️ စက်တွင် ခရက်ဒစ်ဖြတ် + သိမ်း', // v208
+  'ไม่ต้องใส่ผ้า ปิดประตู กด 🔥 น้ำร้อน ที่หน้าเครื่อง': 'အဝတ်မထည့်ရ တံခါးပိတ် စက်ရှေ့တွင် 🔥 ရေပူ နှိပ်', // v208
   'เครื่องเดินแล้ว กดปุ่ม 💵 หยอดที่เครื่องแล้ว ด้านล่าง': 'စက်လည်ပြီးမှ အောက်က 💵 စက်တွင်ထည့်ပြီး ခလုတ်နှိပ်', // v207
   'เครื่องเดินแล้ว กดปุ่ม 💵+🎟️ เริ่มเครื่อง ด้านล่าง': 'စက်လည်ပြီးမှ အောက်က 💵+🎟️ စက်စတင် ခလုတ်နှိပ်', // v207
   'ดูเครดิตที่เหลือ (Available credits) ต่ำกว่า 1,000 → บอกเจ้าของร้านเติม': 'ကျန်ခရက်ဒစ် (Available credits) ကြည့်ပါ — 1,000 အောက်ဆိုရင် ဆိုင်ရှင်ကို ဖြည့်ခိုင်းပါ', // v206
@@ -5134,7 +5136,7 @@ function HomeView({ onResumeDraft, onToggleLang, onOpenChecklist, config, orders
             )}
             <button onClick={handleSubmitPromo} disabled={savingPromo}
               className="w-full py-3.5 rounded-2xl bg-rose-500 text-white font-bold text-base active:scale-95 transition disabled:opacity-50">
-              {savingPromo ? tr(config, 'กำลังบันทึก…') : tr(config, pulseOn(config) ? '⚡ เริ่มเครื่อง + บันทึก' : 'บันทึกตัดเครดิต') + ' ' + (parseInt(promoAmount, 10) || 0) + '฿'}
+              {savingPromo ? tr(config, 'กำลังบันทึก…') : tr(config, pulseOn(config) ? (isCredit(config) ? '🎟️ ตัดเครดิตที่ตู้ + บันทึก' : '⚡ เริ่มเครื่อง + บันทึก') : 'บันทึกตัดเครดิต') + ' ' + (parseInt(promoAmount, 10) || 0) + '฿'}
             </button>
           </div>
         )}
@@ -10844,7 +10846,7 @@ async function fireForOrder(config, order, { machine, kind, kg, temp, heat, baht
     return { status: 'sol-pending', machineLabel: mLabel, coinBaht: coin };
   }
   const steps = order && order.internalType === 'clean'
-    ? `🧼 ${tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')}\n⚠️ ${tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}`
+    ? `🧼 ${tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')}\n⚠️ ${tr(config, 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}${cr && pulseBaht > 0 ? `\n\n✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ไม่ต้องใส่ผ้า ปิดประตู กด 🔥 น้ำร้อน ที่หน้าเครื่อง')}\n${creditStepLines(config, creditPlan(config, { kind, kg, baht, coin: 0 })).map((t, i) => `${i + 2}) ${t}`).join('\n')}\n💳 ${tr(config, CREDIT_LOW_TEXT)}\n✅ ${tr(config, 'เครื่องเดินแล้ว กดตกลง')}` : ''}`  // 🎟️ v208
     : cr && pulseBaht > 0 // 🎟️ v205 ขั้นตอนที่ตู้เป็นรอบ ๆ
     ? `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n${creditStepLines(config, creditPlan(config, { kind, kg, baht, coin })).map((t, i) => `${i + 3}) ${t}`).join('\n')}\n💳 ${tr(config, CREDIT_LOW_TEXT)}\n✅ ${tr(config, 'เครื่องเดินแล้ว กดตกลง')}`
     : `✅ ${tr(config, 'ก่อนกดตกลง')}:\n1) ${tr(config, 'ใส่ผ้า แล้วปิดประตู')}\n2) ${tr(config, 'เลือกโปรแกรมที่หน้าเครื่อง')}: ${progLabel}\n3) ${coin > 0 ? tr(config, 'หยอดเหรียญ แล้วกดตกลง') : tr(config, 'กดตกลง = ชำระเงิน เครื่องเริ่มทำงาน')}`;
@@ -11640,7 +11642,20 @@ function MachinePickerSheet({ config, jobs, fixed, dayLogs, preset, onFire, onCl
             {addMsg && <p className="text-sm font-bold text-center text-emerald-700">{addMsg}</p>}
 
             {(fixed || job) && !block && (job && job.order.internalType === 'clean' ? (
-              <p className="text-sm font-extrabold text-rose-700 bg-rose-50 border-2 border-rose-200 rounded-xl px-3 py-2">🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, isSol(config) ? 'ใน SOL เลือก Hot (น้ำร้อน)' : 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>
+              <div className="space-y-1.5">
+                <p className="text-sm font-extrabold text-rose-700 bg-rose-50 border-2 border-rose-200 rounded-xl px-3 py-2">🧼 {tr(config, 'ล้างเครื่อง (ไม่ต้องใส่ผ้า)')} · ⚠️ {tr(config, isSol(config) ? 'ใน SOL เลือก Hot (น้ำร้อน)' : 'อย่าลืมกดเลือก 🔥 น้ำร้อน ที่หน้าเครื่องก่อนกดตกลง')}</p>
+                {isCredit(config) && ( // 🎟️ v208 ล้างเครื่องใช้เครดิตแม่บ้าน — ขั้นตอนที่ตู้เหมือนงานลูกค้า
+                  <div className="rounded-xl px-3 py-2 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }} data-credit-steps data-clean-steps>
+                    <p className="text-xs font-extrabold text-slate-700">📝 {tr(config, 'ขั้นตอนที่ตู้')}</p>
+                    <p className="text-[13px] font-bold text-slate-800 mt-0.5">1) {tr(config, 'ไม่ต้องใส่ผ้า ปิดประตู กด 🔥 น้ำร้อน ที่หน้าเครื่อง')}</p>
+                    {creditStepLines(config, creditPlan(config, { kind: selM.kind, kg: selM.kg, baht, coin: 0 })).map((t, i) => (
+                      <p key={i} className="text-[13px] font-bold text-slate-800 mt-0.5">{i + 2}) {t}</p>
+                    ))}
+                    <p className="text-[12px] font-extrabold text-rose-700 mt-0.5" data-credit-low>💳 {tr(config, CREDIT_LOW_TEXT)}</p>
+                    <p className="text-[13px] font-extrabold text-emerald-800 mt-0.5" data-credit-done>✅ {tr(config, 'เครื่องเดินแล้ว กดปุ่ม 🎟️ ตัดเครดิตแล้ว ด้านล่าง')}</p>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="rounded-xl px-3 py-2.5 border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
                 <p className="text-sm font-extrabold text-amber-900">⚠️ {tr(config, isSol(config) ? 'เลือกโปรแกรมใน SOL ให้ตรงใบงาน' : 'กดโหมดที่หน้าเครื่องให้ตรงใบงาน')}: {selM.kind === 'wash' ? `💧 ${tr(config, washTempLabel(tempUse))}` : `🌡️ ${tr(config, 'ความร้อนตามใบงาน')}`}</p>
