@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v213-2026-11-12';
+  window.APP_VERSION = 'v214-2026-11-12';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -71,6 +71,9 @@
     background: #f1f5f9;
   }
   input, textarea { font-family: inherit; }
+  /* 🖨️ v214 ตัวอักษรในใบงาน/รูปใบเสร็จตกลงล่าง: html2canvas วัดเส้นฐานตัวอักษรด้วยรูป 1px ที่ต้องอยู่บรรทัดเดียวกับข้อความ
+     แต่ Tailwind ตั้งรูปทุกรูปเป็น block → รูปหล่นไปบรรทัดใหม่ → วัดผิด ตัวอักษรถูกวาดต่ำกว่าจอ ~ครึ่งตัว · บรรทัดนี้คืนรูปวัดให้อยู่ในบรรทัด */
+  img[src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"] { display: inline !important; }
   
   
 </style>
