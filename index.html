@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v212-2026-11-10';
+  window.APP_VERSION = 'v213-2026-11-12';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -10177,6 +10177,37 @@ async function undoCoinLog(config, log, order, logs) {
   await window.db.collection('orders').doc(order.id).set(upd, { merge: true });
 }
 
+// 🎟️ v213 Teddy 2 (ตัดเครดิต): ใบงานเงินสดที่แม่บ้านลืมหยอด ใช้เครดิตตัวเองจ่ายที่ตู้แทน → เจ้าของเปลี่ยนบันทึก 'หยอดเหรียญ' เป็น 'ตัดเครดิต' ของแม่บ้านคนนั้น
+// ใบงานยังนับว่าเริ่มเครื่องแล้ว · เงินสดกลับไปอยู่ใน 'เงินสดในมือ' (เงินอยู่ในลิ้นชักจริง) · ยอดเครดิตที่ใช้เทียบ EC ตรง
+async function convertCoinToCredit(config, order, logs, log) {
+  const now = Date.now();
+  await pulseLogRef(log.id).set({ method: 'credit', status: 'credit', doneAt: log.createdAt || now, convertedFrom: 'coin', convertedAt: now, convertedBy: 'เจ้าของ',
+    creditNote: 'เจ้าของเปลี่ยนจากหยอดเหรียญ — แม่บ้านใช้เครดิตตัวเองแทนเงินสดลูกค้า (เงินสดอยู่ในลิ้นชัก)' }, { merge: true });
+  if (!order || !order.id) return;
+  try { const f = await window.db.collection('orders').doc(order.id).get(); if (f.exists) order = { ...order, ...f.data(), id: order.id }; } catch (e) {} // ใช้ข้อมูลใบงานล่าสุด
+  const cashPart = orderCashPart(order, config);
+  const remaining = (logs || []).filter(l => l.refId === order.id && l.id !== log.id && pulseIsCoin(l) && (pulseLive(l) || pulseRefunded(l))).reduce((a, l) => a + (l.baht || 0), 0);
+  const upd = { brand: order.brand || config.brand, cashInMachine: Math.min(cashPart, remaining) };
+  if (order.collectedVia === 'machine' && remaining < cashPart) {
+    if (order.paymentMethod === 'cash') Object.assign(upd, { collected: false, collectedAt: null, collectedVia: null });
+    if (order.paymentMethod === 'split') Object.assign(upd, { cashCollected: false, collected: false, collectedVia: null });
+  }
+  await window.db.collection('orders').doc(order.id).set(upd, { merge: true });
+}
+function CoinToCreditAction({ config, log, order, logs, isOwner }) { // 🎟️ v213 เจ้าของกดได้คนเดียว
+  const [busy, setBusy] = useState(false);
+  if (!isCredit(config) || !log || !pulseIsCoin(log) || !pulseLive(log) || log.coinFromFloat || !pulseIsOwnerNow(config, isOwner)) return null;
+  const go = async () => {
+    const ref = order ? pulseRefLabel(order, config) : (log.refLabel || '');
+    if (!confirm(`🎟️ เปลี่ยนเป็น "ตัดเครดิต" (แม่บ้านไม่ได้หยอดเหรียญ)\n\n📋 ${ref}\n🧺 ${log.machineLabel} ฿${log.baht}${log.staffName ? `\n👤 เครดิตของ ${log.staffName}` : ''}\n\n• ใบงานยังนับว่าเริ่มเครื่องแล้ว\n• เงินสด ฿${log.baht} กลับไปอยู่ใน "เงินสดในมือ" (เงินอยู่ในลิ้นชัก)\n• เครดิตที่ใช้ของแม่บ้านคนนี้ +฿${log.baht}`)) return;
+    setBusy(true);
+    try { await convertCoinToCredit(config, order, logs, log); }
+    catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : e)); }
+    setBusy(false);
+  };
+  return <button data-coin-to-credit onClick={go} disabled={busy} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 border border-sky-300 text-sky-800 active:scale-95 disabled:opacity-50">{busy ? '…' : '🎟️ จริงๆ ตัดเครดิต'}</button>;
+}
+
 // บันทึกว่าแม่บ้านหยอดเหรียญเข้าเครื่องแล้ว (ไม่ยิงพัลส์) + ใบงานเงินสดที่หยอดครบ = ไม่ต้องรอเก็บจากแม่บ้าน
 function logCoinInsert(config, order, logs, { machine, kind, kg, temp, heat, baht, dryMin, warn }) {
   const staff = currentStaffLS(config);
@@ -11936,6 +11967,7 @@ function PulseStarterCard({ config, order: orderProp, isOwner }) {
         {statusChip(l)}
         {l.coinFromFloat && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900" data-float-chip>🪙 {tr(config, 'เหรียญร้าน')}</span>}
         {pulseIsCoin(l) && <CoinCheckAction config={config} log={l} order={order} logs={logs} />}
+        {pulseIsCoin(l) && <CoinToCreditAction config={config} log={l} order={order} logs={logs} isOwner={isOwner} />}
         {pulseIsManual(l) && pulseLive(l) && pay.coinLeft > 0 && pulseIsOwnerNow(config, isOwner) && (
           <button onClick={async () => {
             const amt = Math.min(l.baht || 0, pay.coinLeft);
@@ -12627,6 +12659,7 @@ function JobFiredList({ config, logs, isOwner, order }) {
           {pulseIsCoin(l) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">💵 {tr(config, 'หยอดเหรียญ')}</span>}
           {l.coinFromFloat && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900" data-float-chip>🪙 {tr(config, 'เหรียญร้าน')}</span>}
           {pulseIsCoin(l) && <CoinCheckAction config={config} log={l} order={order} logs={logs} />}
+          {pulseIsCoin(l) && <CoinToCreditAction config={config} log={l} order={order} logs={logs} isOwner={isOwner} />}
           {pulseIsManual(l) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-800">✍️ {tr(config, 'เจ้าของบันทึก')}</span>}
           {pulseIsCredit(l) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800" data-credit-chip>🎟️ {tr(config, 'ตัดเครดิต')}{l.staffName ? ' · ' + l.staffName : ''}</span>}
           <RefundAction config={config} log={l} isOwner={isOwner} hideRequest={pulseIsCoin(l) && l.coinSeen !== true && !isCredit(config)} />
