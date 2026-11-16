@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v215-2026-11-16';
+  window.APP_VERSION = 'v216-2026-11-16';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -5877,6 +5877,9 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
     setWashItems((w.washItems || []).map(i => ({ size: i.size, qty: i.qty, temp: i.temp || 'cold' })));
     // เว็บคิดค่าอบราคาเดียวทุกอุณหภูมิ → ไม่มีหยอดเพิ่ม (อุณหภูมิอบเป็นแค่การตั้งเครื่อง — ใส่ในหมายเหตุ)
     setDryItems((w.dryItems || []).map(i => ({ size: i.size, qty: i.qty, topUp: 0 })));
+    // 🧴 v216 ลูกค้าสั่งซื้อน้ำยาร้านมาจากหน้าเว็บ (ซองละ ฿5) → ใส่จำนวนซองให้เลย ยอดในฟอร์มจะตรงกับที่ลูกค้าเห็น
+    setDetergentQty(Math.max(0, parseInt(w.detergentQty, 10) || 0));
+    setSoftenerQty(Math.max(0, parseInt(w.softenerQty, 10) || 0));
     setNoFold(w.wantFold === false);
     setPickupTime(w.pickupTime || '');
     const TEMP_TH = { cold: 'เย็น', warm: 'อุ่น', hot: 'ร้อน' };
@@ -6303,7 +6306,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
                     </div>
                     <p className="text-sm text-slate-700 mt-0.5">👤 {w.customerName || '-'} · {w.customerPhone || '-'}</p>
                     <p className="text-xs text-slate-500">
-                      {(w.washItems || []).map(i => `ซัก ${i.size}กก.×${i.qty}`).join(', ')}{(w.washItems || []).length && (w.dryItems || []).length ? ' · ' : ''}{(w.dryItems || []).map(i => `อบ ${i.size}กก.×${i.qty}`).join(', ')}
+                      {(w.washItems || []).map(i => `ซัก ${i.size}กก.×${i.qty}`).join(', ')}{(w.washItems || []).length && (w.dryItems || []).length ? ' · ' : ''}{(w.dryItems || []).map(i => `อบ ${i.size}กก.×${i.qty}`).join(', ')}{w.detergentQty > 0 ? ` · 🧴×${w.detergentQty}` : ''}{w.softenerQty > 0 ? ` · 🌸×${w.softenerQty}` : ''}
                       {w.deliveryZone ? ` · 🚚 ${w.deliveryZone}` : ' · 🏪 มารับเอง'}{w.grandTotal ? ` · ~${formatMoney(w.grandTotal)}฿` : ''}
                     </p>
                     {w.address && <p className="text-[11px] text-slate-400 truncate">📍 {w.address}</p>}
