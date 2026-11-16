@@ -32,7 +32,7 @@
   window.db = firebase.firestore();
   
   // App version marker - bump เพื่อ force ล้าง bad pending writes
-  window.APP_VERSION = 'v214-2026-11-12';
+  window.APP_VERSION = 'v215-2026-11-16';
   
   // ล้าง bad pending writes จาก version เก่า (ที่อาจมี undefined ค้าง)
   window.dbReady = (async function clearStaleQueue() {
@@ -1768,15 +1768,26 @@ const BILL_BTN = { clean: ['ล้างเครื่อง', 'ทุก 7 ว
 // 🪙 ร้านที่ใช้โทเคนของร้าน (Teddy 1) — ไม่มีสแกนเครดิต · แม่บ้าน 'ให้โทเคน'
 const tokenShop = (config) => !!(config && COIN_POINTS[config.brand] && COIN_POINTS[config.brand].tokenMode);
 const CLEAN_EVERY_DAYS = 7;
-// เครื่องที่ล้างไปแล้วภายใน 7 วัน → { label: { at, until } }
-function cleanLocksOf(orders, exceptId) {
+// 🧼 v215 สิทธิ์ล้างเครื่องเริ่มนับใหม่ทุกวันจันทร์ 9:00 (เดิมนับ 7×24 ชม. จากครั้งก่อน → ล้างจันทร์เที่ยง จันทร์หน้าเช้าล้างไม่ได้)
+const CLEAN_RESET_DOW = 1, CLEAN_RESET_HOUR = 9; // จันทร์ 9:00 เวลาเครื่อง
+function cleanWeekStart(now) {
+  const d = new Date(now == null ? Date.now() : now);
+  const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), CLEAN_RESET_HOUR, 0, 0, 0);
+  s.setDate(s.getDate() - ((d.getDay() - CLEAN_RESET_DOW + 7) % 7));
+  if (s.getTime() > d.getTime()) s.setDate(s.getDate() - 7); // จันทร์ก่อน 9:00 = ยังเป็นสัปดาห์ก่อน
+  return s.getTime();
+}
+// เครื่องที่ล้างไปแล้วในสัปดาห์นี้ (ตั้งแต่จันทร์ 9:00) → { label: { at, until } }
+function cleanLocksOf(orders, exceptId, nowMs) {
   const out = {};
-  const now = Date.now();
+  const start = cleanWeekStart(nowMs);
+  const ns = new Date(start); ns.setDate(ns.getDate() + CLEAN_EVERY_DAYS);
+  const until = ns.getTime();
   (orders || []).forEach(o => {
     if (o.internalType !== 'clean' || (exceptId && o.id === exceptId)) return;
     const at = o.createdAt || 0;
-    if (now - at >= CLEAN_EVERY_DAYS * 86400000) return;
-    (o.internalMachines || []).forEach(lb => { if (!out[lb] || out[lb].at < at) out[lb] = { at, until: at + CLEAN_EVERY_DAYS * 86400000 }; });
+    if (at < start) return;
+    (o.internalMachines || []).forEach(lb => { if (!out[lb] || out[lb].at < at) out[lb] = { at, until }; });
   });
   return out;
 }
@@ -5813,7 +5824,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
     if (internalOwnerOnly(config).includes(internalType)) internalMaidIssues.push(maidNoFree(config) ? tr(config, 'งานไม่คิดเงิน — แอดมินหรือเจ้าของเป็นคนลง') : 'ซ่อม/ทดสอบ ซักซ้ำ และอื่นๆ — เฉพาะเจ้าของ');
     if (internalType === 'clean') {
       const lockedSel = internalMachines.filter(lb => cleanLocks[lb]);
-      if (lockedSel.length) internalMaidIssues.push(`ล้างไปแล้วใน ${CLEAN_EVERY_DAYS} วัน: ${lockedSel.join(', ')}`);
+      if (lockedSel.length) internalMaidIssues.push(`ล้างไปแล้วในสัปดาห์นี้ (ล้างได้อีกจันทร์ ${CLEAN_RESET_HOUR}:00): ${lockedSel.join(', ')}`);
       const allM = (COIN_POINTS[config.brand] || COIN_POINTS.teddy2).machines || [];
       const selW = allM.filter(m => /^w/i.test(m.id) && internalMachines.includes(m.label)).length;
       const selD = allM.filter(m => /^d/i.test(m.id) && internalMachines.includes(m.label)).length;
@@ -6161,7 +6172,7 @@ function NewOrderView({ config, onCancel, onSubmit, editingOrder, isOwner, isAdm
                 const lock = internalType === 'clean' ? (cleanLocks[m.label] || (dryNo ? { at: 0, until: 0, dry: true } : null)) : null;
                 const until = lock && !lock.dry ? new Date(lock.until).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '';
                 return (
-                  <button key={m.id} onClick={() => { if (lock && lock.dry && !on) { alert('🧼 แม่บ้านล้างได้เฉพาะเครื่องซัก'); return; } if (lock && !on) { alert(`🧼 ${m.label} ล้างไปแล้วเมื่อ ${new Date(lock.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}\nล้างได้อีกครั้ง ${until}`); return; } setInternalMachines(on ? internalMachines.filter(x => x !== m.label) : [...internalMachines, m.label]); }}
+                  <button key={m.id} onClick={() => { if (lock && lock.dry && !on) { alert('🧼 แม่บ้านล้างได้เฉพาะเครื่องซัก'); return; } if (lock && !on) { alert(`🧼 ${m.label} ล้างไปแล้วเมื่อ ${new Date(lock.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}\nล้างได้อีกครั้ง จันทร์ ${until} ${CLEAN_RESET_HOUR}:00`); return; } setInternalMachines(on ? internalMachines.filter(x => x !== m.label) : [...internalMachines, m.label]); }}
                     className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 ${on ? (lock ? 'bg-rose-600 text-white border-rose-600' : 'bg-slate-900 text-white border-slate-900') : lock ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-300'}`}>
                     {m.label}{(COIN_POINTS[config.brand] || {}).chipSize && m.size ? ` · ${m.size}` : ''}{lock ? ` 🔒${until}` : ''}
                   </button>
